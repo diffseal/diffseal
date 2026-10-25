@@ -6,7 +6,10 @@ import go from './grammars/tree-sitter-go.wasm' with { type: 'file' };
 import python from './grammars/tree-sitter-python.wasm' with { type: 'file' };
 import typescript from './grammars/tree-sitter-typescript.wasm' with { type: 'file' };
 import tsx from './grammars/tree-sitter-tsx.wasm' with { type: 'file' };
-export type AppLanguage = 'go' | 'python' | 'typescript' | 'tsx';
+import java from './grammars/tree-sitter-java.wasm' with { type: 'file' };
+import kotlin from './grammars/tree-sitter-kotlin.wasm' with { type: 'file' };
+import csharp from './grammars/tree-sitter-c_sharp.wasm' with { type: 'file' };
+export type AppLanguage = 'go' | 'python' | 'typescript' | 'tsx' | 'java' | 'kotlin' | 'csharp';
 export type SyntaxNode = Node;
 function bytes(asset: unknown): Buffer {
   if (typeof asset !== 'string') throw new Error('Parser asset import must use the file loader');
@@ -15,7 +18,7 @@ function bytes(asset: unknown): Buffer {
 await Parser.init({ wasmBinary: bytes(runtime) });
 const languages = new Map<AppLanguage, Language>(
   await Promise.all(
-    (Object.entries({ go, python, typescript, tsx }) as Array<[AppLanguage, unknown]>).map(
+    (Object.entries({ go, python, typescript, tsx, java, kotlin, csharp }) as Array<[AppLanguage, unknown]>).map(
       async ([name, asset]) => [name, await Language.load(bytes(asset))] as [AppLanguage, Language],
     ),
   ),

@@ -1,3 +1,4 @@
+import { extractManaged, envReadsManaged } from './managed.js';
 import { ExtractionCache, extractionCache, fileIdentity } from './cache.js';
 import { clearSyntax } from './syntax.js';
 import * as path from 'node:path';
@@ -12,7 +13,8 @@ const SKIP =
 const TEST = /(_test\.go|\.test\.[jt]sx?|\.spec\.[jt]sx?|(^|\/)test_[^/]*\.py|_test\.py)$/;
 
 export function isAppFile(p: string): boolean {
-  return /\.(go|ts|tsx|js|mjs|cjs|py)$/.test(p) && !SKIP.test(p) && !TEST.test(p) && !p.endsWith('.d.ts');
+  if (/\.(java|kt|cs)$/.test(p) && (/(^|\/)(test|tests|target|bin|obj)\//.test(p) || /(?:Tests?|Spec)\.(java|kt|cs)$/.test(p))) return false;
+  return /\.(go|ts|tsx|js|mjs|cjs|py|java|kt|cs)$/.test(p) && !SKIP.test(p) && !TEST.test(p) && !p.endsWith('.d.ts');
 }
 
 export interface ScanResult extends AppScan {
@@ -105,10 +107,12 @@ export function scanApp(
     ...wanted.filter((p) => !p.endsWith('.go') && !p.endsWith('.py')),
     ...wanted.filter((p) => p.endsWith('.py')),
   ]) {
-    const kind = p.endsWith('.py') ? 'python' : 'typescript',
+    const kind = p.endsWith('.py') ? 'python' : /\.(java|kt|cs)$/.test(p) ? 'managed' : 'typescript',
       context = [p, lineKey(p)];
     const r = cache.memo(kind + '-facts', identity(p), context, () =>
-      kind === 'python'
+      kind === 'managed'
+        ? extractManaged([read(p)], { addedLines: opts.addedLines })
+        : kind === 'python'
         ? extractPython([read(p)], { addedLines: opts.addedLines })
         : extractTs([read(p)], { addedLines: opts.addedLines }),
     );
@@ -127,7 +131,9 @@ export function scanApp(
         try {
           return p.endsWith('.go')
             ? envReadsGo(content, p)
-            : p.endsWith('.py')
+            : /\.(java|kt|cs)$/.test(p)
+              ? envReadsManaged(content,p)
+              : p.endsWith('.py')
               ? envReadsPython(content, p)
               : envReadsTs(content, p);
         } finally {
