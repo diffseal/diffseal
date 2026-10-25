@@ -38,14 +38,14 @@ A `.terratrust.json` file can hold three groups of settings:
 
 ## Policy settings
 
-Policy settings can live under the `"policy"` key in `.terratrust.json` or at the top level of a standalone policy JSON file passed via `--policy` or the Action `policy` input. When both are present, the standalone policy file overrides `.terratrust.json`, and explicit CLI flags such as `--require-cmk` override both.
+In `terratrust replay` and the GitHub Action `pr` mode, policy settings are read from the `"policy"` object and top-level `"exceptions"` array in `.terratrust.json` and merged with any standalone policy JSON file passed via `--policy` or the Action `policy` input. When both `.terratrust.json` and a standalone policy file are present, fields in the standalone policy file override `.terratrust.json`. In `terratrust review --plan` and the GitHub Action `plan` mode, policy settings and exceptions are read from the standalone policy JSON file passed via `--policy` or `policy`.
 
 | Field | Type | Default | Description |
 | :-- | :-- | :-- | :-- |
 | `requireCustomerManagedKeys` | `boolean` | `false` | Require customer-managed KMS keys on resources where AWS supports them, rather than AWS-managed keys or default SSE-S3 encryption. |
 | `minBackupRetentionDays` | `number` | `7` | Minimum backup retention period in days for RDS instances and Aurora clusters. |
 | `blockOn` | `Severity[]` | `["CRITICAL"]` | Blast-radius severities that set the gate to `block`. Allowed values are `"CRITICAL"`, `"HIGH"`, `"MEDIUM"`, `"LOW"`, and `"INFO"`. |
-| `exceptions` | `PolicyException[]` | `[]` | Accepted findings and blast-radius items. Can be set either at the top level of `.terratrust.json` or inside a policy JSON file. |
+| `exceptions` | `PolicyException[]` | `[]` | Accepted findings and blast-radius items. Can be set either at the top level of `.terratrust.json`, inside `"policy"` in `.terratrust.json`, or at the top level of a standalone policy JSON file. |
 
 If `CRITICAL` is removed from `blockOn`, unaccepted `CRITICAL` and `HIGH` blast-radius items still set the gate to `review` and never pass silently.
 
@@ -63,10 +63,10 @@ An exception accepts a policy finding or a blast-radius item on matching resourc
 
 ### Expiry and validation rules
 
-Every exception is validated before it can accept a finding:
+Every exception is validated in `analyze` before it can accept a policy finding or blast-radius item:
 
 1. `resource` must be a string, and `expires` must match `YYYY-MM-DD` and parse as a valid date. Any exception missing `resource` or carrying an invalid `expires` date is treated as malformed and never applies.
-2. In live checks such as `terratrust review`, `terratrust check-app`, and the GitHub Action, `expires` is compared with the current UTC date. In `terratrust replay`, `expires` is compared with the commit date of each replayed commit so historical replays reproduce the gate verdict from when the commit was made.
+2. In live checks such as `terratrust review` and the GitHub Action `pr` and `plan` modes, `expires` is compared with the current UTC date. In `terratrust replay`, `expires` is compared with the commit date of each replayed commit so historical replays reproduce the gate verdict from when the commit was made.
 3. If an expired or malformed exception matches a finding or blast-radius item in the current change, the finding is not accepted, the gate becomes at least `review`, and the gate reasons name the expired or malformed exception.
 
 ## Application link settings

@@ -48,7 +48,12 @@ Uncaught configuration or execution errors exit with code `1`.
 
 When `comment` is `'true'`, the event payload includes `pull_request.number`, and `github-token` is non-empty, TerraTrust searches up to 50 pages of 100 issue comments for a comment authored by `comment-author` that contains the HTML marker `<!-- terratrust-report -->`. If found, TerraTrust updates that comment in place with `PATCH`. Otherwise, it creates a new comment with `POST`.
 
-In `pr` mode, if a pull request changes no Terraform files, produces no application access links, and does not touch `.terratrust.json` or the `policy` file, TerraTrust sets `onlyUpdate` on the comment request: it updates an existing TerraTrust comment if one was posted on an earlier commit of the pull request, and posts nothing on pull requests that have never touched infrastructure or AWS application code.
+In `pr` and `app` modes, if a pull request produces nothing to report, TerraTrust sets `onlyUpdate: true` on the comment request:
+
+- In `pr` mode, a report is present when at least one Terraform root is evaluated, at least one application access link is found, at least one gate reason is present, or the `policy` file changed.
+- In `app` mode, a report is present when at least one application access link is found, at least one gate reason is present, or the `policy` file changed.
+
+When `onlyUpdate` is `true`, TerraTrust updates an existing TerraTrust comment if one was posted on an earlier commit of the pull request, and posts nothing on pull requests that have no report.
 
 ## Base commit resolution
 

@@ -5,14 +5,14 @@
 You can run `check-app` on a whole application or only on the lines added since a base commit:
 
 ```bash
-# Check the current working tree against Terraform in the same repo
-terratrust check-app --app . --worktree
+# Check the bundled orders-service example against demo-infra in the working tree
+bun run src/cli.ts check-app --app examples/orders-service --infra examples/demo-infra --worktree
 
-# Check only code added since origin/main against a separate infra repo
-terratrust check-app --app ../orders-api --infra ../infra --base origin/main
+# Trace from a specific entry directory and role name
+bun run src/cli.ts check-app --app examples/orders-service --infra examples/demo-infra --entry src --role orders-prod-lambda --worktree
 
-# Trace from a specific binary entry directory and role name
-terratrust check-app --app ../infra --entry services/worker/cmd/worker --role worker-task
+# Check only calls added since a base commit
+bun run src/cli.ts check-app --app . --base HEAD
 ```
 
 ## How TerraTrust finds the IAM role
@@ -32,9 +32,9 @@ For each AWS SDK call in application code:
 
 ### 2. ECS task definitions in the application repository
 
-Many service repositories keep their ECS task definition JSON in the application repository rather than in Terraform. When scanning the application repository, TerraTrust reads any file whose name matches `*taskdef*.json`, `*task-def*.json`, or `*task-definition*.json`:
+Many service repositories keep their ECS task definition JSON in the application repository rather than in Terraform. When scanning the application repository, `discoverLink` reads any file outside `node_modules/` whose name matches `*taskdef*.json`, `*task-def*.json`, or `*task-definition*.json`:
 
-- If the JSON has a top-level `taskRoleArn` string, TerraTrust adds that role ARN to the list of roles the application runs as.
+- If the JSON has a top-level `taskRoleArn` string that does not contain an unresolved `${` template placeholder, TerraTrust adds that role ARN to the list of roles the application runs as.
 - For each entry in `containerDefinitions`, TerraTrust collects the `name` of every item in `environment` and `secrets` and marks those environment variables as defined outside Terraform so they are not flagged as `MISSING`.
 
 ### 3. Kubernetes manifests and Helm values for EKS IRSA
@@ -49,7 +49,7 @@ TerraTrust scans `.yaml` and `.yml` files in the application repository, skippin
 You can specify roles and external environment variables directly:
 
 - In `.terratrust.json`, set `"roles": ["orders-api-task"]` and `"env": ["EXTERNAL_VAR"]`.
-- On the command line, pass `--role <name-or-arn>`, which can be repeated for multiple roles. In the GitHub Action, pass `role: orders-api-task` as a comma-separated list.
+- On the command line, pass `--role <name,...>` as a comma-separated list. In the GitHub Action, pass `role: orders-api-task` as a comma-separated list.
 
 When `--role` or `role` is provided, it overrides the roles discovered from `.terratrust.json`, task definitions, and Kubernetes manifests. Even when the role is given by name or ARN, TerraTrust still looks up any Lambda or ECS compute in Terraform that runs as that role to resolve the values of environment variables used by the code.
 
