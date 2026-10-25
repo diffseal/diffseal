@@ -501,6 +501,125 @@
         ],
         "exactEnvReadNames": []
       }
+    },
+    {
+      "kind": "app",
+      "name": "Java optional ACL adds the documented permission",
+      "files": {
+        "Worker.java": "import software.amazon.awssdk.services.s3.S3Client;\nimport software.amazon.awssdk.services.s3.model.PutObjectRequest;\nclass Worker { void run() { S3Client client = S3Client.builder().build(); String acl = \"public-read\"; client.putObject(PutObjectRequest.builder().bucket(\"reports\").key(\"x\").acl(acl).build()); } }\n"
+      },
+      "expect": {
+        "facts": [
+          {
+            "operation": "PutObject",
+            "actions": [
+              "s3:PutObject",
+              "s3:PutObjectAcl"
+            ],
+            "resource": {
+              "kind": "literal",
+              "value": "reports"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "app",
+      "name": "Kotlin version aliases select version permissions",
+      "files": {
+        "Worker.kt": "import software.amazon.awssdk.services.s3.S3Client\nimport software.amazon.awssdk.services.s3.model.GetObjectRequest\nfun run() {\n val client = S3Client.builder().build()\n val version = \"v1\"\n client.getObject(GetObjectRequest.builder().bucket(\"reports\").key(\"x\").versionId(version).build())\n}\n"
+      },
+      "expect": {
+        "facts": [
+          {
+            "actions": [
+              "s3:GetObjectVersion"
+            ]
+          }
+        ],
+        "exactResources": [
+          {
+            "kind": "literal",
+            "value": "reports"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "app",
+      "name": "C sharp version aliases select version permissions",
+      "files": {
+        "Worker.cs": "using Amazon.S3;\nusing Amazon.S3.Model;\nclass Worker { async void Run() { IAmazonS3 client = new AmazonS3Client(); var version = \"v1\"; await client.GetObjectAsync(new GetObjectRequest { BucketName=\"reports\",Key=\"x\",VersionId=version }); } }\n"
+      },
+      "expect": {
+        "facts": [
+          {
+            "actions": [
+              "s3:GetObjectVersion"
+            ]
+          }
+        ],
+        "exactResources": [
+          {
+            "kind": "literal",
+            "value": "reports"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "app",
+      "name": "C sharp null version aliases keep current object permissions",
+      "files": {
+        "Worker.cs": "using Amazon.S3;\nusing Amazon.S3.Model;\nclass Worker { async void Run() { IAmazonS3 client = new AmazonS3Client(); string version = null; await client.GetObjectAsync(new GetObjectRequest { BucketName=\"reports\",Key=\"x\",VersionId=version }); } }\n"
+      },
+      "expect": {
+        "facts": [
+          {
+            "actions": [
+              "s3:GetObject"
+            ]
+          }
+        ],
+        "exactResources": [
+          {
+            "kind": "literal",
+            "value": "reports"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "app",
+      "name": "C sharp canned ACL constants retain a possible extra permission",
+      "files": {
+        "Worker.cs": "using Amazon.S3;\nusing Amazon.S3.Model;\nclass Worker { async void Run() { IAmazonS3 client = new AmazonS3Client(); await client.PutObjectAsync(new PutObjectRequest { BucketName=\"reports\",Key=\"x\",CannedACL=S3CannedACL.PublicRead }); } }\n"
+      },
+      "expect": {
+        "facts": [
+          {
+            "actions": [
+              "s3:PutObject"
+            ]
+          },
+          {
+            "actions": [
+              "s3:PutObjectAcl"
+            ]
+          }
+        ],
+        "exactResources": [
+          {
+            "kind": "literal",
+            "value": "reports"
+          },
+          {
+            "kind": "literal",
+            "value": "reports"
+          }
+        ]
+      }
     }
   ]
 }

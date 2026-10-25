@@ -1,5 +1,6 @@
 /** AWS SDK calls in Java and related statically typed languages. No source is executed. */
 import type { AccessFact, AddedLines, AppScan, EnvRead, ResourceRef } from './facts.js';
+import { conditionalFacts } from './conditional.js';
 import type { SourceFile } from './go.js';
 import { actionsFor, conservativeFact, RESOURCE_FIELDS, COPY_OPERATIONS, copySourceBucket } from './actions.js';
 import { syntax, clearSyntax, children, field, ancestor, walk, type Node } from './syntax.js';
@@ -403,6 +404,12 @@ class ManagedFile {
     const left = field(p, 'left');
     return Boolean(left && within(left, n) && ['??', '?:'].includes(op ?? ''));
   }
+  resolve(n: Node, use: Node, depth = 0): Node {
+    n = this.unwrap(n);
+    if (depth > 20 || n.type !== 'identifier') return n;
+    const binding = this.binding(n.text, use);
+    return binding?.value ? this.resolve(binding.value, binding.target, depth + 1) : n;
+  }
   ref(n: Node, use: Node, depth = 0): ResourceRef {
     n = this.unwrap(n);
     const unresolved = (): ResourceRef => ({ kind: 'unresolved', text: n.text });
@@ -501,23 +508,34 @@ export function extractManaged(files: SourceFile[], opts: { addedLines?: AddedLi
           }
         }
 
+        if (service === 's3') {
+          for (const alias of ['Acl', 'CannedACL'])
+            if (fields.has(alias)) fields.set('ACL', fields.get(alias)!);
+        }
         const name = (RESOURCE_FIELDS[service] ?? []).find((k) => fields.has(k));
         const index = fields.has('IndexName') ? parsed.ref(fields.get('IndexName')!, n) : undefined;
         facts.push(
-          conservativeFact({
-            service,
-            operation,
-            actions: actionsFor(service, operation),
-            ...(index ? { index: index.kind === 'literal' ? index.value : '*' } : {}),
-            ...(broken ? { possible: true } : {}),
-            resource: broken
-              ? { kind: 'unresolved', text: `${parsed.language} source contains parse errors` }
-              : name
-                ? parsed.ref(fields.get(name)!, n)
-                : { kind: 'unresolved', text: 'SDK request resource is not statically known' },
-            file: file.path,
-            line,
-          }),
+          ...conditionalFacts(
+            {
+              service,
+              operation,
+              actions: actionsFor(service, operation),
+              ...(index ? { index: index.kind === 'literal' ? index.value : '*' } : {}),
+              ...(broken ? { possible: true } : {}),
+              resource: broken
+                ? { kind: 'unresolved', text: `${parsed.language} source contains parse errors` }
+                : name
+                  ? parsed.ref(fields.get(name)!, n)
+                  : { kind: 'unresolved', text: 'SDK request resource is not statically known' },
+              file: file.path,
+              line,
+            },
+            fields,
+            {
+              resolve: (value) => parsed.resolve(value, n),
+              ref: (value) => parsed.ref(value, n),
+            },
+          ).map(conservativeFact),
         );
         if (service === 's3' && COPY_OPERATIONS.has(operation)) {
           const source = fields.get('SourceBucket') ?? fields.get('CopySource');

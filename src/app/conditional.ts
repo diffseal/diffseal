@@ -3,7 +3,7 @@ import { selectorsFor } from './actions.js';
 import type { AccessFact } from './facts.js';
 import { type Node, type Syntax } from './syntax.js';
 type Presence = 'present' | 'absent' | 'unknown';
-export function conditionalFacts(base: AccessFact, input: Map<string, Node>, s: Syntax): AccessFact[] {
+export function conditionalFacts(base: AccessFact, input: Map<string, Node>, s: Pick<Syntax, 'resolve' | 'ref'>): AccessFact[] {
   const supplied = (name: string): Presence => {
     const raw = input.get(name);
     if (!raw) return 'absent';
