@@ -19,6 +19,9 @@ export interface StaticInstance {
   references: Record<string, string[]>;
   source: SourceRef;
   preventDestroy: boolean;
+  /** Selected provider configuration and its statically known account constraints. */
+  providerAddress?: string;
+  providerAccounts?: string[];
   createBeforeDestroy: boolean;
   /** Attribute paths excluded from comparison: `[["tags"], ["ingress", 0, "description"]]`, or every attribute. */
   ignoreChanges: Array<Array<string | number>> | 'all';
@@ -157,6 +160,16 @@ const SYMBOLIC: Expansion = {
   },
 };
 
+interface ProviderBinding {address:string;accounts:string[];}
+function providerName(expr:Expr|undefined):string|undefined {
+ if(!expr)return;
+ if(expr.kind==='scope')return expr.name;
+ if(expr.kind==='getattr'){const base=providerName(expr.obj);return base?base+'.'+expr.name:undefined;}
+ if(expr.kind==='paren')return providerName(expr.expr);
+ if(expr.kind==='literal'&&typeof expr.value==='string')return expr.value;
+ if(expr.kind==='template'&&expr.parts.every(p=>p.kind==='text'))return expr.parts.map(p=>p.kind==='text'?p.value:'').join('');
+}
+
 class ModuleInstance {
   readonly scope: EvalScope;
   private readonly reads?: Set<string>;
@@ -164,6 +177,8 @@ class ModuleInstance {
   private readonly resourceValues = new Map<string, LazyMap>();
   private readonly refMemo = new Map<string, string[]>();
   private readonly refInProgress = new Set<string>();
+  private providerMemo?: Map<string, ProviderBinding>;
+  private readonly dormantChildren: ModuleInstance[] = [];
   private children?: Map<string, { call: ModuleCall; instances: Array<{ key: string; mod: ModuleInstance }> | Unknown }>;
 
   constructor(
@@ -177,7 +192,8 @@ class ModuleInstance {
     private readonly inputRefs: Map<string, () => string[]>,
     private readonly rootDir: string,
     private readonly depth: number,
-    reads?: Set<string>
+    reads?: Set<string>,
+    private readonly inheritedProviders?: Map<string,ProviderBinding>
   ) {
     const self = this;
     this.reads = reads;
@@ -195,6 +211,42 @@ class ModuleInstance {
         return source.readFile(candidate);
       },
     };
+  }
+
+  private providers():Map<string,ProviderBinding> {
+    if(this.providerMemo)return this.providerMemo;
+    const out=new Map(this.inheritedProviders??[['aws',{address:`${this.rootDir}::aws`,accounts:[]}]]);
+    this.providerMemo=out;
+    for(const [name,block] of this.cfg.providers){
+      const attr=(n:string)=>block.body.attributes.find(a=>a.name===n);
+      const allowed=attr('allowed_account_ids');
+      const raw=allowed?reveal(toPlain(evaluate(allowed.expr,this.scope))):[];
+      const accounts=Array.isArray(raw)?raw.filter((v):v is string=>typeof v==='string'&&/^\d{12}$/.test(v)):[];
+      const assume=block.body.blocks.find(b=>b.type==='assume_role')?.body.attributes.find(a=>a.name==='role_arn');
+      const arn=assume?reveal(evaluate(assume.expr,this.scope)):undefined;
+      const account=typeof arn==='string'?arn.match(/^arn:aws[\w-]*:iam::(\d{12}):/)?.[1]:undefined;
+      out.set(name,{address:`${this.rootDir}::${this.prefix}${name}`,accounts:account?[account]:[...new Set(accounts)]});
+    }
+    return out;
+  }
+
+  private resourceProvider(rb:ResourceBlock):Partial<Pick<StaticInstance,'providerAddress'|'providerAccounts'>> {
+    if(!rb.type.startsWith('aws_'))return {};
+    const name=providerName(rb.block.body.attributes.find(a=>a.name==='provider')?.expr)??'aws';
+    const binding=this.providers().get(name);
+    return {providerAddress:binding?.address??`${this.rootDir}::${this.prefix}${name}`,providerAccounts:binding?.accounts??[]};
+  }
+
+  private childProviders(call:ModuleCall):Map<string,ProviderBinding> {
+    const parent=this.providers();
+    const mapping=call.block.body.attributes.find(a=>a.name==='providers')?.expr;
+    if(!mapping)return new Map([...parent].filter(([name])=>!name.includes('.')));
+    const out=new Map<string,ProviderBinding>();
+    if(mapping.kind==='object')for(const item of mapping.items){
+      const child=providerName(item.key),selected=providerName(item.value);
+      if(child&&selected){const binding=parent.get(selected);out.set(child,binding??{address:`${this.rootDir}::${this.prefix}${selected}`,accounts:[]});}
+    }
+    return out;
   }
 
   private rootValue(name: string): unknown {
@@ -321,7 +373,7 @@ class ModuleInstance {
       }
       let exps = expand(call.block.body, this.scope);
       if (isUnknown(exps)) exps = [SYMBOLIC];
-      const instances = exps.map((exp) => {
+      const instantiate = (exp: Expansion) => {
         const scope = childScope(this.scope, exp.vars);
         const args = call.block.body.attributes.filter((a) => !MODULE_META.has(a.name));
         const inputs = new Map(args.map((a) => [a.name, () => evaluate(a.expr, scope)] as const));
@@ -335,10 +387,13 @@ class ModuleInstance {
           inputRefs,
           this.rootDir,
           this.depth + 1,
-          this.reads
+          this.reads,
+          this.childProviders(call)
         );
         return { key: exp.key, mod };
-      });
+      };
+      const instances = exps.map(instantiate);
+      if (!instances.length) this.dormantChildren.push(instantiate(SYMBOLIC).mod);
       this.children.set(call.name, { call, instances });
     }
     return this.children;
@@ -410,20 +465,21 @@ class ModuleInstance {
 
   // ---------------------------------------------------------------- instances
 
-  collect(result: RootEvaluation) {
+  collect(result: RootEvaluation, lifecycleOnly = false) {
     for (const d of this.cfg.diagnostics) result.diagnostics.push(`${d.file}:${d.range.start.line}: ${d.message}`);
     const qualify = (addr: string) => `${this.prefix}${addr}`;
-    for (const m of this.cfg.moved) result.moved.push({ from: qualify(m.from), to: qualify(m.to) });
-    for (const r of this.cfg.removed) result.removed.push({ from: qualify(r.from), destroy: r.destroy });
-    for (const i of this.cfg.imports) result.imports.push(qualify(i.to));
+    if (!lifecycleOnly) for (const m of this.cfg.moved) result.moved.push({ from: qualify(m.from), to: qualify(m.to) });
+    if (!lifecycleOnly) for (const r of this.cfg.removed) result.removed.push({ from: qualify(r.from), destroy: r.destroy });
+    if (!lifecycleOnly) for (const i of this.cfg.imports) result.imports.push(qualify(i.to));
 
     for (const rb of [...this.cfg.resources.values(), ...this.cfg.data.values()]) {
+      const lifecycle = rb.block.body.blocks.find((b) => b.type === 'lifecycle');
+      if (lifecycleFlag(lifecycle, 'prevent_destroy', this.scope)) result.preventDestroy.add(this.configAddress(rb));
+      if (lifecycleOnly) continue;
       let exps = expand(rb.block.body, this.scope);
       const expansion = isUnknown(exps) ? stableKey(exps) : undefined;
       if (isUnknown(exps)) exps = [SYMBOLIC];
       const references = this.blockReferences(rb.block.body);
-      const lifecycle = rb.block.body.blocks.find((b) => b.type === 'lifecycle');
-      if (lifecycleFlag(lifecycle, 'prevent_destroy', this.scope)) result.preventDestroy.add(this.configAddress(rb));
       for (const exp of exps) {
         const rv = this.instanceValue(rb, exp);
         const attrs = { ...(rv.entries() ? Object.fromEntries(rv.entries()) : {}) };
@@ -438,6 +494,7 @@ class ModuleInstance {
           references,
           source: { file: rb.file, line: rb.block.range.start.line },
           preventDestroy: lifecycleFlag(lifecycle, 'prevent_destroy', this.scope),
+          ...this.resourceProvider(rb),
           createBeforeDestroy: lifecycleFlag(lifecycle, 'create_before_destroy', this.scope),
           ignoreChanges: ignoreChanges(lifecycle),
           ...this.replaceTriggers(lifecycle, exp),
@@ -448,6 +505,7 @@ class ModuleInstance {
 
     for (const { call, instances } of this.childInstances().values()) {
       if (isUnknown(instances)) {
+        if (lifecycleOnly) continue;
         const args = call.block.body.attributes.filter((a) => !MODULE_META.has(a.name));
         const attrs: Attrs = { source: call.source ?? null, version: call.version ?? null };
         // Instances of an unavailable module: changing count or for_each adds or removes all of its resources.
@@ -475,11 +533,14 @@ class ModuleInstance {
           createBeforeDestroy: false,
           ignoreChanges: [],
           externalModule: { source: call.source, version: call.version },
+          providerAddress: this.childProviders(call).get('aws')?.address,
+          providerAccounts: this.childProviders(call).get('aws')?.accounts ?? [],
         });
         continue;
       }
-      for (const { mod } of instances) mod.collect(result);
+      for (const { mod } of instances) mod.collect(result,lifecycleOnly);
     }
+    for (const mod of this.dormantChildren) mod.collect(result,true);
   }
 
   private replaceTriggers(lifecycle: Block | undefined, exp: Expansion): { replaceTriggeredBy?: ReplaceTrigger[] } {

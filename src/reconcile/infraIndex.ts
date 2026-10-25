@@ -23,6 +23,7 @@ export interface Role {
   instance: string;
   name?: string;
   path: string;
+  providerAddress?: string;
   /**
    * Matched by a role ARN in a root whose providers target several accounts: which account created
    * this role is not known statically, so it may not be the role the ARN names.
@@ -139,6 +140,7 @@ export class InfraIndex {
             instance: i.address,
             name: typeof i.attrs.name === 'string' ? i.attrs.name : undefined,
             path: typeof i.attrs.path === 'string' ? i.attrs.path : '/',
+            ...(i.providerAddress ? {providerAddress:i.providerAddress} : {}),
           });
         }
       }
@@ -177,21 +179,28 @@ export class InfraIndex {
       .filter((r) => {
         if (r.name !== name) return false;
         if (path !== undefined && r.path !== path && !isUnknown(this.instance(r.root, r.instance)?.attrs.path)) return false;
-        const accounts = this.accountsOf(r.root);
+        const accounts = this.accountsOf(r.root, r.instance);
         return !account || !accounts.length || accounts.includes(account);
       })
-      .map((r) => (account && this.accountsOf(r.root).length > 1 ? { ...r, accountUncertain: true } : r));
+      .map((r) => {
+        const accounts=this.accountsOf(r.root,r.instance);
+        const explicitAlias=/(?:^|\.)aws\./.test(r.providerAddress?.split('::')[1]??'');
+        const unresolved=accounts.length>1||(!accounts.length&&(explicitAlias||(this.evaluations.find(e=>e.root===r.root)?.accounts.length??0)>0));
+        return account&&unresolved?{...r,accountUncertain:true}:r;
+      });
   }
 
-  private accountsOf(root: string): string[] {
-    return [...new Set(this.evaluations.find((e) => e.root === root)?.accounts ?? [])];
+  accountsOf(root:string,instance?:string):string[]{
+    const ev=this.evaluations.find(e=>e.root===root);
+    const selected=instance?ev?.instances.find(i=>i.address===instance)?.providerAccounts:undefined;
+    return [...new Set(selected??ev?.accounts??[])];
   }
 
   grants(role: Role): RoleGrants {
     const statements: RoleStatement[] = [];
     const managed: string[] = [];
     const ev = this.evaluations.find((e) => e.root === role.root);
-    const accounts = ev?.accounts ?? [];
+    const accounts = this.accountsOf(role.root,role.instance);
     const namesRole = (v: unknown) => typeof v === 'string' && role.name !== undefined && (v === role.name || v.endsWith(`:role${role.path}${role.name}`));
     // A policy belongs to this role instance when its role argument names it, or (when the name is not
     // known statically) when it references the role and the instance keys agree. In another root only
@@ -246,21 +255,20 @@ export class InfraIndex {
     // (staging's "orders-task" is not prod's): it can make access undetermined, never proven.
     // A root with several provider accounts (aliases) does not say which one the role uses, so only a
     // single account on both sides, and the same one, is a known match.
-    const known = (e: RootEvaluation) => e === ev || (accounts.length === 1 && e.accounts.length === 1 && e.accounts[0] === accounts[0]);
-    const roots = this.evaluations.filter((e) => known(e) || !accounts.length || !e.accounts.length || e.accounts.some((a) => accounts.includes(a)));
-    // Within the role's own root, a match by name alone is certain only when the root targets at most
-    // one account: with provider aliases for several, `provider = aws.other` may put it elsewhere.
-    const multiAccount = new Set(accounts).size > 1;
-    for (const other of roots) {
-      for (const i of other.instances) {
-        if (i.mode !== 'managed') continue;
-        const how = (attr: string) => pointsAtRole(i, attr, other.root);
-        const uncertainFor = (m: 'ref' | 'name') => !known(other) || (other === ev && multiAccount && m === 'name');
+    for(const other of this.evaluations){
+      for(const i of other.instances){
+        if(i.mode!=='managed')continue;
+        const targetAccounts=i.providerAccounts??other.accounts;
+        if(accounts.length&&targetAccounts.length&&!accounts.some(a=>targetAccounts.includes(a)))continue;
+        const sameProvider=Boolean(role.providerAddress&&i.providerAddress===role.providerAddress);
+        const known=sameProvider||(accounts.length===1&&targetAccounts.length===1&&accounts[0]===targetAccounts[0])||(!role.providerAddress&&!i.providerAddress&&other===ev&&accounts.length<=1);
+        const how=(attr:string)=>pointsAtRole(i,attr,other.root);
+        const uncertainFor=(_match:'ref'|'name')=>!known;
         const inline = i.type === 'aws_iam_role_policy' ? how('role') : false;
         if (inline) add(i.attrs.policy, i, 'policy', other.root, uncertainFor(inline));
         const attachment =
           (i.type === 'aws_iam_role_policy_attachment' && how('role')) || (i.type === 'aws_iam_policy_attachment' && how('roles')) || false;
-        const uncertain = attachment ? uncertainFor(attachment) : !known(other);
+        const uncertain = attachment ? uncertainFor(attachment) : !known;
         if (attachment) {
           const policy = this.attachedPolicy(other.root, i);
           if (policy && policy !== 'ambiguous') add(policy.attrs.policy, policy, 'policy', other.root, uncertain);
@@ -287,12 +295,23 @@ export class InfraIndex {
       if (i.type === 'aws_iam_role' && i.address === role.instance) {
         for (const p of list(i.attrs.inline_policy) as Attrs[]) add(p?.policy, i);
         const arns = i.attrs.managed_policy_arns;
-        const customer = (i.references.managed_policy_arns ?? []).map((a) => this.instance(role.root, a)).filter((p): p is StaticInstance => p?.type === 'aws_iam_policy');
-        for (const p of customer) add(p.attrs.policy, p);
-        if (isUnknown(arns)) opaque.push(`${i.address}.managed_policy_arns`);
-        const unresolved = list(arns).filter((arn) => !(typeof arn === 'string' && /:aws:policy\//.test(arn)));
-        for (const arn of list(arns)) if (typeof arn === 'string' && /:aws:policy\//.test(arn)) managed.push(arn);
-        if (unresolved.length > customer.length) opaque.push(`${i.address}.managed_policy_arns`);
+        const policies=(ev?.instances??[]).filter(p=>p.mode==='managed'&&p.type==='aws_iam_policy');
+        for(const arn of list(arns)){
+          if(typeof arn==='string'&&/:aws:policy\//.test(arn)){managed.push(arn);continue;}
+          let selected:StaticInstance|undefined;
+          if(isUnknown(arn)){
+            const exact=policies.filter(p=>arn.refs.some(ref=>ref===p.address||ref.startsWith(p.address+'.')));
+            if(exact.length===1)selected=exact[0];
+            else if(!exact.length){
+              const candidates=policies.filter(p=>arn.refs.includes(p.configAddress));
+              if(candidates.length===1)selected=candidates[0];
+            }
+          }else if(typeof arn==='string'){
+            selected=policies.find(p=>p.attrs.arn===arn);
+          }
+          if(selected)add(selected.attrs.policy,selected);
+          else opaque.push(`${i.address}.managed_policy_arns`);
+        }
       }
     }
     const boundary = this.boundaryOf(role, ev?.instances ?? []);
@@ -362,9 +381,9 @@ export class InfraIndex {
   }
 
   /** Instance addresses of every resource of `types` in the root whose name is `name`. */
-  instancesByName(root: string, types: string[], name: string): string[] {
+  instancesByName(root: string, types: string[], name: string, account?: string): string[] {
     const ev = this.evaluations.find((e) => e.root === root);
-    return (ev?.instances ?? []).filter((i) => i.mode === 'managed' && types.includes(i.type) && NAME_ATTR[i.type] !== undefined && i.attrs[NAME_ATTR[i.type]] === name).map((i) => i.address);
+    return (ev?.instances ?? []).filter((i) => {const accounts=i.providerAccounts??ev?.accounts??[];return (!account||!accounts.length||accounts.includes(account))&&i.mode === 'managed' && types.includes(i.type) && NAME_ATTR[i.type] !== undefined && i.attrs[NAME_ATTR[i.type]] === name;}).map((i) => i.address);
   }
 
   typeOf(root: string, address: string): string | undefined {

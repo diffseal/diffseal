@@ -1,3 +1,4 @@
+import {parseJsonConfig} from '../hcl/json.js';
 import * as path from 'node:path';
 import type { Attribute, Block, Body, Expr, ParseDiagnostic } from '../hcl/ast.js';
 import { parseHcl } from '../hcl/parser.js';
@@ -19,6 +20,7 @@ export interface ModuleConfig {
   hasBackend: boolean;
   /** AWS account ids this module's provider blocks target (assume_role ARNs, allowed_account_ids). */
   providerAccounts: string[];
+  providers: Map<string, Block>;
   diagnostics: Array<ParseDiagnostic & { file: string }>;
   /** File name -> source text, for slicing expressions back to text. */
   sources: Map<string, string>;
@@ -57,8 +59,12 @@ export function literalString(expr: Expr | undefined): string | undefined {
 
 /** The source text of an expression; used for moved/removed/import addresses. */
 export function exprText(src: string, expr: Expr): string {
-  return src.slice(expr.range.start.offset, expr.range.end.offset).trim();
+  const text = src.slice(expr.range.start.offset, expr.range.end.offset).trim();
+  if (expr.kind !== 'template' && expr.kind !== 'literal' && text.startsWith('"')) {try {const value=JSON.parse(text);if(typeof value==='string')return value;}catch{}}
+  return text;
 }
+
+export const isConfigFile=(name:string):boolean=>name.endsWith('.tf')||name.endsWith('.tf.json')||name.endsWith('.tofu');
 
 const cache = new WeakMap<FileSource, Map<string, ModuleConfig | undefined>>();
 
@@ -68,7 +74,7 @@ export function loadModule(source: FileSource, dir: string): ModuleConfig | unde
   if (!perSource) cache.set(source, (perSource = new Map()));
   if (perSource.has(d)) return perSource.get(d);
 
-  const files = source.listFiles(d).filter((f) => f.endsWith('.tf') || f.endsWith('.tofu')).sort();
+  const files = source.listFiles(d).filter(isConfigFile).sort();
   if (!files.length) {
     perSource.set(d, undefined);
     return undefined;
@@ -91,6 +97,7 @@ export function loadModule(source: FileSource, dir: string): ModuleConfig | unde
     imports: [],
     hasBackend: false,
     providerAccounts: [],
+    providers: new Map(),
     diagnostics: [],
     sources: new Map(),
   };
@@ -98,13 +105,13 @@ export function loadModule(source: FileSource, dir: string): ModuleConfig | unde
   // OpenTofu: a .tofu file overrides the .tf file of the same name.
   const tofuStems = new Set(files.filter((f) => f.endsWith('.tofu')).map((f) => f.slice(0, -5)));
   // Override files are read after all others, in lexical order, and merge into the blocks they name.
-  const isOverride = (f: string) => /(^|_)override\.(tf|tofu)$/.test(f);
+  const isOverride = (f: string) => /(^|_)override\.(tf|tofu)(?:\.json)?$/.test(f);
   for (const file of [...files.filter((f) => !isOverride(f)), ...files.filter(isOverride)]) {
     if (file.endsWith('.tf') && tofuStems.has(file.slice(0, -3))) continue;
     const rel = path.posix.join(d, file);
     const src = source.readFile(rel) ?? '';
     mod.sources.set(rel, src);
-    const { body, diagnostics } = parseHcl(src, rel);
+    const { body, diagnostics } = file.endsWith('.json') ? parseJsonConfig(src, rel) : parseHcl(src, rel);
     for (const diag of diagnostics) mod.diagnostics.push({ ...diag, file: rel });
     for (const b of body.blocks) {
       const merged = isOverride(file) ? overrideBlock(mod, b) : undefined;
@@ -207,6 +214,8 @@ function indexBlock(mod: ModuleConfig, b: Block, file: string, src: string) {
     }
     case 'provider': {
       if (b.labels[0] !== 'aws') break;
+      const alias = literalString(attr(b.body, 'alias')?.expr);
+      mod.providers.set(alias ? `aws.${alias}` : 'aws', b);
       const roleArn = literalString(b.body.blocks.find((x) => x.type === 'assume_role')?.body.attributes.find((a) => a.name === 'role_arn')?.expr);
       const acct = roleArn?.match(/^arn:aws[\w-]*:iam::(\d{12}):/)?.[1];
       if (acct) mod.providerAccounts.push(acct);
@@ -243,12 +252,12 @@ export function discoverRoots(source: FileSource, under?: string): string[] {
   const terragrunt = new Set<string>();
   for (const f of all) {
     if (skip(f) || (prefix && !f.startsWith(prefix))) continue;
-    if (f.endsWith('.tf') || f.endsWith('.tofu')) dirs.add(path.posix.dirname(f));
+    if (isConfigFile(f)) dirs.add(path.posix.dirname(f));
     if (f.endsWith('terragrunt.hcl')) terragrunt.add(path.posix.dirname(f));
   }
   const called = new Set<string>();
   for (const f of all) {
-    if (skip(f) || !(f.endsWith('.tf') || f.endsWith('.tofu'))) continue;
+    if (skip(f) || !isConfigFile(f)) continue;
     for (const call of loadModule(source, path.posix.dirname(f))?.moduleCalls.values() ?? []) if (call.localDir) called.add(call.localDir);
   }
   return [...dirs]
@@ -256,7 +265,7 @@ export function discoverRoots(source: FileSource, under?: string): string[] {
       const mod = loadModule(source, d);
       if (!mod) return false;
       if (mod.hasBackend || terragrunt.has(d)) return true;
-      return !called.has(d) && (mod.resources.size > 0 || mod.moduleCalls.size > 0);
+      return !called.has(d) && (mod.resources.size > 0 || mod.moduleCalls.size > 0 || mod.diagnostics.length > 0);
     })
     .sort();
 }

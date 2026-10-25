@@ -99,7 +99,7 @@ export function replayCommit(opts: ReplayOptions): ReplayResult {
   const uncovered = tfChanged
     .flatMap((c) => [c.path, c.oldPath])
     .filter((p): p is string => Boolean(p) && /\.(tf|tofu|tf\.json)$/.test(p!))
-    .filter((p) => p.endsWith('.tf.json') || !covered.has(path.posix.dirname(p)));
+    .filter((p) => !covered.has(path.posix.dirname(p)));
   // Inputs static replay does not evaluate: Terragrunt inputs, and tfvars passed with -var-file.
   const evaluatedRoots = new Set(roots.map((r) => r.root));
   const autoLoaded = /(^|\/)(terraform\.tfvars|[^/]*\.auto\.tfvars)(\.json)?$/;

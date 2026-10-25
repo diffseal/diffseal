@@ -4129,7 +4129,7 @@
     },
     {
       "kind": "reconcile",
-      "name": "round 5 reconcile findings: a root with several provider accounts does not count as the same account as another root",
+      "name": "round 5 reconcile findings: a root with several provider accounts does not count as the same account as another root: selected providers now prove the accounts differ",
       "infra": {
         "infra/prod/backend.tf": "terraform {\n  backend \"s3\" {}\n}\nprovider \"aws\" {\n  allowed_account_ids = [\"111111111111\"]\n}\nprovider \"aws\" {\n  alias               = \"other\"\n  allowed_account_ids = [\"222222222222\"]\n}\n",
         "infra/prod/main.tf": "resource \"aws_iam_role\" \"r\" {\n  name               = \"orders-task\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_lambda_function\" \"f\" {\n  function_name = \"f\"\n  role          = aws_iam_role.r.arn\n  environment {\n    variables = { TOPIC_ARN = \"arn:aws:sns:eu-north-1:111111111111:events\" }\n  }\n}\n",
@@ -4157,15 +4157,15 @@
       ],
       "expect": {
         "exactStatuses": [
-          "UNRESOLVED"
+          "NOT_GRANTED"
         ],
         "links": [
           {
-            "status": "UNRESOLVED",
+            "status": "NOT_GRANTED",
             "access": "sns:Publish on $TOPIC_ARN (arn:aws:sns:eu-north-1:111111111111:events)",
             "role": "aws_iam_role.r",
             "root": "infra/prod",
-            "detailContains": "Cannot tell whether role orders-task allows sns:Publish on arn:aws:sns:eu-north-1:111111111111:events; policies in infra/staging name a role orders-task too, but whether that root targets the same AWS account is not known statically"
+            "detailContains": "does not allow"
           }
         ]
       }
