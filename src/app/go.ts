@@ -1,3 +1,5 @@
+import { ExtractionCache, extractionCache, fileIdentity } from './cache.js';
+import { createHash } from 'node:crypto';
 import { transactionFacts } from './transactions.js';
 import * as path from 'node:path';
 import {
@@ -12,6 +14,7 @@ import type { AccessFact, AddedLines, AppScan, EnvRead, ResourceRef } from './fa
 import {
   syntax,
   clearSyntax,
+  clearSyntaxExcept,
   children,
   field as nodeField,
   args as callArgs,
@@ -29,6 +32,8 @@ import {
 export interface SourceFile {
   path: string;
   content: string;
+  /** Git blob ID when reading a historical snapshot. */
+  blobId?: string;
 }
 
 const SDK_PACKAGE = /^github\.com\/aws\/aws-sdk-go(?:-v2)?\/service\/([a-z0-9]+)$/;
@@ -382,6 +387,129 @@ interface Op {
   fixed?: ResourceRef;
 }
 
+interface GoFileIndex {
+  functions: Array<[string, Op[]]>;
+  constructors: Array<[string, Array<[string, number]>]>;
+  calls: Array<[string, Callee[]]>;
+}
+function indexFile(f: SourceFile, modulePath: string, pkg: string): GoFileIndex {
+  const funcs = new Map<string, Op[]>(),
+    ctors = new Map<string, Map<string, number>>(),
+    calls = new Map<string, Callee[]>();
+  try {
+    const imports = parseImports(f.content);
+    for (const fn of goFunctions(f.content)) {
+      const body = f.content.slice(fn.bodyStart, fn.bodyEnd);
+      const ops: Op[] = sdkCalls(body, imports).map((c) => {
+        const parsed = syntax('go', body);
+        const fields = parsed.fields(c.node);
+        const resourceField = (RESOURCE_FIELDS[c.service] ?? []).find((name) => fields.has(name));
+        let value = resourceField ? fields.get(resourceField) : undefined;
+        let format: string | undefined;
+        if (value && callable(value)?.text === 'fmt.Sprintf') {
+          const args = callArgs(value),
+            text = literal(args[0]);
+          if (
+            text !== undefined &&
+            args.length === 2 &&
+            (text.match(/%[sv]/g) ?? []).length === 1 &&
+            !/%[^sv%]/.test(text)
+          ) {
+            format = text;
+            value = unwrapped(args[1]);
+          }
+        }
+        const expr = value?.text ?? '';
+        const param = fn.params.indexOf(expr),
+          m = member(value);
+        const field = m && m.object.text === fn.receiverVar ? m.name : undefined;
+        const mapped = param >= 0 || Boolean(field);
+        const transaction =
+          c.service === 'dynamodb' && ['TransactWriteItems', 'TransactGetItems'].includes(c.operation);
+        const derived =
+          transaction ||
+          (!mapped &&
+            value !== undefined &&
+            (callable(value)?.text === 'fmt.Sprintf' || value.type === 'binary_expression'));
+        const own =
+          !mapped && !derived && c.resourceExpr
+            ? classifyGoExpr(c.resourceExpr, f.content, fn.bodyStart + c.start)
+            : undefined;
+        const fixed = own && own.kind !== 'unresolved' ? own : undefined;
+        // A resource the index cannot follow (a local from a struct field) is not guessed at the call site.
+        const opaqueLocal = own?.kind === 'unresolved';
+        return {
+          service: c.service,
+          operation: c.operation,
+          ...(param >= 0 ? { param } : {}),
+          ...(field && /^\w+$/.test(field) ? { field } : {}),
+          ...(format && mapped ? { format } : {}),
+          ...(derived || opaqueLocal ? { derived: true } : {}),
+          ...(fixed ? { fixed } : {}),
+          ...(c.indexExpr
+            ? fn.params.includes(unwrapGo(c.indexExpr))
+              ? { indexParam: fn.params.indexOf(unwrapGo(c.indexExpr)) }
+              : {
+                  index: indexName(classifyGoExpr(c.indexExpr, f.content, fn.bodyStart + c.start)),
+                }
+            : {}),
+        };
+      });
+      if (/^New[A-Z]/.test(fn.name)) {
+        // Constructor: which parameter ends up in which struct field (`topic: topicARN` or `x.topic = topicARN`).
+        const fields = new Map<string, number>();
+        for (const n of syntax('go', body).nodes) {
+          if (n.type === 'keyed_element') {
+            const key = nodeField(n, 'key'),
+              value = nodeField(n, 'value');
+            const idx = fn.params.indexOf(value ? unwrapped(value).text : '');
+            if (idx >= 0 && key) fields.set(unwrapped(key).text, idx);
+          } else if (n.type === 'assignment_statement') {
+            const left = nodeField(n, 'left')?.namedChildren[0],
+              right = nodeField(n, 'right')?.namedChildren[0],
+              m = member(left ?? undefined);
+            const idx = fn.params.indexOf(right?.text ?? '');
+            if (m && idx >= 0) fields.set(m.name, idx);
+          }
+        }
+        ctors.set(`${pkg}#${fn.name}`, fields);
+      }
+      const key = fn.receiver ? `${pkg}#${fn.receiver}.${fn.name}` : `${pkg}#${fn.name}`;
+      funcs.set(key, ops);
+      const callees: Callee[] = [];
+      for (const n of syntax('go', body).nodes) {
+        if (!isCall(n)) continue;
+        const target = callable(n),
+          m = member(target),
+          nodes = callArgs(n),
+          args = nodes.map((a) => unwrapped(a).text),
+          argRefs = nodes.map((a) => classifyGoExpr(a.text, f.content, fn.bodyStart + n.startIndex));
+        const common = {
+          args,
+          argRefs,
+          params: fn.params,
+          receiverVar: fn.receiverVar,
+        };
+        if (m) {
+          const p = imports.get(m.object.text);
+          if (p?.startsWith(modulePath)) callees.push({ key: `${p}#${m.name}`, ...common });
+          else if (fn.receiver && m.object.text === fn.receiverVar)
+            callees.push({
+              key: `${pkg}#${fn.receiver}.${m.name}`,
+              sameReceiver: true,
+              ...common,
+            });
+        } else if (target) callees.push({ key: `${pkg}#${target.text}`, ...common });
+      }
+      calls.set(key, callees);
+      clearSyntaxExcept('go', f.content);
+    }
+    return { functions: [...funcs], constructors: [...ctors].map(([k, v]) => [k, [...v]]), calls: [...calls] };
+  } finally {
+    clearSyntax();
+  }
+}
+
 /**
  * Functions and types in this repository that wrap AWS SDK calls, so a call to
  * `pubsub.NewSNSPublisher(client, topic)` is known to publish to `topic`.
@@ -398,128 +526,26 @@ export class GoIndex {
   private readonly packages = new Set<string>();
   private readonly ctorFields = new Map<string, Map<string, number>>();
 
+  readonly cacheKey: string;
+
   constructor(
     readonly modulePath: string,
     files: SourceFile[],
+    cache: ExtractionCache = extractionCache,
   ) {
+    this.cacheKey = createHash('sha256')
+      .update(JSON.stringify([modulePath, files.map((f) => [f.path, fileIdentity(f)])]))
+      .digest('hex');
     const calls = new Map<string, Callee[]>();
-    for (const file of files) {
-      clearSyntax();
-      const f = file;
+    for (const f of files) {
       if (!f.path.endsWith('.go') || f.path.endsWith('_test.go')) continue;
-      const dir = path.posix.dirname(f.path);
-      const pkg = dir === '.' ? modulePath : `${modulePath}/${dir}`;
+      const pkg = this.packageOf(f.path);
       this.packages.add(pkg);
-      const imports = parseImports(f.content);
-      for (const fn of goFunctions(f.content)) {
-        const body = f.content.slice(fn.bodyStart, fn.bodyEnd);
-        const ops: Op[] = sdkCalls(body, imports).map((c) => {
-          const parsed = syntax('go', body);
-          const fields = parsed.fields(c.node);
-          const resourceField = (RESOURCE_FIELDS[c.service] ?? []).find((name) => fields.has(name));
-          let value = resourceField ? fields.get(resourceField) : undefined;
-          let format: string | undefined;
-          if (value && callable(value)?.text === 'fmt.Sprintf') {
-            const args = callArgs(value),
-              text = literal(args[0]);
-            if (
-              text !== undefined &&
-              args.length === 2 &&
-              (text.match(/%[sv]/g) ?? []).length === 1 &&
-              !/%[^sv%]/.test(text)
-            ) {
-              format = text;
-              value = unwrapped(args[1]);
-            }
-          }
-          const expr = value?.text ?? '';
-          const param = fn.params.indexOf(expr),
-            m = member(value);
-          const field = m && m.object.text === fn.receiverVar ? m.name : undefined;
-          const mapped = param >= 0 || Boolean(field);
-          const transaction =
-            c.service === 'dynamodb' && ['TransactWriteItems', 'TransactGetItems'].includes(c.operation);
-          const derived =
-            transaction ||
-            (!mapped &&
-              value !== undefined &&
-              (callable(value)?.text === 'fmt.Sprintf' || value.type === 'binary_expression'));
-          const own =
-            !mapped && !derived && c.resourceExpr
-              ? classifyGoExpr(c.resourceExpr, f.content, fn.bodyStart + c.start)
-              : undefined;
-          const fixed = own && own.kind !== 'unresolved' ? own : undefined;
-          // A resource the index cannot follow (a local from a struct field) is not guessed at the call site.
-          const opaqueLocal = own?.kind === 'unresolved';
-          return {
-            service: c.service,
-            operation: c.operation,
-            ...(param >= 0 ? { param } : {}),
-            ...(field && /^\w+$/.test(field) ? { field } : {}),
-            ...(format && mapped ? { format } : {}),
-            ...(derived || opaqueLocal ? { derived: true } : {}),
-            ...(fixed ? { fixed } : {}),
-            ...(c.indexExpr
-              ? fn.params.includes(unwrapGo(c.indexExpr))
-                ? { indexParam: fn.params.indexOf(unwrapGo(c.indexExpr)) }
-                : {
-                    index: indexName(classifyGoExpr(c.indexExpr, f.content, fn.bodyStart + c.start)),
-                  }
-              : {}),
-          };
-        });
-        if (/^New[A-Z]/.test(fn.name)) {
-          // Constructor: which parameter ends up in which struct field (`topic: topicARN` or `x.topic = topicARN`).
-          const fields = new Map<string, number>();
-          for (const n of syntax('go', body).nodes) {
-            if (n.type === 'keyed_element') {
-              const key = nodeField(n, 'key'),
-                value = nodeField(n, 'value');
-              const idx = fn.params.indexOf(value ? unwrapped(value).text : '');
-              if (idx >= 0 && key) fields.set(unwrapped(key).text, idx);
-            } else if (n.type === 'assignment_statement') {
-              const left = nodeField(n, 'left')?.namedChildren[0],
-                right = nodeField(n, 'right')?.namedChildren[0],
-                m = member(left ?? undefined);
-              const idx = fn.params.indexOf(right?.text ?? '');
-              if (m && idx >= 0) fields.set(m.name, idx);
-            }
-          }
-          this.ctorFields.set(`${pkg}#${fn.name}`, fields);
-        }
-        const key = fn.receiver ? `${pkg}#${fn.receiver}.${fn.name}` : `${pkg}#${fn.name}`;
-        this.funcs.set(key, ops);
-        if (fn.receiver)
-          this.types.set(`${pkg}#${fn.receiver}`, [...(this.types.get(`${pkg}#${fn.receiver}`) ?? []), ...ops]);
-        const callees: Callee[] = [];
-        for (const n of syntax('go', body).nodes) {
-          if (!isCall(n)) continue;
-          const target = callable(n),
-            m = member(target),
-            nodes = callArgs(n),
-            args = nodes.map((a) => unwrapped(a).text),
-            argRefs = nodes.map((a) => classifyGoExpr(a.text, f.content, fn.bodyStart + n.startIndex));
-          const common = {
-            args,
-            argRefs,
-            params: fn.params,
-            receiverVar: fn.receiverVar,
-          };
-          if (m) {
-            const p = imports.get(m.object.text);
-            if (p?.startsWith(modulePath)) callees.push({ key: `${p}#${m.name}`, ...common });
-            else if (fn.receiver && m.object.text === fn.receiverVar)
-              callees.push({
-                key: `${pkg}#${fn.receiver}.${m.name}`,
-                sameReceiver: true,
-                ...common,
-              });
-          } else if (target) callees.push({ key: `${pkg}#${target.text}`, ...common });
-        }
-        calls.set(key, callees);
-      }
+      const data = cache.memo('go-index', fileIdentity(f), [modulePath, pkg], () => indexFile(f, modulePath, pkg));
+      for (const [key, ops] of data.functions) this.funcs.set(key, ops);
+      for (const [key, fields] of data.constructors) this.ctorFields.set(key, new Map(fields));
+      for (const [key, callees] of data.calls) calls.set(key, callees);
     }
-    clearSyntax();
     // Pull in what same-repo callees do, a few levels deep.
     for (let round = 0; round < 3; round++) {
       for (const [key, callees] of calls) {

@@ -19,6 +19,15 @@ export function clearSyntax(): void {
   for (const s of cache.values()) s.tree.delete();
   cache.clear();
 }
+/** Retain only the enclosing file while one function's temporary trees are released. */
+export function clearSyntaxExcept(language: AppLanguage, source: string): void {
+  const keep = language + '\0' + source;
+  for (const [key, s] of cache)
+    if (key !== keep) {
+      s.tree.delete();
+      cache.delete(key);
+    }
+}
 export function syntax(language: AppLanguage, source: string): Syntax {
   const key = language + '\0' + source;
   let s = cache.get(key);

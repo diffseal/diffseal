@@ -7,6 +7,8 @@ import * as path from 'node:path';
  */
 export interface FileSource {
   readonly label: string;
+  /** Immutable object identity, available without reading its contents. */
+  blobId?(relPath: string): string | undefined;
   readFile(relPath: string): string | undefined;
   /** File names (not paths) directly inside a directory. */
   listFiles(relDir: string): string[];
@@ -101,6 +103,10 @@ export class GitSource implements FileSource {
       list.push(path.posix.basename(p));
       this.dirs.set(d, list);
     }
+  }
+
+  blobId(p: string): string | undefined {
+    return this.blobs.get(normalize(p));
   }
 
   readFile(p: string) {
