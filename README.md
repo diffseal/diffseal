@@ -1,5 +1,7 @@
 # TerraTrust
 
+> **Beta status, v0.2.0-beta.** TerraTrust reviews Terraform changes on AWS, checks that application code has the IAM permissions it needs, and writes audit change records. It is a beta validated on one production monorepo. Run the GitHub Action in advisory mode first, with `advisory: 'true'`, and report issues in the [GitHub issue tracker](https://github.com/TerraTrust/terratrust/issues).
+
 TerraTrust reviews Terraform changes on AWS and checks that application code has the IAM permissions it needs. It works from source code and git history. It never asks for cloud credentials and never runs `terraform`.
 
 It answers four questions about a change:
@@ -162,4 +164,4 @@ All three are read-only. HashiCorp's Terraform MCP server complements this one: 
 
 ## License
 
-FSL-1.1-MIT
+[FSL-1.1-ALv2](LICENSE). TerraTrust is free to use, including in your company's CI. Offering a competing commercial product or service is not allowed. Each release becomes Apache 2.0 two years after it is published.
