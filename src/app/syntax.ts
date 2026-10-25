@@ -429,11 +429,19 @@ export class Syntax {
 }
 export function expressionRef(language: AppLanguage, expr: string, source: string, offset: number): ResourceRef {
   const s = syntax(language, source);
-  const nodes = s.nodes.filter((n) => n.text === expr.trim());
-  const node =
-    nodes.filter((n) => n.startIndex >= offset).sort((a, b) => a.startIndex - b.startIndex)[0] ??
-    nodes.sort((a, b) => Math.abs(a.startIndex - offset) - Math.abs(b.startIndex - offset))[0];
-  if (node) return s.ref(node);
+  const text = expr.trim();
+  // Nodes are in source order. A resource expression normally follows the SDK call's start.
+  // Avoid materializing the text of every subtree for every resource in a large source file.
+  let low = 0,
+    high = s.nodes.length;
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if (s.nodes[mid].startIndex < offset) low = mid + 1;
+    else high = mid;
+  }
+  const matches = (n: Node) => n.endIndex - n.startIndex === text.length && n.text === text;
+  for (let i = low; i < s.nodes.length; i++) if (matches(s.nodes[i])) return s.ref(s.nodes[i]);
+  for (let i = low - 1; i >= 0; i--) if (matches(s.nodes[i])) return s.ref(s.nodes[i]);
   const prefix =
     language === 'go' ? 'package p\nfunc f(){_ = ' : language === 'python' ? '__value = ' : 'const __value = ';
   const parsed = syntax(language, prefix + expr + (language === 'go' ? '\n}' : ''));
