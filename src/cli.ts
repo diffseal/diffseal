@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { evidencePack } from './evidence/pack.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { analyze } from './analysis/analyze.js';
@@ -22,6 +23,7 @@ Usage:
                        [--base <rev>] [--roots-under <dir>] [--out-dir <dir>] [--policy <policy.json>] [--approvals <file.json>]
   terratrust check-app --app <path> [--rev <rev> | --worktree] [--base <rev>] [--infra <path>] [--infra-rev <rev>]
                        [--roots-under <dir>] [--role <name,...>] [--entry <dir,...>] [--out <report.md>] [--json <file>] [--strict]
+  terratrust evidence --since <date> --until <date> --repo <path> [--approvals <file.json>] [--out-dir <folder>]
   terratrust demo
 
 Commands:
@@ -33,6 +35,8 @@ Commands:
   check-app  Check the AWS calls in an application against the IAM roles that run it. The application repository
              needs no Terraform: point --infra at the repository that has it, or add .terratrust.json.
              With --base, only calls added since that commit are checked.
+  evidence   Export an unsigned audit period, inclusive since and exclusive until in UTC.
+             Replays every first-parent commit in that period. An incomplete export exits 1; historic gates do not fail export.
   demo       Run review and check-app on the bundled examples.
 
 Exit codes: 0 pass, 1 error, 2 gate failed (BLOCK, or REVIEW with --strict).
@@ -176,6 +180,15 @@ function runReplay(args: Args): number {
   return blocked ? 2 : 0;
 }
 
+function runEvidence(args: Args): number {
+  const repo = str(args, '--repo'), since = str(args, '--since'), until = str(args, '--until');
+  if (!repo || !since || !until) throw new Error('evidence needs --repo, --since and --until');
+  const approvals = str(args, '--approvals');
+  const result = evidencePack({repo,since,until,outDir:str(args,'--out-dir')??'dry-runs/evidence',approvals:approvals?loadApprovals(fs.readFileSync(approvals,'utf8')):undefined});
+  console.error(`Evidence: ${result.records} records from ${result.selected} selected commits, ${result.failures} failures. Folder: ${result.outDir}`);
+  return result.failures ? 1 : 0;
+}
+
 function runCheckApp(args: Args): number {
   const app = str(args, '--app');
   if (!app) throw new Error('check-app needs --app <path to the application repository>');
@@ -244,6 +257,7 @@ export function main(argv: string[]): number {
   try {
     if (cmd === 'review') return runReview(args);
     if (cmd === 'replay') return runReplay(args);
+    if (cmd === 'evidence') return runEvidence(args);
     if (cmd === 'check-app') return runCheckApp(args);
     if (cmd === 'demo') return runDemo();
     console.error(`Unknown command "${cmd}".\n`);
