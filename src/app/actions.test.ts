@@ -42,3 +42,13 @@ test('Bedrock Converse uses the permission named in AWS SDK documentation', () =
   expect(actionsFor('bedrockruntime', 'Converse')).toEqual(['bedrock:InvokeModel']);
   expect(actionsFor('bedrockruntime', 'ConverseStream')).toEqual(['bedrock:InvokeModelWithResponseStream']);
 });
+
+test('every unmapped AWS operation records an explanation in the generated data', async () => {
+  const data = await import('./aws-actions.json');
+  for (const service of Object.values(data.default.services))
+    for (const row of Object.values(service.operations)) {
+      if (row.actions.length) continue;
+      expect(row).toHaveProperty('unresolvedReason');
+      expect((row as { unresolvedReason?: string }).unresolvedReason?.length).toBeGreaterThan(20);
+    }
+});

@@ -24,6 +24,12 @@ export const DOCUMENT_CLIENT: Record<string, string> = {
 /** Operations that need some of their actions, not all: the call does not say which. */
 export const ANY_OF = new Set(['dynamodb:TransactWriteItems']);
 
+export interface ActionSelector {
+  fields: string[];
+  actions: string[];
+  replaces?: string[];
+  source: string;
+}
 interface ActionService {
   prefix: string;
   operations: Record<
@@ -31,6 +37,8 @@ interface ActionService {
     {
       actions: string[];
       selection: string;
+      selectors?: ActionSelector[];
+      unresolvedReason?: string;
       authorizedActions: Array<{ Name: string; Service: string }>;
     }
   >;
@@ -39,6 +47,9 @@ const services: Record<string, ActionService> = metadata.services;
 export function actionsFor(service: string, operation: string): string[] {
   const row = services[service]?.operations[operation];
   return row?.actions.length ? [...row.actions] : [`${IAM_PREFIX[service] ?? service}:${operation}`];
+}
+export function selectorsFor(service: string, operation: string): ActionSelector[] {
+  return services[service]?.operations[operation]?.selectors ?? [];
 }
 /** Unsupported mappings must not become a confident grant, even under an IAM wildcard. */
 export function conservativeFact(fact: AccessFact): AccessFact {
@@ -57,7 +68,7 @@ export function conservativeFact(fact: AccessFact): AccessFact {
       possible: true,
       resource: {
         kind: 'unresolved',
-        text: `unmapped IAM operation ${fact.service}:${fact.operation}`,
+        text: `unmapped IAM operation ${fact.service}:${fact.operation}: ${row?.unresolvedReason ?? 'No verified AWS permission mapping is available'}`,
       },
     };
   return fact;

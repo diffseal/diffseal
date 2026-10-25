@@ -818,6 +818,7 @@ const KMS_NEEDS: Record<string, string[]> = {
   'secretsmanager:GetSecretValue': ['kms:Decrypt'],
   's3:PutObject': ['kms:GenerateDataKey'],
   's3:GetObject': ['kms:Decrypt'],
+  's3:GetObjectVersion': ['kms:Decrypt'],
 };
 
 const KEY_ATTR: Record<string, string> = {

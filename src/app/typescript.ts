@@ -1,3 +1,4 @@
+import { conditionalFacts } from './conditional.js';
 import { transactionFacts } from './transactions.js';
 import {
   COPY_OPERATIONS,
@@ -95,7 +96,7 @@ export function extractTs(files: SourceFile[], opts: { addedLines?: AddedLines }
         line: n.startPosition.row + 1,
         ...(fields.has('IndexName') ? { index: indexName(s.ref(fields.get('IndexName')!)) } : {}),
       };
-      facts.push(...(transactionFacts(base, fields, s) ?? [base]));
+      facts.push(...(transactionFacts(base, fields, s) ?? conditionalFacts(base, fields, s)));
       if (service === 's3' && COPY_OPERATIONS.has(operation)) {
         const source = fields.get('CopySource');
         facts.push({

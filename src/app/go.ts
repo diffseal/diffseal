@@ -1,3 +1,4 @@
+import { conditionalFacts } from './conditional.js';
 import { ExtractionCache, extractionCache, fileIdentity } from './cache.js';
 import { createHash } from 'node:crypto';
 import { transactionFacts } from './transactions.js';
@@ -163,7 +164,7 @@ export function extractGo(files: SourceFile[], opts: ExtractOptions = {}): AppSc
           : {}),
       };
       const s = syntax('go', f.content);
-      facts.push(...(transactionFacts(base, s.fields(call.node), s) ?? [base]));
+      facts.push(...(transactionFacts(base, s.fields(call.node), s) ?? conditionalFacts(base, s.fields(call.node), s)));
       if (call.service === 's3' && COPY_OPERATIONS.has(call.operation)) {
         facts.push({
           service: 's3',
@@ -255,7 +256,7 @@ function helperCalls(
 
     // For a constructor, keep the operations of the methods this file calls on the returned value.
     // If the value escapes (passed on, stored), the other methods' operations are only possible.
-    let ops = index.opsFor(pkg, call.name).map((op) => ({ ...op, possible: false, fromType: false }));
+    let ops = index.opsFor(pkg, call.name).map((op) => ({ ...op, possible: op.possible ?? false, fromType: false }));
     const type = index.constructedType(pkg, call.name);
     if (type) {
       const s = syntax('go', f.content);
@@ -290,7 +291,7 @@ function helperCalls(
           )
           .map((o) => ({
             ...o,
-            possible: !certain.has(`${o.service}:${o.operation}`),
+            possible: Boolean(o.possible) || !certain.has(`${o.service}:${o.operation}`),
             fromType: true,
           })),
       ];
@@ -329,8 +330,8 @@ function helperCalls(
       out.push({
         service: op.service,
         operation: op.operation,
-        actions: actionsFor(op.service, op.operation),
-        resource,
+        actions: op.actions ?? actionsFor(op.service, op.operation),
+        resource: op.permissionReason ? { kind: 'unresolved', text: op.permissionReason } : resource,
         file: f.path,
         line: lineAt(f.content, call.start),
         via: call.via,
@@ -355,7 +356,7 @@ function formatted(format: string, value: ResourceRef): ResourceRef {
 function dedupeFacts(fs: AccessFact[]): AccessFact[] {
   const seen = new Set<string>();
   return fs.filter((f) => {
-    const k = `${f.file}:${f.line}:${f.operation}:${JSON.stringify(f.resource)}`;
+    const k = `${f.file}:${f.line}:${f.operation}:${JSON.stringify(f.resource)}:${JSON.stringify(f.actions)}:${Boolean(f.possible)}`;
     return seen.has(k) ? false : (seen.add(k), true);
   });
 }
@@ -369,6 +370,9 @@ function dedupeEnv(es: EnvRead[]): EnvRead[] {
 }
 
 interface Op {
+  actions?: string[];
+  permissionReason?: string;
+  possible?: boolean;
   service: string;
   operation: string;
   /** Index of the function parameter that becomes the SDK resource field as nodeField, when it is passed directly. */
@@ -400,7 +404,7 @@ function indexFile(f: SourceFile, modulePath: string, pkg: string): GoFileIndex 
     const imports = parseImports(f.content);
     for (const fn of goFunctions(f.content)) {
       const body = f.content.slice(fn.bodyStart, fn.bodyEnd);
-      const ops: Op[] = sdkCalls(body, imports).map((c) => {
+      const ops: Op[] = sdkCalls(body, imports).flatMap((c) => {
         const parsed = syntax('go', body);
         const fields = parsed.fields(c.node);
         const resourceField = (RESOURCE_FIELDS[c.service] ?? []).find((name) => fields.has(name));
@@ -438,7 +442,7 @@ function indexFile(f: SourceFile, modulePath: string, pkg: string): GoFileIndex 
         const fixed = own && own.kind !== 'unresolved' ? own : undefined;
         // A resource the index cannot follow (a local from a struct field) is not guessed at the call site.
         const opaqueLocal = own?.kind === 'unresolved';
-        return {
+        const op: Op = {
           service: c.service,
           operation: c.operation,
           ...(param >= 0 ? { param } : {}),
@@ -454,6 +458,25 @@ function indexFile(f: SourceFile, modulePath: string, pkg: string): GoFileIndex 
                 }
             : {}),
         };
+        return conditionalFacts(
+          {
+            service: c.service,
+            operation: c.operation,
+            actions: actionsFor(c.service, c.operation),
+            resource: { kind: 'unresolved', text: 'helper resource' },
+            file: f.path,
+            line: 1,
+          },
+          fields,
+          parsed,
+        ).map((fact) => ({
+          ...op,
+          actions: fact.actions,
+          ...(fact.resource.kind === 'unresolved' && fact.resource.text !== 'helper resource'
+            ? { permissionReason: fact.resource.text }
+            : {}),
+          ...(fact.possible ? { possible: true } : {}),
+        }));
       });
       if (/^New[A-Z]/.test(fn.name)) {
         // Constructor: which parameter ends up in which struct field (`topic: topicARN` or `x.topic = topicARN`).
@@ -655,7 +678,7 @@ function literalIndex(arg: string | undefined): string | undefined {
 function uniqueOps(ops: Op[]): Op[] {
   const seen = new Set<string>();
   return ops.filter((o) => {
-    const k = `${o.service}:${o.operation}:${o.param ?? ''}:${o.field ?? ''}:${o.format ?? ''}:${o.derived ?? ''}:${o.index ?? ''}:${o.indexParam ?? ''}:${JSON.stringify(o.fixed ?? '')}`;
+    const k = `${o.service}:${o.operation}:${o.param ?? ''}:${o.field ?? ''}:${o.format ?? ''}:${o.derived ?? ''}:${o.index ?? ''}:${o.indexParam ?? ''}:${JSON.stringify(o.fixed ?? '')}:${JSON.stringify(o.actions)}:${o.possible ?? false}:${o.permissionReason ?? ''}`;
     return seen.has(k) ? false : (seen.add(k), true);
   });
 }

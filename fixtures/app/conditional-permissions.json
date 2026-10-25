@@ -1,0 +1,290 @@
+{
+  "suite": "app/conditional-permissions",
+  "cases": [
+    {
+      "kind": "app",
+      "name": "PutObject ACL requires its own IAM action",
+      "files": {
+        "a.ts": "import {PutObjectCommand} from '@aws-sdk/client-s3';\nnew PutObjectCommand({Bucket: 'reports', Key:'x', ACL:'private', Body:'x'});\n"
+      },
+      "expect": {
+        "facts": [
+          {
+            "service": "s3",
+            "operation": "PutObject",
+            "actions": [
+              "s3:PutObject",
+              "s3:PutObjectAcl"
+            ],
+            "resource": {
+              "kind": "literal",
+              "value": "reports"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "app",
+      "name": "GetObject VersionId selects the version action instead of the current action",
+      "files": {
+        "a.ts": "import {GetObjectCommand} from '@aws-sdk/client-s3';\nnew GetObjectCommand({Bucket:'reports', Key:'x', VersionId:'v1'});\n"
+      },
+      "expect": {
+        "facts": [
+          {
+            "service": "s3",
+            "operation": "GetObject",
+            "actions": [
+              "s3:GetObjectVersion"
+            ]
+          }
+        ],
+        "forbiddenActions": [
+          "s3:GetObject"
+        ]
+      }
+    },
+    {
+      "kind": "app",
+      "name": "Absent null and undefined optional fields do not add ACL or version actions",
+      "files": {
+        "a.ts": "import {PutObjectCommand,GetObjectCommand} from '@aws-sdk/client-s3';\nnew PutObjectCommand({Bucket:'reports',ACL:undefined});\nnew GetObjectCommand({Bucket:'reports',VersionId:null});\n"
+      },
+      "expect": {
+        "facts": [
+          {
+            "actions": [
+              "s3:PutObject"
+            ]
+          },
+          {
+            "actions": [
+              "s3:GetObject"
+            ]
+          }
+        ],
+        "forbiddenActions": [
+          "s3:PutObjectAcl",
+          "s3:GetObjectVersion"
+        ]
+      }
+    },
+    {
+      "kind": "app",
+      "name": "Opaque VersionId stays unresolved instead of requiring both alternatives",
+      "files": {
+        "a.ts": "import {GetObjectCommand} from '@aws-sdk/client-s3';\nnew GetObjectCommand({Bucket:'reports',VersionId:readVersion()});\n"
+      },
+      "expect": {
+        "resourceKinds": [
+          "unresolved"
+        ]
+      }
+    },
+    {
+      "kind": "app",
+      "name": "Python S3 ACL and version selectors use keyword arguments",
+      "files": {
+        "a.py": "import boto3\ns3=boto3.client('s3')\ns3.put_object(Bucket='reports',ACL='private')\ns3.get_object(Bucket='reports',VersionId='v1')\n"
+      },
+      "expect": {
+        "facts": [
+          {
+            "actions": [
+              "s3:PutObject",
+              "s3:PutObjectAcl"
+            ]
+          },
+          {
+            "actions": [
+              "s3:GetObjectVersion"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "app",
+      "name": "Go S3 ACL and version selectors use input fields",
+      "files": {
+        "a.go": "package main\nimport (\n \"github.com/aws/aws-sdk-go-v2/service/s3\"\n \"github.com/aws/aws-sdk-go-v2/aws\"\n)\nfunc run(){\n _ = &s3.PutObjectInput{Bucket: aws.String(\"reports\"), ACL: \"private\"}\n _ = &s3.GetObjectInput{Bucket: aws.String(\"reports\"), VersionId: aws.String(\"v1\")}\n}\n"
+      },
+      "expect": {
+        "facts": [
+          {
+            "actions": [
+              "s3:PutObject",
+              "s3:PutObjectAcl"
+            ]
+          },
+          {
+            "actions": [
+              "s3:GetObjectVersion"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "app",
+      "name": "Go helper callers retain conditional permissions from the helper input",
+      "goModule": "example.com/app",
+      "entryFiles": [
+        "cmd/main.go"
+      ],
+      "files": {
+        "cmd/main.go": "package main\nimport \"example.com/app/store\"\nfunc run(){store.Upload(\"reports\")}\n",
+        "store/store.go": "package store\nimport \"github.com/aws/aws-sdk-go-v2/service/s3\"\nfunc Upload(bucket string){\n _ = &s3.PutObjectInput{Bucket: &bucket, ACL: \"private\"}\n}\n"
+      },
+      "expect": {
+        "facts": [
+          {
+            "actions": [
+              "s3:PutObject",
+              "s3:PutObjectAcl"
+            ],
+            "resource": {
+              "kind": "literal",
+              "value": "reports"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "app",
+      "name": "PutObject tagging and object lock headers select only their extra actions",
+      "files": {
+        "a.ts": "import {PutObjectCommand} from '@aws-sdk/client-s3';\nnew PutObjectCommand({Bucket:'reports',Tagging:'a=b',ObjectLockLegalHoldStatus:'ON',ObjectLockMode:'GOVERNANCE',ObjectLockRetainUntilDate:new Date()});\n"
+      },
+      "expect": {
+        "facts": [
+          {
+            "actions": [
+              "s3:PutObject",
+              "s3:PutObjectTagging",
+              "s3:PutObjectLegalHold",
+              "s3:PutObjectRetention"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "app",
+      "name": "Opaque version arguments in Go helpers remain unresolved at callers",
+      "goModule": "example.com/app",
+      "entryFiles": [
+        "cmd/main.go"
+      ],
+      "files": {
+        "cmd/main.go": "package main\nimport \"example.com/app/store\"\nfunc run(){store.Read(\"reports\")}\n",
+        "store/store.go": "package store\nimport \"github.com/aws/aws-sdk-go-v2/service/s3\"\nfunc Read(bucket string){\n _ = &s3.GetObjectInput{Bucket: &bucket, VersionId: currentVersion()}\n}\n"
+      },
+      "expect": {
+        "resourceKinds": [
+          "unresolved"
+        ]
+      }
+    },
+    {
+      "kind": "app",
+      "name": "Version-specific head delete ACL and tagging calls select version permissions",
+      "files": {
+        "a.py": "import boto3\ns3=boto3.client('s3')\ns3.head_object(Bucket='reports',VersionId='v1')\ns3.delete_object(Bucket='reports',VersionId='v1')\ns3.get_object_acl(Bucket='reports',VersionId='v1')\ns3.put_object_tagging(Bucket='reports',VersionId='v1')\n"
+      },
+      "expect": {
+        "facts": [
+          {
+            "actions": [
+              "s3:GetObjectVersion"
+            ]
+          },
+          {
+            "actions": [
+              "s3:DeleteObjectVersion"
+            ]
+          },
+          {
+            "actions": [
+              "s3:GetObjectVersionAcl"
+            ]
+          },
+          {
+            "actions": [
+              "s3:PutObjectVersionTagging"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "app",
+      "name": "Python managed transfer ExtraArgs retain ACL and version requirements",
+      "files": {
+        "a.py": "import boto3\ns3=boto3.client('s3')\ns3.upload_file('x.txt','reports','x',ExtraArgs={'ACL':'private'})\ns3.download_file('reports','x','x.txt',ExtraArgs={'VersionId':'v1'})\n"
+      },
+      "expect": {
+        "facts": [
+          {
+            "actions": [
+              "s3:PutObject",
+              "s3:PutObjectAcl"
+            ]
+          },
+          {
+            "actions": [
+              "s3:GetObjectVersion"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "app",
+      "name": "AWS model required-permission text resolves object annotation calls",
+      "files": {
+        "a.ts": "import {DeleteObjectAnnotationCommand} from '@aws-sdk/client-s3';\nnew DeleteObjectAnnotationCommand({Bucket:'reports',Key:'x'});\n"
+      },
+      "expect": {
+        "facts": [
+          {
+            "actions": [
+              "s3:DeleteObjectAnnotation"
+            ],
+            "resource": {
+              "kind": "literal",
+              "value": "reports"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "app",
+      "name": "Go retains possible ACL permission alongside the definite PutObject permission",
+      "files": {
+        "a.go": "package main\nimport \"github.com/aws/aws-sdk-go-v2/service/s3\"\nfunc run(){\n _ = &s3.PutObjectInput{Bucket: \"reports\", ACL: loadACL()}\n}\n"
+      },
+      "expect": {
+        "facts": [
+          {
+            "actions": [
+              "s3:PutObject"
+            ]
+          },
+          {
+            "actions": [
+              "s3:PutObjectAcl"
+            ]
+          }
+        ],
+        "resourceKinds": [
+          "literal",
+          "literal"
+        ]
+      }
+    }
+  ]
+}

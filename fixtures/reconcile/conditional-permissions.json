@@ -1,0 +1,134 @@
+{
+  "suite": "reconcile/conditional-permissions",
+  "cases": [
+    {
+      "kind": "reconcile",
+      "name": "An unknown optional ACL is unresolved rather than a definite missing permission",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"r\" {\n name=\"reader\"\n assume_role_policy=\"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n role=aws_iam_role.r.name\n policy=jsonencode({Statement=[{Effect=\"Allow\",Action=\"s3:PutObject\",Resource=\"arn:aws:s3:::reports/*\"}]})\n}\nresource \"aws_s3_bucket\" \"b\" {\n bucket=\"reports\"\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "app": {
+        "a.ts": "import {PutObjectCommand} from '@aws-sdk/client-s3';\nnew PutObjectCommand({Bucket:'reports',ACL:loadAcl()});\n"
+      },
+      "options": {
+        "roleNames": [
+          "reader"
+        ]
+      },
+      "expect": {
+        "exactStatuses": [
+          "GRANTED",
+          "UNRESOLVED"
+        ],
+        "forbiddenStatuses": [
+          "NOT_GRANTED"
+        ],
+        "links": [
+          {
+            "actionContains": "s3:PutObjectAcl",
+            "status": "UNRESOLVED"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "reconcile",
+      "name": "Versioned S3 reads still require the selected customer managed KMS key",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  names = toset([\"a\", \"b\"])\n}\nresource \"aws_kms_key\" \"k\" {\n  for_each = local.names\n}\nresource \"aws_s3_bucket\" \"b\" {\n  for_each = local.names\n  bucket   = \"data-${each.key}\"\n}\nresource \"aws_s3_bucket_server_side_encryption_configuration\" \"e\" {\n  for_each = local.names\n  bucket   = aws_s3_bucket.b[each.key].bucket\n  rule {\n    apply_server_side_encryption_by_default {\n      sse_algorithm     = \"aws:kms\"\n      kms_master_key_id = aws_kms_key.k[each.key].arn\n    }\n  }\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"s3:GetObjectVersion\", Resource = \"arn:aws:s3:::data-b/*\" }, { Effect = \"Allow\", Action = \"kms:Decrypt\", Resource = aws_kms_key.k[\"a\"].arn }] })\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "options": {
+        "roleNames": [
+          "r"
+        ]
+      },
+      "expect": {
+        "exactStatuses": [
+          "GRANTED",
+          "NOT_GRANTED"
+        ],
+        "links": [
+          {
+            "status": "NOT_GRANTED",
+            "actionContains": "kms:Decrypt",
+            "detailContains": "aws_kms_key.k[\"b\"]"
+          }
+        ]
+      },
+      "app": {
+        "a.ts": "import {GetObjectCommand} from '@aws-sdk/client-s3';\nnew GetObjectCommand({Bucket:'data-b',VersionId:'v1'});\n"
+      }
+    },
+    {
+      "kind": "reconcile",
+      "name": "Known ACL reports the missing ACL permission and suggests it",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"r\" {\n name=\"reader\"\n assume_role_policy=\"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n role=aws_iam_role.r.name\n policy=jsonencode({Statement=[{Effect=\"Allow\",Action=\"s3:PutObject\",Resource=\"arn:aws:s3:::reports/*\"}]})\n}\nresource \"aws_s3_bucket\" \"b\" {\n bucket=\"reports\"\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "app": {
+        "a.ts": "import {PutObjectCommand} from '@aws-sdk/client-s3';\nnew PutObjectCommand({Bucket:'reports',ACL:'private'});\n"
+      },
+      "options": {
+        "roleNames": [
+          "reader"
+        ]
+      },
+      "expect": {
+        "exactStatuses": [
+          "GRANTED",
+          "NOT_GRANTED"
+        ],
+        "links": [
+          {
+            "status": "NOT_GRANTED",
+            "actionContains": "s3:PutObjectAcl",
+            "suggestion": {
+              "target": "aws_iam_role_policy.p"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "reconcile",
+      "name": "Unmapped SQL operations remain unresolved under a wildcard role with an AWS data reason",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"r\" {\n name=\"reader\"\n assume_role_policy=\"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n role=aws_iam_role.r.name\n policy=jsonencode({Statement=[{Effect=\"Allow\",Action=\"*\",Resource=\"*\"}]})\n}\nresource \"aws_s3_bucket\" \"b\" {\n bucket=\"reports\"\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "app": {
+        "a.ts": "import {ExecuteStatementCommand} from '@aws-sdk/client-dynamodb';\nnew ExecuteStatementCommand({Statement:'SELECT * FROM reports',TableName:'reports'});\n"
+      },
+      "options": {
+        "roleNames": [
+          "reader"
+        ]
+      },
+      "expect": {
+        "exactStatuses": [
+          "UNRESOLVED"
+        ],
+        "forbiddenStatuses": [
+          "GRANTED"
+        ],
+        "links": [
+          {
+            "status": "UNRESOLVED",
+            "detailContains": "PartiQL"
+          }
+        ]
+      }
+    }
+  ]
+}

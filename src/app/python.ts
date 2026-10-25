@@ -1,3 +1,4 @@
+import { conditionalFacts } from './conditional.js';
 import { transactionFacts } from './transactions.js';
 import { RESOURCE_FIELDS, actionsFor, conservativeFact, copySourceBucket } from './actions.js';
 import type { AccessFact, AddedLines, AppScan, EnvRead } from './facts.js';
@@ -173,7 +174,8 @@ export function extractPython(files: SourceFile[], opts: { addedLines?: AddedLin
           line,
           ...(kwargs.has('IndexName') ? { index: indexName(s.ref(kwargs.get('IndexName')!)) } : {}),
         };
-        facts.push(...(transactionFacts(base, kwargs, s) ?? [base]));
+        const options = transfer ? new Map([...s.fields(kwargs.get('ExtraArgs') ?? positional[3]), ...kwargs]) : kwargs;
+        facts.push(...(transactionFacts(base, options, s) ?? conditionalFacts(base, options, s)));
         if (service === 's3' && ['Copy', 'CopyObject', 'UploadPartCopy'].includes(operation)) {
           const source = kwargs.get('CopySource') ?? (operation === 'Copy' ? positional[0] : undefined),
             bucket = s.fields(source).get('Bucket');

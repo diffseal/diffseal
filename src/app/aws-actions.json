@@ -441,6 +441,7 @@
           "actions": [],
           "selection": "unmapped",
           "authorizedActions": [],
+          "unresolvedReason": "The AWS model describes directory-bucket session authorization through s3express. Directory-bucket authorization is not implemented.",
           "input": "com.amazonaws.s3#CreateSessionRequest"
         },
         "DeleteBucket": {
@@ -661,11 +662,27 @@
               "Service": "s3"
             }
           ],
+          "selectors": [
+            {
+              "fields": [
+                "VersionId"
+              ],
+              "actions": [
+                "s3:DeleteObjectVersion"
+              ],
+              "replaces": [
+                "s3:DeleteObject"
+              ],
+              "source": "s3-permissions"
+            }
+          ],
           "input": "com.amazonaws.s3#DeleteObjectRequest"
         },
         "DeleteObjectAnnotation": {
-          "actions": [],
-          "selection": "unmapped",
+          "actions": [
+            "s3:DeleteObjectAnnotation"
+          ],
+          "selection": "smithy-documentation-required-permission",
           "authorizedActions": [],
           "input": "com.amazonaws.s3#DeleteObjectAnnotationRequest"
         },
@@ -709,6 +726,20 @@
               "Service": "s3"
             }
           ],
+          "selectors": [
+            {
+              "fields": [
+                "VersionId"
+              ],
+              "actions": [
+                "s3:DeleteObjectVersionTagging"
+              ],
+              "replaces": [
+                "s3:DeleteObjectTagging"
+              ],
+              "source": "s3-permissions"
+            }
+          ],
           "input": "com.amazonaws.s3#DeleteObjectTaggingRequest"
         },
         "DeletePublicAccessBlock": {
@@ -728,6 +759,7 @@
           "actions": [],
           "selection": "unmapped",
           "authorizedActions": [],
+          "unresolvedReason": "The pinned AWS model and Service Reference do not establish a verified required-action mapping. No IAM action is guessed from the operation name.",
           "input": "com.amazonaws.s3#GetBucketAbacRequest"
         },
         "GetBucketAccelerateConfiguration": {
@@ -1051,6 +1083,20 @@
               "Service": "s3"
             }
           ],
+          "selectors": [
+            {
+              "fields": [
+                "VersionId"
+              ],
+              "actions": [
+                "s3:GetObjectVersion"
+              ],
+              "replaces": [
+                "s3:GetObject"
+              ],
+              "source": "s3-permissions"
+            }
+          ],
           "input": "com.amazonaws.s3#GetObjectRequest"
         },
         "GetObjectAcl": {
@@ -1072,11 +1118,27 @@
               "Service": "s3"
             }
           ],
+          "selectors": [
+            {
+              "fields": [
+                "VersionId"
+              ],
+              "actions": [
+                "s3:GetObjectVersionAcl"
+              ],
+              "replaces": [
+                "s3:GetObjectAcl"
+              ],
+              "source": "s3-permissions"
+            }
+          ],
           "input": "com.amazonaws.s3#GetObjectAclRequest"
         },
         "GetObjectAnnotation": {
-          "actions": [],
-          "selection": "unmapped",
+          "actions": [
+            "s3:GetObjectAnnotation"
+          ],
+          "selection": "smithy-documentation-required-permission",
           "authorizedActions": [],
           "input": "com.amazonaws.s3#GetObjectAnnotationRequest"
         },
@@ -1163,6 +1225,20 @@
               "Service": "s3"
             }
           ],
+          "selectors": [
+            {
+              "fields": [
+                "VersionId"
+              ],
+              "actions": [
+                "s3:GetObjectVersionTagging"
+              ],
+              "replaces": [
+                "s3:GetObjectTagging"
+              ],
+              "source": "s3-permissions"
+            }
+          ],
           "input": "com.amazonaws.s3#GetObjectTaggingRequest"
         },
         "GetObjectTorrent": {
@@ -1225,6 +1301,20 @@
             {
               "Name": "GetObjectRetention",
               "Service": "s3"
+            }
+          ],
+          "selectors": [
+            {
+              "fields": [
+                "VersionId"
+              ],
+              "actions": [
+                "s3:GetObjectVersion"
+              ],
+              "replaces": [
+                "s3:GetObject"
+              ],
+              "source": "s3-permissions"
             }
           ],
           "input": "com.amazonaws.s3#HeadObjectRequest"
@@ -1298,6 +1388,7 @@
           "actions": [],
           "selection": "unmapped",
           "authorizedActions": [],
+          "unresolvedReason": "The AWS model describes directory-bucket session authorization through s3express. Directory-bucket authorization is not implemented.",
           "input": "com.amazonaws.s3#ListDirectoryBucketsRequest"
         },
         "ListMultipartUploads": {
@@ -1318,8 +1409,10 @@
           "input": "com.amazonaws.s3#ListMultipartUploadsRequest"
         },
         "ListObjectAnnotations": {
-          "actions": [],
-          "selection": "unmapped",
+          "actions": [
+            "s3:ListObjectAnnotations"
+          ],
+          "selection": "smithy-documentation-required-permission",
           "authorizedActions": [],
           "input": "com.amazonaws.s3#ListObjectAnnotationsRequest"
         },
@@ -1399,6 +1492,7 @@
           "actions": [],
           "selection": "unmapped",
           "authorizedActions": [],
+          "unresolvedReason": "The pinned AWS model and Service Reference do not establish a verified required-action mapping. No IAM action is guessed from the operation name.",
           "input": "com.amazonaws.s3#PutBucketAbacRequest"
         },
         "PutBucketAccelerateConfiguration": {
@@ -1679,6 +1773,49 @@
               "Service": "s3"
             }
           ],
+          "selectors": [
+            {
+              "fields": [
+                "ACL",
+                "GrantFullControl",
+                "GrantRead",
+                "GrantReadACP",
+                "GrantWriteACP"
+              ],
+              "actions": [
+                "s3:PutObjectAcl"
+              ],
+              "source": "s3-permissions"
+            },
+            {
+              "fields": [
+                "Tagging"
+              ],
+              "actions": [
+                "s3:PutObjectTagging"
+              ],
+              "source": "s3-permissions"
+            },
+            {
+              "fields": [
+                "ObjectLockLegalHoldStatus"
+              ],
+              "actions": [
+                "s3:PutObjectLegalHold"
+              ],
+              "source": "s3-permissions"
+            },
+            {
+              "fields": [
+                "ObjectLockMode",
+                "ObjectLockRetainUntilDate"
+              ],
+              "actions": [
+                "s3:PutObjectRetention"
+              ],
+              "source": "s3-permissions"
+            }
+          ],
           "input": "com.amazonaws.s3#PutObjectRequest"
         },
         "PutObjectAcl": {
@@ -1700,11 +1837,27 @@
               "Service": "s3"
             }
           ],
+          "selectors": [
+            {
+              "fields": [
+                "VersionId"
+              ],
+              "actions": [
+                "s3:PutObjectVersionAcl"
+              ],
+              "replaces": [
+                "s3:PutObjectAcl"
+              ],
+              "source": "s3-permissions"
+            }
+          ],
           "input": "com.amazonaws.s3#PutObjectAclRequest"
         },
         "PutObjectAnnotation": {
-          "actions": [],
-          "selection": "unmapped",
+          "actions": [
+            "s3:PutObjectAnnotation"
+          ],
+          "selection": "smithy-documentation-required-permission",
           "authorizedActions": [],
           "input": "com.amazonaws.s3#PutObjectAnnotationRequest"
         },
@@ -1778,6 +1931,20 @@
               "Service": "s3"
             }
           ],
+          "selectors": [
+            {
+              "fields": [
+                "VersionId"
+              ],
+              "actions": [
+                "s3:PutObjectVersionTagging"
+              ],
+              "replaces": [
+                "s3:PutObjectTagging"
+              ],
+              "source": "s3-permissions"
+            }
+          ],
           "input": "com.amazonaws.s3#PutObjectTaggingRequest"
         },
         "PutPublicAccessBlock": {
@@ -1797,6 +1964,7 @@
           "actions": [],
           "selection": "unmapped",
           "authorizedActions": [],
+          "unresolvedReason": "The AWS model describes directory-bucket session authorization through s3express. Directory-bucket authorization is not implemented.",
           "input": "com.amazonaws.s3#RenameObjectRequest"
         },
         "RestoreObject": {
@@ -1833,6 +2001,7 @@
           "actions": [],
           "selection": "unmapped",
           "authorizedActions": [],
+          "unresolvedReason": "The pinned AWS model and Service Reference do not establish a verified required-action mapping. No IAM action is guessed from the operation name.",
           "input": "com.amazonaws.s3#UpdateBucketMetadataAnnotationTableConfigurationRequest"
         },
         "UpdateBucketMetadataInventoryTableConfiguration": {
@@ -1889,6 +2058,7 @@
           "actions": [],
           "selection": "s3-required-permissions-table",
           "authorizedActions": [],
+          "unresolvedReason": "The pinned AWS model and Service Reference do not establish a verified required-action mapping. No IAM action is guessed from the operation name.",
           "input": "com.amazonaws.s3#UpdateObjectEncryptionRequest"
         },
         "UploadPart": {
@@ -1933,6 +2103,7 @@
           "actions": [],
           "selection": "unmapped",
           "authorizedActions": [],
+          "unresolvedReason": "The pinned AWS model and Service Reference do not establish a verified required-action mapping. No IAM action is guessed from the operation name.",
           "input": "com.amazonaws.s3#WriteGetObjectResponseRequest"
         }
       },
@@ -3681,6 +3852,7 @@
               "Service": "dynamodb"
             }
           ],
+          "unresolvedReason": "PartiQL permissions depend on the SQL statements and tables. A statement selector is not implemented.",
           "input": "com.amazonaws.dynamodb#BatchExecuteStatementInput"
         },
         "BatchGetItem": {
@@ -4076,6 +4248,7 @@
               "Service": "dynamodb"
             }
           ],
+          "unresolvedReason": "PartiQL permissions depend on the SQL statements and tables. A statement selector is not implemented.",
           "input": "com.amazonaws.dynamodb#ExecuteStatementInput"
         },
         "ExecuteTransaction": {
@@ -4099,6 +4272,7 @@
               "Service": "dynamodb"
             }
           ],
+          "unresolvedReason": "PartiQL permissions depend on the SQL statements and tables. A statement selector is not implemented.",
           "input": "com.amazonaws.dynamodb#ExecuteTransactionInput"
         },
         "ExportTableToPointInTime": {
@@ -4373,6 +4547,7 @@
               "Service": "dynamodb"
             }
           ],
+          "unresolvedReason": "AWS lists multiple candidate permissions without an unconditional required set. An operation-specific selector is not implemented.",
           "input": "com.amazonaws.dynamodb#RestoreTableToPointInTimeInput"
         },
         "Scan": {
@@ -4396,6 +4571,7 @@
           "actions": [],
           "selection": "unmapped",
           "authorizedActions": [],
+          "unresolvedReason": "The pinned AWS model and Service Reference do not establish a verified required-action mapping. No IAM action is guessed from the operation name.",
           "input": "com.amazonaws.dynamodb#SearchVectorsInput"
         },
         "TagResource": {
@@ -10890,6 +11066,7 @@
               "Service": "kms"
             }
           ],
+          "unresolvedReason": "AWS lists ReEncryptFrom and ReEncryptTo on separate source and destination keys. This two-resource mapping is not implemented.",
           "input": "com.amazonaws.kms#ReEncryptRequest"
         },
         "ReplicateKey": {
@@ -18768,6 +18945,7 @@
           "actions": [],
           "selection": "unmapped",
           "authorizedActions": [],
+          "unresolvedReason": "The AWS model describes user-token or client-secret authorization. This operation cannot be verified from the workload role policies alone.",
           "input": "com.amazonaws.cognitoidentityprovider#CompleteWebAuthnRegistrationRequest"
         },
         "ConfirmDevice": {
@@ -19119,6 +19297,7 @@
           "actions": [],
           "selection": "unmapped",
           "authorizedActions": [],
+          "unresolvedReason": "The AWS model describes user-token or client-secret authorization. This operation cannot be verified from the workload role policies alone.",
           "input": "com.amazonaws.cognitoidentityprovider#DeleteWebAuthnCredentialRequest"
         },
         "DescribeIdentityProvider": {
@@ -19294,6 +19473,7 @@
           "actions": [],
           "selection": "unmapped",
           "authorizedActions": [],
+          "unresolvedReason": "The AWS model describes user-token or client-secret authorization. This operation cannot be verified from the workload role policies alone.",
           "input": "com.amazonaws.cognitoidentityprovider#GetClientTokenRequest"
         },
         "GetCSVHeader": {
@@ -19443,6 +19623,7 @@
           "actions": [],
           "selection": "unmapped",
           "authorizedActions": [],
+          "unresolvedReason": "The AWS model describes user-token or client-secret authorization. This operation cannot be verified from the workload role policies alone.",
           "input": "com.amazonaws.cognitoidentityprovider#GetUserAuthFactorsRequest"
         },
         "GetUserPoolMfaConfig": {
@@ -19657,6 +19838,7 @@
           "actions": [],
           "selection": "unmapped",
           "authorizedActions": [],
+          "unresolvedReason": "The AWS model describes user-token or client-secret authorization. This operation cannot be verified from the workload role policies alone.",
           "input": "com.amazonaws.cognitoidentityprovider#ListWebAuthnCredentialsRequest"
         },
         "ResendConfirmationCode": {
@@ -19810,6 +19992,7 @@
           "actions": [],
           "selection": "unmapped",
           "authorizedActions": [],
+          "unresolvedReason": "The AWS model describes user-token or client-secret authorization. This operation cannot be verified from the workload role policies alone.",
           "input": "com.amazonaws.cognitoidentityprovider#StartWebAuthnRegistrationRequest"
         },
         "StopUserImportJob": {
@@ -20436,12 +20619,14 @@
           "actions": [],
           "selection": "unmapped",
           "authorizedActions": [],
+          "unresolvedReason": "Federated role assumption depends on the external identity and target trust policy. This authorization flow is not implemented.",
           "input": "com.amazonaws.sts#AssumeRoleWithSAMLRequest"
         },
         "AssumeRoleWithWebIdentity": {
           "actions": [],
           "selection": "unmapped",
           "authorizedActions": [],
+          "unresolvedReason": "Federated role assumption depends on the external identity and target trust policy. This authorization flow is not implemented.",
           "input": "com.amazonaws.sts#AssumeRoleWithWebIdentityRequest"
         },
         "AssumeRoot": {
@@ -20617,6 +20802,7 @@
           "actions": [],
           "selection": "unmapped",
           "authorizedActions": [],
+          "unresolvedReason": "The pinned AWS model and Service Reference do not establish a verified required-action mapping. No IAM action is guessed from the operation name.",
           "input": "com.amazonaws.cloudwatch#AssociateDatasetKmsKeyInput"
         },
         "CreateResourceMetricsConfiguration": {
@@ -20727,6 +20913,7 @@
           "actions": [],
           "selection": "unmapped",
           "authorizedActions": [],
+          "unresolvedReason": "The pinned AWS model and Service Reference do not establish a verified required-action mapping. No IAM action is guessed from the operation name.",
           "input": "com.amazonaws.cloudwatch#DescribeAlarmContributorsInput"
         },
         "DescribeAlarmHistory": {
@@ -20824,6 +21011,7 @@
           "actions": [],
           "selection": "unmapped",
           "authorizedActions": [],
+          "unresolvedReason": "The pinned AWS model and Service Reference do not establish a verified required-action mapping. No IAM action is guessed from the operation name.",
           "input": "com.amazonaws.cloudwatch#DisassociateDatasetKmsKeyInput"
         },
         "EnableAlarmActions": {
@@ -22691,6 +22879,7 @@
           "actions": [],
           "selection": "unmapped",
           "authorizedActions": [],
+          "unresolvedReason": "The pinned AWS model and Service Reference do not establish a verified required-action mapping. No IAM action is guessed from the operation name.",
           "input": "com.amazonaws.cloudwatchlogs#GetLogObjectRequest"
         },
         "GetLogRecord": {
@@ -23270,6 +23459,7 @@
           "actions": [],
           "selection": "unmapped",
           "authorizedActions": [],
+          "unresolvedReason": "The pinned AWS model and Service Reference do not establish a verified required-action mapping. No IAM action is guessed from the operation name.",
           "input": "com.amazonaws.cloudwatchlogs#StartLiveTailRequest"
         },
         "StartQuery": {
@@ -28615,6 +28805,7 @@
           "actions": [],
           "selection": "unmapped",
           "authorizedActions": [],
+          "unresolvedReason": "The pinned AWS model and Service Reference do not establish a verified required-action mapping. No IAM action is guessed from the operation name.",
           "input": "com.amazonaws.sesv2#SendEmailRequest"
         },
         "TagResource": {
@@ -30047,12 +30238,14 @@
           "actions": [],
           "selection": "unmapped",
           "authorizedActions": [],
+          "unresolvedReason": "The pinned AWS model and Service Reference do not establish a verified required-action mapping. No IAM action is guessed from the operation name.",
           "input": "com.amazonaws.ses#SendBounceRequest"
         },
         "SendBulkTemplatedEmail": {
           "actions": [],
           "selection": "unmapped",
           "authorizedActions": [],
+          "unresolvedReason": "The pinned AWS model and Service Reference do not establish a verified required-action mapping. No IAM action is guessed from the operation name.",
           "input": "com.amazonaws.ses#SendBulkTemplatedEmailRequest"
         },
         "SendCustomVerificationEmail": {
@@ -30072,12 +30265,14 @@
           "actions": [],
           "selection": "unmapped",
           "authorizedActions": [],
+          "unresolvedReason": "The pinned AWS model and Service Reference do not establish a verified required-action mapping. No IAM action is guessed from the operation name.",
           "input": "com.amazonaws.ses#SendEmailRequest"
         },
         "SendRawEmail": {
           "actions": [],
           "selection": "unmapped",
           "authorizedActions": [],
+          "unresolvedReason": "The pinned AWS model and Service Reference do not establish a verified required-action mapping. No IAM action is guessed from the operation name.",
           "input": "com.amazonaws.ses#SendRawEmailRequest"
         },
         "SendTemplatedEmail": {
@@ -33077,6 +33272,7 @@
               "Service": "ecr"
             }
           ],
+          "unresolvedReason": "AWS lists multiple candidate permissions without an unconditional required set. An operation-specific selector is not implemented.",
           "input": "com.amazonaws.ecr#ListImageReferrersRequest"
         },
         "ListImages": {
@@ -33735,6 +33931,7 @@
           "actions": [],
           "selection": "unmapped",
           "authorizedActions": [],
+          "unresolvedReason": "The pinned AWS model and Service Reference do not establish a verified required-action mapping. No IAM action is guessed from the operation name.",
           "input": "com.amazonaws.timestreamwrite#ResumeBatchLoadTaskRequest"
         },
         "TagResource": {
@@ -34082,6 +34279,7 @@
               "Service": "timestream"
             }
           ],
+          "unresolvedReason": "Query permissions depend on SQL, selected tables and optional UNLOAD output. A query selector is not implemented.",
           "input": "com.amazonaws.timestreamquery#QueryRequest"
         },
         "TagResource": {

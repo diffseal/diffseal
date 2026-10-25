@@ -43,7 +43,41 @@ interface Reference {
   Actions: { Name: string; Resources?: { Name: string }[] }[];
   Resources?: { Name: string; ARNFormats: string[] }[];
 }
+interface Selector {
+  fields: string[];
+  actions: string[];
+  replaces?: string[];
+  source: string;
+}
+const selector = (fields: string[], actions: string[], replaces?: string[]): Selector => ({
+  fields,
+  actions,
+  ...(replaces ? { replaces } : {}),
+  source: 's3-permissions',
+});
+const selectors: Record<string, Selector[]> = {
+  PutObject: [
+    selector(['ACL', 'GrantFullControl', 'GrantRead', 'GrantReadACP', 'GrantWriteACP'], ['s3:PutObjectAcl']),
+    selector(['Tagging'], ['s3:PutObjectTagging']),
+    selector(['ObjectLockLegalHoldStatus'], ['s3:PutObjectLegalHold']),
+    selector(['ObjectLockMode', 'ObjectLockRetainUntilDate'], ['s3:PutObjectRetention']),
+  ],
+  GetObject: [selector(['VersionId'], ['s3:GetObjectVersion'], ['s3:GetObject'])],
+};
+for (const [op, base] of Object.entries({
+  HeadObject: 'GetObject',
+  DeleteObject: 'DeleteObject',
+  GetObjectAcl: 'GetObjectAcl',
+  PutObjectAcl: 'PutObjectAcl',
+  GetObjectTagging: 'GetObjectTagging',
+  PutObjectTagging: 'PutObjectTagging',
+  DeleteObjectTagging: 'DeleteObjectTagging',
+})) {
+  selectors[op] = [selector(['VersionId'], ['s3:' + base.replace('Object', 'ObjectVersion')], ['s3:' + base])];
+}
 interface Operation {
+  selectors?: Selector[];
+  unresolvedReason?: string;
   actions: string[];
   selection: string;
   authorizedActions: AuthorizedAction[];
@@ -121,6 +155,22 @@ for (const [name, pins] of Object.entries(lock.services)) {
         selection = 'smithy-documentation-required-permission';
       }
     }
+    if (
+      !actions.length &&
+      name === 's3' &&
+      ['DeleteObjectAnnotation', 'GetObjectAnnotation', 'ListObjectAnnotations', 'PutObjectAnnotation'].includes(
+        operation,
+      )
+    ) {
+      const doc = String(shape.traits?.['smithy.api#documentation'] ?? '');
+      const explicit = doc.match(
+        /To use this operation, you must have (?:the\s*)?<code>(s3:[A-Za-z0-9]+)<\/code>\s*permission/i,
+      )?.[1];
+      if (explicit && service.actionResources[explicit]) {
+        actions = [explicit];
+        selection = 'smithy-documentation-required-permission';
+      }
+    }
     if (!actions.length && name === 's3' && required.has(operation)) {
       actions = [...required.get(operation)!].filter((a) => candidates.includes(a));
       selection = 's3-required-permissions-table';
@@ -151,14 +201,57 @@ for (const [name, pins] of Object.entries(lock.services)) {
       actions = ['execute-api:ManageConnections'];
       selection = 'websocket-connections-guide';
     }
+    const doc = String(shape.traits?.['smithy.api#documentation'] ?? '');
+    let unresolvedReason: string | undefined;
+    if (!actions.length) {
+      if (
+        name === 'dynamodb' &&
+        ['ExecuteStatement', 'BatchExecuteStatement', 'ExecuteTransaction'].includes(operation)
+      )
+        unresolvedReason =
+          'PartiQL permissions depend on the SQL statements and tables. A statement selector is not implemented.';
+      else if (name === 'kms' && operation === 'ReEncrypt')
+        unresolvedReason =
+          'AWS lists ReEncryptFrom and ReEncryptTo on separate source and destination keys. This two-resource mapping is not implemented.';
+      else if (name === 'timestreamquery')
+        unresolvedReason =
+          'Query permissions depend on SQL, selected tables and optional UNLOAD output. A query selector is not implemented.';
+      else if (name === 'cognitoidentityprovider' && /access token|client ID and secret/.test(doc))
+        unresolvedReason =
+          'The AWS model describes user-token or client-secret authorization. This operation cannot be verified from the workload role policies alone.';
+      else if (name === 'sts')
+        unresolvedReason =
+          'Federated role assumption depends on the external identity and target trust policy. This authorization flow is not implemented.';
+      else if (name === 's3' && doc.includes('s3express:'))
+        unresolvedReason =
+          'The AWS model describes directory-bucket session authorization through s3express. Directory-bucket authorization is not implemented.';
+      else if (authorized.length)
+        unresolvedReason =
+          'AWS lists multiple candidate permissions without an unconditional required set. An operation-specific selector is not implemented.';
+      else
+        unresolvedReason =
+          'The pinned AWS model and Service Reference do not establish a verified required-action mapping. No IAM action is guessed from the operation name.';
+    }
     service.operations[operation] = {
       actions: actions.sort(),
       selection,
       authorizedActions: authorized,
+      ...(unresolvedReason ? { unresolvedReason } : {}),
+      ...(name === 's3' && selectors[operation] ? { selectors: selectors[operation] } : {}),
       ...(shape.input ? { input: shape.input.target } : {}),
     };
   }
   services[name] = service;
+}
+for (const service of Object.values(services)) {
+  for (const row of Object.values(service.operations)) {
+    for (const rule of row.selectors ?? []) {
+      for (const action of rule.actions)
+        if (!service.actionResources[action]) throw new Error('Selector action absent from AWS inventory: ' + action);
+      for (const action of rule.replaces ?? [])
+        if (!row.actions.includes(action)) throw new Error('Selector replacement absent from base mapping: ' + action);
+    }
+  }
 }
 services.cloudwatchevents = services.eventbridge;
 const output = {
