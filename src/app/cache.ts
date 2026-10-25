@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 /** Bump when parsing or extraction semantics change. Entries never retain parser trees or complete source files. */
-export const EXTRACTOR_VERSION = 'app-extraction/2';
+export const EXTRACTOR_VERSION = 'app-extraction/3-managed';
 interface Limits {
   maxEntries?: number;
   maxBytes?: number;

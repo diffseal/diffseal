@@ -1,3 +1,4 @@
+import { extractManaged } from '../app/managed.js';
 import { expect } from 'bun:test';
 import { analyze } from '../analysis/analyze.js';
 import type { AccessFact, EnvRead, ResourceRef } from '../app/facts.js';
@@ -366,6 +367,8 @@ export function runFixtureCase(tc: FixtureCase): void {
         facts.push(...r.facts);
         envReads.push(...r.envReads);
       }
+      const managedFiles = targetFiles.filter(f=>/\.(java|kt|cs)$/.test(f.path));
+      if(managedFiles.length){const r=extractManaged(managedFiles,{addedLines});facts.push(...r.facts);envReads.push(...r.envReads);}
       if (pyFiles.length) {
         const r = extractPython(pyFiles, { addedLines });
         facts.push(...r.facts);

@@ -2,6 +2,48 @@
   "format": "terratrust.parser-assets/v1",
   "packages": [
     {
+      "package": "tree-sitter-java",
+      "version": "0.23.5",
+      "published": "2024-12-21T18:26:25.436Z",
+      "registry": "https://registry.npmjs.org/tree-sitter-java/0.23.5",
+      "license": "MIT",
+      "files": [
+        {
+          "file": "tree-sitter-java.wasm",
+          "bytes": 414641,
+          "sha256": "4fdeac4ca6ca089f06c6f7e562abcac1733cd465728cc7031ebb73c2019122c4"
+        }
+      ]
+    },
+    {
+      "package": "tree-sitter-c-sharp",
+      "version": "0.23.5",
+      "published": "2026-04-14T18:41:16.033Z",
+      "registry": "https://registry.npmjs.org/tree-sitter-c-sharp/0.23.5",
+      "license": "MIT",
+      "files": [
+        {
+          "file": "tree-sitter-c_sharp.wasm",
+          "bytes": 5350581,
+          "sha256": "6f69e1cae44e1c32c1eccc170dc5a9778fb94ff716f71113fe1f8c4299aa2f40"
+        }
+      ]
+    },
+    {
+      "package": "@tree-sitter-grammars/tree-sitter-kotlin",
+      "version": "1.1.0",
+      "published": "2025-01-09T19:06:24.768Z",
+      "registry": "https://registry.npmjs.org/@tree-sitter-grammars/tree-sitter-kotlin/1.1.0",
+      "license": "MIT",
+      "files": [
+        {
+          "file": "tree-sitter-kotlin.wasm",
+          "bytes": 3441042,
+          "sha256": "7009d69453bc8735e438b2818a633efb21c88f99782769abba60dffedfab73f7"
+        }
+      ]
+    },
+    {
       "package": "web-tree-sitter",
       "version": "0.25.10",
       "published": "2025-09-22T22:23:13.426Z",

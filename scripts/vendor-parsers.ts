@@ -4,6 +4,24 @@ import * as path from 'node:path';
 import { createHash } from 'node:crypto';
 const pins = [
   {
+    package: 'tree-sitter-java',
+    version: '0.23.5',
+    published: '2024-12-21T18:26:25.436Z',
+    files: ['tree-sitter-java.wasm'],
+  },
+  {
+    package: 'tree-sitter-c-sharp',
+    version: '0.23.5',
+    published: '2026-04-14T18:41:16.033Z',
+    files: ['tree-sitter-c_sharp.wasm'],
+  },
+  {
+    package: '@tree-sitter-grammars/tree-sitter-kotlin',
+    version: '1.1.0',
+    published: '2025-01-09T19:06:24.768Z',
+    files: ['tree-sitter-kotlin.wasm'],
+  },
+  {
     package: 'web-tree-sitter',
     version: '0.25.10',
     published: '2025-09-22T22:23:13.426Z',
@@ -45,7 +63,10 @@ const packages = pins.map((pin) => {
   });
   const license = fs.readdirSync(dir).find((f) => /^licen[cs]e(?:\.|$)/i.test(f));
   if (!license) throw new Error('Missing parser licence');
-  fs.copyFileSync(path.join(dir, license), path.join(dest, pin.package + '.LICENSE'));
+  fs.copyFileSync(
+    path.join(dir, license),
+    path.join(dest, pin.package.replace(/^@/, '').replaceAll('/', '-') + '.LICENSE'),
+  );
   return {
     package: pin.package,
     version: pin.version,

@@ -19,7 +19,7 @@ test('dist/action.js is built from the current source', () => {
   expect(committed === fresh).toBe(true);
   // Bun's file loader emits hash-named WASMs next to the JavaScript entry point.
   const assets = fs.readdirSync(out).filter((f) => f.endsWith('.wasm'));
-  expect(assets.length).toBe(5);
+  expect(assets.length).toBe(8);
   for (const asset of assets)
     expect(fs.readFileSync(path.join(root, 'dist', asset)).equals(fs.readFileSync(path.join(out, asset)))).toBe(true);
   // This directory has no node_modules. Disable network access before loading the Action.
