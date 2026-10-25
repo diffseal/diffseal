@@ -1,88 +1,11 @@
-/**
- * SDK operation -> IAM actions. Most operations map to `<prefix>:<Operation>`; the table below lists
- * the ones that do not (S3 list and multipart calls, batch variants, DynamoDB document client).
- */
-import type { ResourceRef } from './facts.js';
+/** IAM metadata generated from pinned AWS API models and Service Authorization Reference. */
+import metadata from './aws-actions.json' with { type: 'json' };
+import type { AccessFact, ResourceRef } from './facts.js';
 
 /** SDK service package name -> IAM service prefix. */
-export const IAM_PREFIX: Record<string, string> = {
-  s3: 's3',
-  sqs: 'sqs',
-  sns: 'sns',
-  dynamodb: 'dynamodb',
-  secretsmanager: 'secretsmanager',
-  sfn: 'states',
-  ssm: 'ssm',
-  lambda: 'lambda',
-  kms: 'kms',
-  eventbridge: 'events',
-  cloudwatchevents: 'events',
-  scheduler: 'scheduler',
-  iot: 'iot',
-  iotdataplane: 'iot',
-  cognitoidentityprovider: 'cognito-idp',
-  sts: 'sts',
-  cloudwatch: 'cloudwatch',
-  cloudwatchlogs: 'logs',
-  firehose: 'firehose',
-  kinesis: 'kinesis',
-  athena: 'athena',
-  bedrockruntime: 'bedrock',
-  sesv2: 'ses',
-  ses: 'ses',
-  ecs: 'ecs',
-  ecr: 'ecr',
-  timestreamwrite: 'timestream',
-  timestreamquery: 'timestream',
-  apigatewaymanagementapi: 'execute-api',
-};
-
-const OVERRIDES: Record<string, Record<string, string[]>> = {
-  s3: {
-    ListObjectsV2: ['s3:ListBucket'],
-    ListObjects: ['s3:ListBucket'],
-    ListObjectVersions: ['s3:ListBucketVersions'],
-    HeadObject: ['s3:GetObject'],
-    HeadBucket: ['s3:ListBucket'],
-    DeleteObjects: ['s3:DeleteObject'],
-    // The read is on CopySource, a different bucket: extractors emit it as a separate fact.
-    CopyObject: ['s3:PutObject'],
-    CreateMultipartUpload: ['s3:PutObject'],
-    UploadPart: ['s3:PutObject'],
-    UploadPartCopy: ['s3:PutObject'],
-    CompleteMultipartUpload: ['s3:PutObject'],
-    GetObjectAttributes: ['s3:GetObject', 's3:GetObjectAttributes'],
-    SelectObjectContent: ['s3:GetObject'],
-    ListBuckets: ['s3:ListAllMyBuckets'],
-    ListMultipartUploads: ['s3:ListBucketMultipartUploads'],
-    ListParts: ['s3:ListMultipartUploadParts'],
-  },
-  lambda: {
-    Invoke: ['lambda:InvokeFunction'],
-    InvokeAsync: ['lambda:InvokeFunction'],
-    InvokeWithResponseStream: ['lambda:InvokeFunction'],
-  },
-  // TransactWriteItems needs the per-item action of each write; which ones the call makes is not
-  // known, so reconciliation treats these as "any of" (see ANY_OF).
-  dynamodb: {
-    TransactGetItems: ['dynamodb:GetItem'],
-    TransactWriteItems: ['dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem', 'dynamodb:ConditionCheckItem'],
-  },
-  apigatewaymanagementapi: {
-    PostToConnection: ['execute-api:ManageConnections'],
-    GetConnection: ['execute-api:ManageConnections'],
-    DeleteConnection: ['execute-api:ManageConnections'],
-  },
-  sqs: {
-    SendMessageBatch: ['sqs:SendMessage'],
-    DeleteMessageBatch: ['sqs:DeleteMessage'],
-    ChangeMessageVisibilityBatch: ['sqs:ChangeMessageVisibility'],
-  },
-  sns: { PublishBatch: ['sns:Publish'] },
-  iotdataplane: { Publish: ['iot:Publish'], GetThingShadow: ['iot:GetThingShadow'], UpdateThingShadow: ['iot:UpdateThingShadow'] },
-  bedrockruntime: { Converse: ['bedrock:InvokeModel'], ConverseStream: ['bedrock:InvokeModelWithResponseStream'] },
-  sesv2: { SendEmail: ['ses:SendEmail'] },
-};
+export const IAM_PREFIX: Record<string, string> = Object.fromEntries(
+  Object.entries(metadata.services).map(([name, service]) => [name, service.prefix]),
+);
 
 /** @aws-sdk/lib-dynamodb DocumentClient command names. */
 export const DOCUMENT_CLIENT: Record<string, string> = {
@@ -101,11 +24,43 @@ export const DOCUMENT_CLIENT: Record<string, string> = {
 /** Operations that need some of their actions, not all: the call does not say which. */
 export const ANY_OF = new Set(['dynamodb:TransactWriteItems']);
 
+interface ActionService {
+  prefix: string;
+  operations: Record<
+    string,
+    {
+      actions: string[];
+      selection: string;
+      authorizedActions: Array<{ Name: string; Service: string }>;
+    }
+  >;
+}
+const services: Record<string, ActionService> = metadata.services;
 export function actionsFor(service: string, operation: string): string[] {
-  const o = OVERRIDES[service]?.[operation];
-  if (o) return o;
-  const prefix = IAM_PREFIX[service] ?? service;
-  return [`${prefix}:${operation}`];
+  const row = services[service]?.operations[operation];
+  return row?.actions.length ? [...row.actions] : [`${IAM_PREFIX[service] ?? service}:${operation}`];
+}
+/** Unsupported mappings must not become a confident grant, even under an IAM wildcard. */
+export function conservativeFact(fact: AccessFact): AccessFact {
+  const row =
+    services[fact.service]?.operations[
+      fact.service === 's3' && fact.operation === 'Copy' ? 'CopyObject' : fact.operation
+    ];
+  // ConditionCheckItem is an IAM-only transaction action, not a standalone SDK API operation.
+  const transaction =
+    fact.service === 'dynamodb' &&
+    fact.via?.includes('TransactWriteItems') &&
+    fact.actions.every((action) => services.dynamodb.operations.TransactWriteItems.actions.includes(action));
+  if (!row?.actions.length && !transaction)
+    return {
+      ...fact,
+      possible: true,
+      resource: {
+        kind: 'unresolved',
+        text: `unmapped IAM operation ${fact.service}:${fact.operation}`,
+      },
+    };
+  return fact;
 }
 
 /** The input field that names the resource an operation acts on, per service. */
@@ -162,11 +117,16 @@ const NAME_HINTS: Array<[RegExp, string]> = [
   [/STREAM/, 'kinesis'],
 ];
 
-const ARN_SERVICE: Record<string, string> = { states: 'sfn', events: 'eventbridge', logs: 'cloudwatchlogs' };
+const ARN_SERVICE: Record<string, string> = {
+  states: 'sfn',
+  events: 'eventbridge',
+  logs: 'cloudwatchlogs',
+};
 
 /** Which SDK service a resource reference most likely belongs to, from an env var name or an ARN. */
 export function serviceHint(ref: { kind: string; name?: string; value?: string; glob?: string }): string | undefined {
-  const text = ref.kind === 'env' ? ref.name : ref.kind === 'literal' ? ref.value : ref.kind === 'pattern' ? ref.glob : undefined;
+  const text =
+    ref.kind === 'env' ? ref.name : ref.kind === 'literal' ? ref.value : ref.kind === 'pattern' ? ref.glob : undefined;
   if (!text) return undefined;
   const arn = text.match(/^arn:aws[\w-]*:([a-z0-9-]+):/);
   if (arn) return ARN_SERVICE[arn[1]] ?? arn[1];

@@ -1,0 +1,341 @@
+{
+  "format": "terratrust.aws-action-sources/v1",
+  "modelCommit": "3a4a3ae19d45692d5abdbb5d425aef3d9d842897",
+  "snapshotDate": "2026-10-25",
+  "services": {
+    "s3": {
+      "model": "model-s3",
+      "reference": "reference-s3"
+    },
+    "sqs": {
+      "model": "model-sqs",
+      "reference": "reference-sqs"
+    },
+    "sns": {
+      "model": "model-sns",
+      "reference": "reference-sns"
+    },
+    "dynamodb": {
+      "model": "model-dynamodb",
+      "reference": "reference-dynamodb"
+    },
+    "secretsmanager": {
+      "model": "model-secretsmanager",
+      "reference": "reference-secretsmanager"
+    },
+    "sfn": {
+      "model": "model-sfn",
+      "reference": "reference-states"
+    },
+    "ssm": {
+      "model": "model-ssm",
+      "reference": "reference-ssm"
+    },
+    "lambda": {
+      "model": "model-lambda",
+      "reference": "reference-lambda"
+    },
+    "kms": {
+      "model": "model-kms",
+      "reference": "reference-kms"
+    },
+    "eventbridge": {
+      "model": "model-eventbridge",
+      "reference": "reference-events"
+    },
+    "scheduler": {
+      "model": "model-scheduler",
+      "reference": "reference-scheduler"
+    },
+    "iot": {
+      "model": "model-iot",
+      "reference": "reference-iot"
+    },
+    "iotdataplane": {
+      "model": "model-iotdataplane",
+      "reference": "reference-iot"
+    },
+    "cognitoidentityprovider": {
+      "model": "model-cognitoidentityprovider",
+      "reference": "reference-cognito-idp"
+    },
+    "sts": {
+      "model": "model-sts",
+      "reference": "reference-sts"
+    },
+    "cloudwatch": {
+      "model": "model-cloudwatch",
+      "reference": "reference-cloudwatch"
+    },
+    "cloudwatchlogs": {
+      "model": "model-cloudwatchlogs",
+      "reference": "reference-logs"
+    },
+    "firehose": {
+      "model": "model-firehose",
+      "reference": "reference-firehose"
+    },
+    "kinesis": {
+      "model": "model-kinesis",
+      "reference": "reference-kinesis"
+    },
+    "athena": {
+      "model": "model-athena",
+      "reference": "reference-athena"
+    },
+    "bedrockruntime": {
+      "model": "model-bedrockruntime",
+      "reference": "reference-bedrock"
+    },
+    "sesv2": {
+      "model": "model-sesv2",
+      "reference": "reference-ses"
+    },
+    "ses": {
+      "model": "model-ses",
+      "reference": "reference-ses"
+    },
+    "ecs": {
+      "model": "model-ecs",
+      "reference": "reference-ecs"
+    },
+    "ecr": {
+      "model": "model-ecr",
+      "reference": "reference-ecr"
+    },
+    "timestreamwrite": {
+      "model": "model-timestreamwrite",
+      "reference": "reference-timestream"
+    },
+    "timestreamquery": {
+      "model": "model-timestreamquery",
+      "reference": "reference-timestream"
+    },
+    "apigatewaymanagementapi": {
+      "model": "model-apigatewaymanagementapi",
+      "reference": "reference-execute-api"
+    }
+  },
+  "sources": {
+    "model-apigatewaymanagementapi": {
+      "url": "https://raw.githubusercontent.com/aws/api-models-aws/3a4a3ae19d45692d5abdbb5d425aef3d9d842897/models/apigatewaymanagementapi/service/2018-11-29/apigatewaymanagementapi-2018-11-29.json",
+      "sha256": "43d92c4c358869b6422c2870f5d7e8cc7ea26c6f0c2f13c2264c6606e37d0c55"
+    },
+    "model-athena": {
+      "url": "https://raw.githubusercontent.com/aws/api-models-aws/3a4a3ae19d45692d5abdbb5d425aef3d9d842897/models/athena/service/2017-05-18/athena-2017-05-18.json",
+      "sha256": "bd1b3de55549f9de8c1ff8856c0623af35b4c9ed272c6f2dfbdf930beb2ccbdd"
+    },
+    "model-bedrockruntime": {
+      "url": "https://raw.githubusercontent.com/aws/api-models-aws/3a4a3ae19d45692d5abdbb5d425aef3d9d842897/models/bedrock-runtime/service/2023-09-30/bedrock-runtime-2023-09-30.json",
+      "sha256": "d3507d1a16239fd0a7dc10b5711adc57fbc246f6ce99c771d791a460a854e77c"
+    },
+    "model-cloudwatch": {
+      "url": "https://raw.githubusercontent.com/aws/api-models-aws/3a4a3ae19d45692d5abdbb5d425aef3d9d842897/models/cloudwatch/service/2010-08-01/cloudwatch-2010-08-01.json",
+      "sha256": "3e768eb0948c3b8eb86666f2a35833029b74319a8bf9eda7a3ddc2b0586ea389"
+    },
+    "model-cloudwatchlogs": {
+      "url": "https://raw.githubusercontent.com/aws/api-models-aws/3a4a3ae19d45692d5abdbb5d425aef3d9d842897/models/cloudwatch-logs/service/2014-03-28/cloudwatch-logs-2014-03-28.json",
+      "sha256": "188efdb5ed12f703134ca2db58dd5a3ca54dd6e6627daed658b83f0c6614c37d"
+    },
+    "model-cognitoidentityprovider": {
+      "url": "https://raw.githubusercontent.com/aws/api-models-aws/3a4a3ae19d45692d5abdbb5d425aef3d9d842897/models/cognito-identity-provider/service/2016-04-18/cognito-identity-provider-2016-04-18.json",
+      "sha256": "a379fa810f1e35678cd4806ef3527888e5f836dfcb383fa6db760c29bd0ebc0b"
+    },
+    "model-dynamodb": {
+      "url": "https://raw.githubusercontent.com/aws/api-models-aws/3a4a3ae19d45692d5abdbb5d425aef3d9d842897/models/dynamodb/service/2012-08-10/dynamodb-2012-08-10.json",
+      "sha256": "09ed07d716c40d1c8641f1641a380029a6b41cf412110aaca1d9c6db030d25ac"
+    },
+    "model-ecr": {
+      "url": "https://raw.githubusercontent.com/aws/api-models-aws/3a4a3ae19d45692d5abdbb5d425aef3d9d842897/models/ecr/service/2015-09-21/ecr-2015-09-21.json",
+      "sha256": "8fc7a50db3d1b84f5741a681e5a3716fc748eb231ce9a0828c180979bcaa50a5"
+    },
+    "model-ecs": {
+      "url": "https://raw.githubusercontent.com/aws/api-models-aws/3a4a3ae19d45692d5abdbb5d425aef3d9d842897/models/ecs/service/2014-11-13/ecs-2014-11-13.json",
+      "sha256": "2feded0aa213f7d8b60bbba9811d40e55863e37bfda1577fc441262c39c81921"
+    },
+    "model-eventbridge": {
+      "url": "https://raw.githubusercontent.com/aws/api-models-aws/3a4a3ae19d45692d5abdbb5d425aef3d9d842897/models/eventbridge/service/2015-10-07/eventbridge-2015-10-07.json",
+      "sha256": "827b198895a92c2682123f331b103c0dcc39b491d0cffd9fbf20dfc1d5136360"
+    },
+    "model-firehose": {
+      "url": "https://raw.githubusercontent.com/aws/api-models-aws/3a4a3ae19d45692d5abdbb5d425aef3d9d842897/models/firehose/service/2015-08-04/firehose-2015-08-04.json",
+      "sha256": "467874a2c6ed3341efcecfc3c6057939af28fb19eb129baa03e94787f03a4ce5"
+    },
+    "model-iot": {
+      "url": "https://raw.githubusercontent.com/aws/api-models-aws/3a4a3ae19d45692d5abdbb5d425aef3d9d842897/models/iot/service/2015-05-28/iot-2015-05-28.json",
+      "sha256": "3f2ccf37ec937f30f8cc1def1f7c5bcb27497a85cf9ef1c0399ba418861fee38"
+    },
+    "model-iotdataplane": {
+      "url": "https://raw.githubusercontent.com/aws/api-models-aws/3a4a3ae19d45692d5abdbb5d425aef3d9d842897/models/iot-data-plane/service/2015-05-28/iot-data-plane-2015-05-28.json",
+      "sha256": "5eb6675b77dc4f07926baaa31bd0f5d0f33fd47aa523154f62e9166669d8d179"
+    },
+    "model-kinesis": {
+      "url": "https://raw.githubusercontent.com/aws/api-models-aws/3a4a3ae19d45692d5abdbb5d425aef3d9d842897/models/kinesis/service/2013-12-02/kinesis-2013-12-02.json",
+      "sha256": "156f6bde03b979d270b23bb55b0d0b8307b4e4c780febd3a0749f50c4c2b766b"
+    },
+    "model-kms": {
+      "url": "https://raw.githubusercontent.com/aws/api-models-aws/3a4a3ae19d45692d5abdbb5d425aef3d9d842897/models/kms/service/2014-11-01/kms-2014-11-01.json",
+      "sha256": "874c9682f2f5e5c63c1f448972f8a87808150c5b2b5f1cbcc806cca6d4b5cf50"
+    },
+    "model-lambda": {
+      "url": "https://raw.githubusercontent.com/aws/api-models-aws/3a4a3ae19d45692d5abdbb5d425aef3d9d842897/models/lambda/service/2015-03-31/lambda-2015-03-31.json",
+      "sha256": "47517b5b9b1a1e1235b143862ab23216937ccfb446affc3ba154f1b8ee39c656"
+    },
+    "model-s3": {
+      "url": "https://raw.githubusercontent.com/aws/api-models-aws/3a4a3ae19d45692d5abdbb5d425aef3d9d842897/models/s3/service/2006-03-01/s3-2006-03-01.json",
+      "sha256": "73e4f75747396176053a0fcc910261cf670c7e133c1cebcfffefa703fad3ce68"
+    },
+    "model-scheduler": {
+      "url": "https://raw.githubusercontent.com/aws/api-models-aws/3a4a3ae19d45692d5abdbb5d425aef3d9d842897/models/scheduler/service/2021-06-30/scheduler-2021-06-30.json",
+      "sha256": "7917c15f45862b8579b6d798cd9d884a0c9251d267b50f4892bca4d5e8d42ad9"
+    },
+    "model-secretsmanager": {
+      "url": "https://raw.githubusercontent.com/aws/api-models-aws/3a4a3ae19d45692d5abdbb5d425aef3d9d842897/models/secrets-manager/service/2017-10-17/secrets-manager-2017-10-17.json",
+      "sha256": "2738bd8ded2b25834c71089cf71232738972d78befa80fa168ea476978ac8604"
+    },
+    "model-ses": {
+      "url": "https://raw.githubusercontent.com/aws/api-models-aws/3a4a3ae19d45692d5abdbb5d425aef3d9d842897/models/ses/service/2010-12-01/ses-2010-12-01.json",
+      "sha256": "eb061a201fd24d227bc701e9a188146c1ccf39faae04fef37df2110bfbd152d3"
+    },
+    "model-sesv2": {
+      "url": "https://raw.githubusercontent.com/aws/api-models-aws/3a4a3ae19d45692d5abdbb5d425aef3d9d842897/models/sesv2/service/2019-09-27/sesv2-2019-09-27.json",
+      "sha256": "8866fe8e17fe960ab5b7fb3615326fff0a8af73bbebeb5ba87ba6ee1f694e467"
+    },
+    "model-sfn": {
+      "url": "https://raw.githubusercontent.com/aws/api-models-aws/3a4a3ae19d45692d5abdbb5d425aef3d9d842897/models/sfn/service/2016-11-23/sfn-2016-11-23.json",
+      "sha256": "52645ab239427382a05d917d984c1d9fa6c7f2cbd93de794189c6513c7468a79"
+    },
+    "model-sns": {
+      "url": "https://raw.githubusercontent.com/aws/api-models-aws/3a4a3ae19d45692d5abdbb5d425aef3d9d842897/models/sns/service/2010-03-31/sns-2010-03-31.json",
+      "sha256": "4277558234bf8df413fe5b0945a61bc4db6ea8a72582c930b295f793a202da45"
+    },
+    "model-sqs": {
+      "url": "https://raw.githubusercontent.com/aws/api-models-aws/3a4a3ae19d45692d5abdbb5d425aef3d9d842897/models/sqs/service/2012-11-05/sqs-2012-11-05.json",
+      "sha256": "f34a7d2560fb9776206fb35958b8d0fc5f17d33f377bb7512d55a34a8c0c78f0"
+    },
+    "model-ssm": {
+      "url": "https://raw.githubusercontent.com/aws/api-models-aws/3a4a3ae19d45692d5abdbb5d425aef3d9d842897/models/ssm/service/2014-11-06/ssm-2014-11-06.json",
+      "sha256": "5549e422a36d3330bc5fb3177fa2be6b0325376f05b85dfd1ae37d30cb9ba523"
+    },
+    "model-sts": {
+      "url": "https://raw.githubusercontent.com/aws/api-models-aws/3a4a3ae19d45692d5abdbb5d425aef3d9d842897/models/sts/service/2011-06-15/sts-2011-06-15.json",
+      "sha256": "794c8b2142e3a65bc6cc7922005eb85d6b71b02353fef03c0f395e8f902ee2d0"
+    },
+    "model-timestreamquery": {
+      "url": "https://raw.githubusercontent.com/aws/api-models-aws/3a4a3ae19d45692d5abdbb5d425aef3d9d842897/models/timestream-query/service/2018-11-01/timestream-query-2018-11-01.json",
+      "sha256": "6364baaf1f24014461c2ce202656e3531e0ea445e56524068d2b7afb8eeb9054"
+    },
+    "model-timestreamwrite": {
+      "url": "https://raw.githubusercontent.com/aws/api-models-aws/3a4a3ae19d45692d5abdbb5d425aef3d9d842897/models/timestream-write/service/2018-11-01/timestream-write-2018-11-01.json",
+      "sha256": "a007f76c4fa7d2c5893cc67d6043726e381ae7399543d2cbd89ec7d7a31ca619"
+    },
+    "reference-athena": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/athena/athena.json",
+      "sha256": "74f9f88155a2a8327bd303a2c48ec716bd33077db83cbf306df55b0318620513"
+    },
+    "reference-bedrock": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/bedrock/bedrock.json",
+      "sha256": "f620eb1f45aa7d48f4aa58ec5d7caa88e3bbed520b865fb6b0db10f19ca2ec76"
+    },
+    "reference-cloudwatch": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/cloudwatch/cloudwatch.json",
+      "sha256": "c104f1c018ad56586a6c4d90c1969ac237665899cfaba33a7245953b811be701"
+    },
+    "reference-cognito-idp": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/cognito-idp/cognito-idp.json",
+      "sha256": "5970538b768bb26231f9ed22834f34e81001e162c2fe4e148468e0b9cc0880e5"
+    },
+    "reference-dynamodb": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/dynamodb/dynamodb.json",
+      "sha256": "402e6333e42297fdbaa5bc54f64d242a012591a604b4cfa285a40938a467cd2d"
+    },
+    "reference-ecr": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/ecr/ecr.json",
+      "sha256": "4391a3c3653c5b2c11e694b07d669474d684908f147693383994dc0f92896467"
+    },
+    "reference-ecs": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/ecs/ecs.json",
+      "sha256": "ddd306b71a28ab7e9e1ac251c4dd327a437145feabdcfa200ce7a57ebc58f15d"
+    },
+    "reference-events": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/events/events.json",
+      "sha256": "a902e40df5c8f7162c19508c25463d852c8b27a0922fee0acee59cfc84c1dbe5"
+    },
+    "reference-execute-api": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/execute-api/execute-api.json",
+      "sha256": "3b0dc667d0cfc7785789d440f42552819f6769fc9471b9147a4d2056544b33bf"
+    },
+    "reference-firehose": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/firehose/firehose.json",
+      "sha256": "51442837b434b49384d263663b17cbb7b618fefb2dfc0c9062aeeeac66bd060c"
+    },
+    "reference-iot": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/iot/iot.json",
+      "sha256": "b9b3e5086e48e955068936db6767d59c5edb5fa72bd87ddcf43045fa88376785"
+    },
+    "reference-kinesis": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/kinesis/kinesis.json",
+      "sha256": "af98822c350c23646b77e509fb3f025708fa7426d8778ded46d5bc366349cf93"
+    },
+    "reference-kms": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/kms/kms.json",
+      "sha256": "8e9792cfe631c1f947afa9c7e7e189f56f3cef173956e6e5f543b001894c101d"
+    },
+    "reference-lambda": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/lambda/lambda.json",
+      "sha256": "2c9190fe6b3dd3340f2c217d87f2c94ba772c6b866d1701a5729cd94918fdfcc"
+    },
+    "reference-logs": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/logs/logs.json",
+      "sha256": "927b60e7fe3fa10276f5a95dddf3dca03c330da1e382ea709d33c2ed6e3d53f1"
+    },
+    "reference-s3": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/s3/s3.json",
+      "sha256": "42a0406559f357e77fad1e4a77c1d3d9aa62bc90da4dd990c13149ae92147c6d"
+    },
+    "reference-scheduler": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/scheduler/scheduler.json",
+      "sha256": "e76994420811a151e6fed96513a050bab62a6a35545395950c58ba79096f22cd"
+    },
+    "reference-secretsmanager": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/secretsmanager/secretsmanager.json",
+      "sha256": "9744f210a6c6995508505ee8bf953a465a8f445cc9619569b485c2186542c1f8"
+    },
+    "reference-ses": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/ses/ses.json",
+      "sha256": "38eeff855e92589fd86d2e5493f863cfa96ef60c207e64cc0788c6bbfe866e85"
+    },
+    "reference-sns": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/sns/sns.json",
+      "sha256": "36396847c543959df076d04811fa0fc7895a19ab31d946b3aacd0464c4433ed3"
+    },
+    "reference-sqs": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/sqs/sqs.json",
+      "sha256": "ab3025f946395ff6dface0582385527a45435b149fdd3e99e3ee9e3d2eafd541"
+    },
+    "reference-ssm": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/ssm/ssm.json",
+      "sha256": "c7de3c0eb97c48594a268629e5bcea9f3f05e1605d138bfa5e9ea5c4292e1ee7"
+    },
+    "reference-states": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/states/states.json",
+      "sha256": "15d518891f1f7d3fd12de9f55b99b84b3fb975ea20625c26a5e96bd957143dba"
+    },
+    "reference-sts": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/sts/sts.json",
+      "sha256": "06caa6df94aada85e79390a4089d786e4823820bf16dd0672f9b6bed4f96e5c4"
+    },
+    "reference-timestream": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/timestream/timestream.json",
+      "sha256": "f1e5ae51ed37f58afcf71c56d524df1d1dfe05a467efed2d42224ce2e34d61b1"
+    },
+    "s3-permissions": {
+      "url": "https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-with-s3-policy-actions.html",
+      "sha256": "8d3beae1de17a807da3d2f5a97725007e838c75cb6853f42e6a6b0578a07e3a0"
+    },
+    "sdk-mapping": {
+      "url": "https://servicereference.us-east-1.amazonaws.com/v1/mapping.json",
+      "sha256": "32d17e7c58e7c3fffa3a82281eeba28b8c7cf999fa0440d85abb95f2cecd5d8b"
+    }
+  }
+}

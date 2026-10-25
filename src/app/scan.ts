@@ -1,11 +1,12 @@
 import * as path from 'node:path';
 import type { FileSource } from '../terraform/source.js';
 import type { AccessFact, AddedLines, AppScan, EnvRead } from './facts.js';
-import { GoIndex, envReadsGo, extractGo, parseImports, withoutGoComments, type SourceFile } from './go.js';
-import { envReadsPython, extractPython, pythonCode } from './python.js';
-import { envCode, envReadsTs, extractTs } from './typescript.js';
+import { GoIndex, envReadsGo, extractGo, parseImports, type SourceFile } from './go.js';
+import { envReadsPython, extractPython } from './python.js';
+import { envReadsTs, extractTs } from './typescript.js';
 
-const SKIP = /(^|\/)(\.git|\.claude|\.worktrees|node_modules|vendor|testdata|gen|dist|build|\.venv|venv|__pycache__|site-packages|\.terraform|coverage)\//;
+const SKIP =
+  /(^|\/)(\.git|\.claude|\.worktrees|node_modules|vendor|testdata|gen|dist|build|\.venv|venv|__pycache__|site-packages|\.terraform|coverage)\//;
 const TEST = /(_test\.go|\.test\.[jt]sx?|\.spec\.[jt]sx?|(^|\/)test_[^/]*\.py|_test\.py)$/;
 
 export function isAppFile(p: string): boolean {
@@ -26,28 +27,53 @@ export function scanApp(source: FileSource, opts: { addedLines?: AddedLines; ent
   let wanted = opts.addedLines ? all.filter((p) => opts.addedLines!.has(p)) : all;
   if (opts.entries?.length) {
     const closure = entryClosure(source, all, opts.entries);
-    wanted = wanted.filter((p) => closure.has(path.posix.dirname(p)) || opts.entries!.some((e) => p.startsWith(e.replace(/\/$/, '') + '/') && !p.endsWith('.go')));
+    wanted = wanted.filter(
+      (p) =>
+        closure.has(path.posix.dirname(p)) ||
+        opts.entries!.some((e) => p.startsWith(e.replace(/\/$/, '') + '/') && !p.endsWith('.go')),
+    );
   }
   const goAll = all.filter((p) => p.endsWith('.go'));
   if ('prefetch' in source && typeof source.prefetch === 'function') {
-    (source.prefetch as (p: string[]) => void)([...new Set([...wanted, ...goAll, ...all.filter((p) => p.endsWith('go.mod'))])]);
+    (source.prefetch as (p: string[]) => void)([
+      ...new Set([...wanted, ...goAll, ...all.filter((p) => p.endsWith('go.mod'))]),
+    ]);
   }
-  const read = (p: string): SourceFile => ({ path: p, content: source.readFile(p) ?? '' });
+  const read = (p: string): SourceFile => ({
+    path: p,
+    content: source.readFile(p) ?? '',
+  });
 
   const facts: AccessFact[] = [];
   const envReads: EnvRead[] = [];
 
   // Go: one helper index per module (nearest go.mod).
-  const modules = source.allFiles().filter((p) => p === 'go.mod' || p.endsWith('/go.mod')).map((p) => path.posix.dirname(p));
-  const moduleOf = (p: string) => modules.filter((m) => m === '.' || p.startsWith(m + '/')).sort((a, b) => b.length - a.length)[0];
+  const modules = source
+    .allFiles()
+    .filter((p) => p === 'go.mod' || p.endsWith('/go.mod'))
+    .map((p) => path.posix.dirname(p));
+  const moduleOf = (p: string) =>
+    modules.filter((m) => m === '.' || p.startsWith(m + '/')).sort((a, b) => b.length - a.length)[0];
   for (const modDir of modules) {
-    const modulePath = (source.readFile(modDir === '.' ? 'go.mod' : `${modDir}/go.mod`) ?? '').match(/^module\s+(\S+)/m)?.[1];
+    const modulePath = (source.readFile(modDir === '.' ? 'go.mod' : `${modDir}/go.mod`) ?? '').match(
+      /^module\s+(\S+)/m,
+    )?.[1];
     if (!modulePath) continue;
     const inModule = goAll.filter((p) => moduleOf(p) === modDir);
     const rel = (p: string) => (modDir === '.' ? p : p.slice(modDir.length + 1));
-    const index = new GoIndex(modulePath, inModule.map((p) => ({ path: rel(p), content: source.readFile(p) ?? '' })));
+    const index = new GoIndex(
+      modulePath,
+      inModule.map((p) => ({
+        path: rel(p),
+        content: source.readFile(p) ?? '',
+      })),
+    );
     const targets = inModule.filter((p) => wanted.includes(p)).map(read);
-    const r = extractGo(targets, { index, addedLines: opts.addedLines, moduleDir: modDir });
+    const r = extractGo(targets, {
+      index,
+      addedLines: opts.addedLines,
+      moduleDir: modDir,
+    });
     // A helper's own call on its parameter is redundant when its callers were scanned: they name the resource.
     const helperPackages = new Set(r.facts.flatMap((f) => (f.viaPackage ? [f.viaPackage] : [])));
     facts.push(...r.facts.filter((f) => !(f.internal && helperPackages.has(index.packageOf(rel(f.file))))));
@@ -56,7 +82,10 @@ export function scanApp(source: FileSource, opts: { addedLines?: AddedLines; ent
 
   const ts = wanted.filter((p) => /\.(ts|tsx|js|mjs|cjs)$/.test(p)).map(read);
   const py = wanted.filter((p) => p.endsWith('.py')).map(read);
-  for (const r of [extractTs(ts, { addedLines: opts.addedLines }), extractPython(py, { addedLines: opts.addedLines })]) {
+  for (const r of [
+    extractTs(ts, { addedLines: opts.addedLines }),
+    extractPython(py, { addedLines: opts.addedLines }),
+  ]) {
     facts.push(...r.facts);
     envReads.push(...r.envReads);
   }
@@ -70,10 +99,10 @@ export function scanApp(source: FileSource, opts: { addedLines?: AddedLines; ent
       const content = source.readFile(p) ?? '';
       // Env reads in comments do not count, as in extraction.
       const reads = p.endsWith('.go')
-        ? envReadsGo(withoutGoComments(content), p)
+        ? envReadsGo(content, p)
         : p.endsWith('.py')
-          ? envReadsPython(pythonCode(content, false), p)
-          : envReadsTs(envCode(content), p);
+          ? envReadsPython(content, p)
+          : envReadsTs(content, p);
       for (const e of reads) names.add(e.name);
     }
     fileEnv.set(f, [...names]);
@@ -88,8 +117,14 @@ export function scanApp(source: FileSource, opts: { addedLines?: AddedLines; ent
  */
 export function entryClosure(source: FileSource, appFiles: string[], entries: string[]): Set<string> {
   const goFiles = appFiles.filter((p) => p.endsWith('.go'));
-  const modules = source.allFiles().filter((p) => p === 'go.mod' || p.endsWith('/go.mod')).map((p) => path.posix.dirname(p));
-  const modulePaths = modules.map((m) => ({ dir: m, path: (source.readFile(m === '.' ? 'go.mod' : `${m}/go.mod`) ?? '').match(/^module\s+(\S+)/m)?.[1] }));
+  const modules = source
+    .allFiles()
+    .filter((p) => p === 'go.mod' || p.endsWith('/go.mod'))
+    .map((p) => path.posix.dirname(p));
+  const modulePaths = modules.map((m) => ({
+    dir: m,
+    path: (source.readFile(m === '.' ? 'go.mod' : `${m}/go.mod`) ?? '').match(/^module\s+(\S+)/m)?.[1],
+  }));
   const dirOfImport = (imp: string): string | undefined => {
     for (const m of modulePaths) {
       if (!m.path) continue;

@@ -4,7 +4,7 @@ import { actionsFor } from './actions.js';
 // SDK operation names whose IAM action differs from `<prefix>:<Operation>` (Service Authorization Reference).
 const CASES: Array<[string, string, string[]]> = [
   ['lambda', 'Invoke', ['lambda:InvokeFunction']],
-  ['lambda', 'InvokeAsync', ['lambda:InvokeFunction']],
+  ['lambda', 'InvokeAsync', ['lambda:InvokeAsync']],
   ['lambda', 'InvokeWithResponseStream', ['lambda:InvokeFunction']],
   ['s3', 'ListBuckets', ['s3:ListAllMyBuckets']],
   ['s3', 'ListObjectsV2', ['s3:ListBucket']],
@@ -26,4 +26,19 @@ const CASES: Array<[string, string, string[]]> = [
 
 test.each(CASES)('%s %s needs %p (round 7)', (service, operation, actions) => {
   expect(actionsFor(service, operation)).toEqual(actions);
+});
+
+// AWS Service Reference maps transaction writes to the actual item operations.
+test('TransactWriteItems maps to per-item write actions', () => {
+  expect(actionsFor('dynamodb', 'TransactWriteItems')).toEqual([
+    'dynamodb:ConditionCheckItem',
+    'dynamodb:DeleteItem',
+    'dynamodb:PutItem',
+    'dynamodb:UpdateItem',
+  ]);
+});
+
+test('Bedrock Converse uses the permission named in AWS SDK documentation', () => {
+  expect(actionsFor('bedrockruntime', 'Converse')).toEqual(['bedrock:InvokeModel']);
+  expect(actionsFor('bedrockruntime', 'ConverseStream')).toEqual(['bedrock:InvokeModelWithResponseStream']);
 });
