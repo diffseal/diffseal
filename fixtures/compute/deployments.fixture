@@ -1,0 +1,173 @@
+{
+  "cases": [
+    {
+      "name": "Pod Identity binds a rendered workload to its namespace and service account",
+      "files": {
+        "infra/prod/main.tf": "terraform {\n backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"orders\" {\n name=\"orders\"\n assume_role_policy=\"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n role=aws_iam_role.orders.name\n policy=jsonencode({Statement=[{Effect=\"Allow\",Action=\"s3:GetObject\",Resource=\"arn:aws:s3:::reports/*\"}]})\n}\nresource \"aws_eks_pod_identity_association\" \"orders\" {\n cluster_name=\"production\"\n namespace=\"apps\"\n service_account=\"orders\"\n role_arn=aws_iam_role.orders.arn\n}\n",
+        "deploy/deploy.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: orders\n  namespace: apps\nspec:\n  template:\n    spec:\n      serviceAccountName: orders\n      containers:\n        - name: orders\n          image: registry.example.com/orders:v1\n          env:\n            - name: DATA_BUCKET\n              value: reports\n",
+        "src/app.ts": "import {GetObjectCommand} from '@aws-sdk/client-s3';\nnew GetObjectCommand({Bucket:process.env.DATA_BUCKET});\n"
+      },
+      "expect": {
+        "statuses": [
+          "GRANTED"
+        ],
+        "role": "aws_iam_role.orders"
+      }
+    },
+    {
+      "name": "A ko image ties its Go entry package to the workload role without env matching",
+      "files": {
+        "infra/prod/main.tf": "terraform {\n backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"orders\" {\n name=\"orders\"\n assume_role_policy=\"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n role=aws_iam_role.orders.name\n policy=jsonencode({Statement=[{Effect=\"Allow\",Action=\"s3:GetObject\",Resource=\"arn:aws:s3:::reports/*\"}]})\n}\nresource \"aws_eks_pod_identity_association\" \"orders\" {\n cluster_name=\"production\"\n namespace=\"apps\"\n service_account=\"orders\"\n role_arn=aws_iam_role.orders.arn\n}\n",
+        "deploy/deploy.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: orders\n  namespace: apps\nspec:\n  template:\n    spec:\n      serviceAccountName: orders\n      containers:\n        - name: orders\n          image: ko://example.com/app/cmd/orders\n",
+        "go.mod": "module example.com/app\n\ngo 1.26\n",
+        "cmd/orders/main.go": "package main\nimport \"github.com/aws/aws-sdk-go-v2/service/s3\"\nfunc main(){ _ = &s3.GetObjectInput{Bucket:\"reports\"} }\n"
+      },
+      "expect": {
+        "statuses": [
+          "GRANTED"
+        ],
+        "role": "aws_iam_role.orders",
+        "entries": [
+          "cmd/orders"
+        ]
+      }
+    },
+    {
+      "name": "Rendered IRSA workloads select the matching service account instead of every annotated role",
+      "files": {
+        "infra/prod/main.tf": "terraform {\n backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"orders\" {\n name=\"orders\"\n assume_role_policy=\"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n role=aws_iam_role.orders.name\n policy=jsonencode({Statement=[{Effect=\"Allow\",Action=\"s3:GetObject\",Resource=\"arn:aws:s3:::reports/*\"}]})\n}\nprovider \"aws\" {\n allowed_account_ids=[\"111111111111\"]\n}\nresource \"aws_iam_role\" \"other\" {\n name=\"other\"\n assume_role_policy=\"{}\"\n}\n",
+        "deploy/deploy.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: orders\n  namespace: apps\nspec:\n  template:\n    spec:\n      serviceAccountName: orders\n      containers:\n        - name: orders\n          image: ko://example.com/app/cmd/orders\n",
+        "go.mod": "module example.com/app\n\ngo 1.26\n",
+        "cmd/orders/main.go": "package main\nimport \"github.com/aws/aws-sdk-go-v2/service/s3\"\nfunc main(){ _ = &s3.GetObjectInput{Bucket:\"reports\"} }\n",
+        "deploy/accounts.yaml": "apiVersion: v1\nkind: ServiceAccount\nmetadata:\n  name: orders\n  namespace: apps\n  annotations:\n    eks.amazonaws.com/role-arn: arn:aws:iam::111111111111:role/orders\n---\napiVersion: v1\nkind: ServiceAccount\nmetadata:\n  name: unrelated\n  namespace: apps\n  annotations:\n    eks.amazonaws.com/role-arn: arn:aws:iam::111111111111:role/other\n"
+      },
+      "expect": {
+        "statuses": [
+          "GRANTED"
+        ],
+        "role": "aws_iam_role.orders",
+        "entries": [
+          "cmd/orders"
+        ],
+        "notes": "Deployment bindings"
+      }
+    },
+    {
+      "name": "An unrendered service account does not silently mean the default account",
+      "files": {
+        "infra/prod/main.tf": "terraform {\n backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"orders\" {\n name=\"orders\"\n assume_role_policy=\"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n role=aws_iam_role.orders.name\n policy=jsonencode({Statement=[{Effect=\"Allow\",Action=\"s3:GetObject\",Resource=\"arn:aws:s3:::reports/*\"}]})\n}\nresource \"aws_eks_pod_identity_association\" \"orders\" {\n cluster_name=\"production\"\n namespace=\"apps\"\n service_account=\"default\"\n role_arn=aws_iam_role.orders.arn\n}\n",
+        "deploy/deploy.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: orders\n  namespace: apps\nspec:\n  template:\n    spec:\n      serviceAccountName: \"{{ .Values.serviceAccount.name }}\"\n      containers:\n        - name: orders\n          image: registry.example.com/orders:v1\n          env:\n            - name: DATA_BUCKET\n              value: reports\n",
+        "src/app.ts": "import {GetObjectCommand} from '@aws-sdk/client-s3';\nnew GetObjectCommand({Bucket:process.env.DATA_BUCKET});\n"
+      },
+      "expect": {
+        "statuses": [
+          "UNRESOLVED"
+        ],
+        "notes": "unrendered"
+      }
+    },
+    {
+      "name": "Rendered workload ConfigMap references provide resource env values",
+      "files": {
+        "infra/prod/main.tf": "terraform {\n backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"orders\" {\n name=\"orders\"\n assume_role_policy=\"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n role=aws_iam_role.orders.name\n policy=jsonencode({Statement=[{Effect=\"Allow\",Action=\"s3:GetObject\",Resource=\"arn:aws:s3:::reports/*\"}]})\n}\nresource \"aws_eks_pod_identity_association\" \"orders\" {\n cluster_name=\"production\"\n namespace=\"apps\"\n service_account=\"orders\"\n role_arn=aws_iam_role.orders.arn\n}\n",
+        "deploy/deploy.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: orders\n  namespace: apps\nspec:\n  template:\n    spec:\n      serviceAccountName: orders\n      containers:\n        - name: orders\n          image: registry.example.com/orders:v1\n          env:\n            - name: DATA_BUCKET\n              valueFrom:\n                configMapKeyRef:\n                  name: settings\n                  key: bucket\n",
+        "src/app.ts": "import {GetObjectCommand} from '@aws-sdk/client-s3';\nnew GetObjectCommand({Bucket:process.env.DATA_BUCKET});\n",
+        "deploy/settings.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: settings\n  namespace: apps\ndata:\n  bucket: reports\n"
+      },
+      "expect": {
+        "statuses": [
+          "GRANTED"
+        ],
+        "role": "aws_iam_role.orders"
+      }
+    },
+    {
+      "name": "Literal ECS render and deploy actions tie a ko build to the task role",
+      "files": {
+        "infra/prod/main.tf": "terraform {\n backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"orders\" {\n name=\"orders\"\n assume_role_policy=\"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n role=aws_iam_role.orders.name\n policy=jsonencode({Statement=[{Effect=\"Allow\",Action=\"s3:GetObject\",Resource=\"arn:aws:s3:::reports/*\"}]})\n}\nprovider \"aws\" {\n allowed_account_ids=[\"111111111111\"]\n}\nresource \"aws_iam_role\" \"unrelated\" {\n name=\"unrelated\"\n assume_role_policy=\"{}\"\n}\n",
+        "go.mod": "module example.com/app\n\ngo 1.26\n",
+        "cmd/orders/main.go": "package main\nimport \"github.com/aws/aws-sdk-go-v2/service/s3\"\nfunc main(){ _ = &s3.GetObjectInput{Bucket:\"reports\"} }\n",
+        "deploy/task-definition.json": "{\"family\": \"orders\", \"taskRoleArn\": \"arn:aws:iam::111111111111:role/orders\", \"containerDefinitions\": [{\"name\": \"orders\", \"image\": \"old\"}]}",
+        ".github/workflows/deploy.yml": "name: Deploy\non: push\njobs:\n  deploy:\n    runs-on: ubuntu-latest\n    steps:\n      - id: build\n        run: echo \"image=$(ko build ./cmd/orders)\" >> \"$GITHUB_OUTPUT\"\n      - id: render\n        uses: aws-actions/amazon-ecs-render-task-definition@v1\n        with:\n          task-definition: deploy/task-definition.json\n          container-name: orders\n          image: ${{ steps.build.outputs.image }}\n      - uses: aws-actions/amazon-ecs-deploy-task-definition@v2\n        with:\n          task-definition: ${{ steps.render.outputs.task-definition }}\n          cluster: production\n          service: orders\n",
+        "deploy/unrelated-task-definition.json": "{\"taskRoleArn\": \"arn:aws:iam::111111111111:role/unrelated\"}"
+      },
+      "expect": {
+        "statuses": [
+          "GRANTED"
+        ],
+        "role": "aws_iam_role.orders",
+        "entries": [
+          "cmd/orders"
+        ],
+        "notes": "ECS pipeline"
+      }
+    },
+    {
+      "name": "Rendered ECS environment overrides are used for the mapped binary",
+      "files": {
+        "infra/prod/main.tf": "terraform {\n backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"orders\" {\n name=\"orders\"\n assume_role_policy=\"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n role=aws_iam_role.orders.name\n policy=jsonencode({Statement=[{Effect=\"Allow\",Action=\"s3:GetObject\",Resource=\"arn:aws:s3:::reports/*\"}]})\n}\nprovider \"aws\" {\n allowed_account_ids=[\"111111111111\"]\n}\nresource \"aws_iam_role\" \"unrelated\" {\n name=\"unrelated\"\n assume_role_policy=\"{}\"\n}\n",
+        "go.mod": "module example.com/app\n\ngo 1.26\n",
+        "cmd/orders/main.go": "package main\nimport (\n \"github.com/aws/aws-sdk-go-v2/service/s3\"\n \"os\"\n)\nfunc main(){ _ = &s3.GetObjectInput{Bucket:os.Getenv(\"DATA_BUCKET\")} }\n",
+        "deploy/task-definition.json": "{\"family\": \"orders\", \"taskRoleArn\": \"arn:aws:iam::111111111111:role/orders\", \"containerDefinitions\": [{\"name\": \"orders\", \"image\": \"old\"}]}",
+        ".github/workflows/deploy.yml": "name: Deploy\non: push\njobs:\n  deploy:\n    runs-on: ubuntu-latest\n    steps:\n      - id: build\n        run: echo \"image=$(ko build ./cmd/orders)\" >> \"$GITHUB_OUTPUT\"\n      - id: render\n        uses: aws-actions/amazon-ecs-render-task-definition@v1\n        with:\n          task-definition: deploy/task-definition.json\n          container-name: orders\n          image: ${{ steps.build.outputs.image }}\n          environment-variables: |\n            DATA_BUCKET=reports\n      - uses: aws-actions/amazon-ecs-deploy-task-definition@v2\n        with:\n          task-definition: ${{ steps.render.outputs.task-definition }}\n          cluster: production\n          service: orders\n",
+        "deploy/unrelated-task-definition.json": "{\"taskRoleArn\": \"arn:aws:iam::111111111111:role/unrelated\"}"
+      },
+      "expect": {
+        "statuses": [
+          "GRANTED"
+        ],
+        "role": "aws_iam_role.orders",
+        "entries": [
+          "cmd/orders"
+        ],
+        "notes": "ECS pipeline"
+      }
+    },
+    {
+      "name": "The same service account in two clusters remains ambiguous",
+      "files": {
+        "infra/prod/main.tf": "terraform {\n backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"orders\" {\n name=\"orders\"\n assume_role_policy=\"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n role=aws_iam_role.orders.name\n policy=jsonencode({Statement=[{Effect=\"Allow\",Action=\"s3:GetObject\",Resource=\"arn:aws:s3:::reports/*\"}]})\n}\nresource \"aws_eks_pod_identity_association\" \"orders\" {\n cluster_name=\"production\"\n namespace=\"apps\"\n service_account=\"orders\"\n role_arn=aws_iam_role.orders.arn\n}\nresource \"aws_eks_pod_identity_association\" \"second\" {\n cluster_name=\"another\"\n namespace=\"apps\"\n service_account=\"orders\"\n role_arn=aws_iam_role.orders.arn\n}\n",
+        "deploy/deploy.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: orders\n  namespace: apps\nspec:\n  template:\n    spec:\n      serviceAccountName: orders\n      containers:\n        - name: orders\n          image: registry.example.com/orders:v1\n          env:\n            - name: DATA_BUCKET\n              value: reports\n",
+        "src/app.ts": "import {GetObjectCommand} from '@aws-sdk/client-s3';\nnew GetObjectCommand({Bucket:process.env.DATA_BUCKET});\n"
+      },
+      "expect": {
+        "statuses": [
+          "UNRESOLVED"
+        ],
+        "notes": "ambiguous"
+      }
+    },
+    {
+      "name": "Secret envFrom stays unknown without claiming the resource env variable is missing",
+      "files": {
+        "infra/prod/main.tf": "terraform {\n backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"orders\" {\n name=\"orders\"\n assume_role_policy=\"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n role=aws_iam_role.orders.name\n policy=jsonencode({Statement=[{Effect=\"Allow\",Action=\"s3:GetObject\",Resource=\"arn:aws:s3:::reports/*\"}]})\n}\nresource \"aws_eks_pod_identity_association\" \"orders\" {\n cluster_name=\"production\"\n namespace=\"apps\"\n service_account=\"orders\"\n role_arn=aws_iam_role.orders.arn\n}\n",
+        "deploy/deploy.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: orders\n  namespace: apps\nspec:\n  template:\n    spec:\n      serviceAccountName: orders\n      containers:\n        - name: orders\n          image: registry.example.com/orders:v1\n          envFrom:\n            - secretRef:\n                name: settings\n",
+        "src/app.ts": "import {GetObjectCommand} from '@aws-sdk/client-s3';\nnew GetObjectCommand({Bucket:process.env.DATA_BUCKET});\n"
+      },
+      "expect": {
+        "statuses": [
+          "UNRESOLVED"
+        ]
+      }
+    },
+    {
+      "name": "Custom ko main overrides are reported instead of guessing the entry package",
+      "files": {
+        "infra/prod/main.tf": "terraform {\n backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"orders\" {\n name=\"orders\"\n assume_role_policy=\"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n role=aws_iam_role.orders.name\n policy=jsonencode({Statement=[{Effect=\"Allow\",Action=\"s3:GetObject\",Resource=\"arn:aws:s3:::reports/*\"}]})\n}\nresource \"aws_eks_pod_identity_association\" \"orders\" {\n cluster_name=\"production\"\n namespace=\"apps\"\n service_account=\"orders\"\n role_arn=aws_iam_role.orders.arn\n}\n",
+        "deploy/deploy.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: orders\n  namespace: apps\nspec:\n  template:\n    spec:\n      serviceAccountName: orders\n      containers:\n        - name: orders\n          image: ko://example.com/app/cmd/orders\n",
+        "go.mod": "module example.com/app\n\ngo 1.26\n",
+        "cmd/orders/main.go": "package main\nimport \"github.com/aws/aws-sdk-go-v2/service/s3\"\nfunc main(){ _ = &s3.GetObjectInput{Bucket:\"reports\"} }\n",
+        ".ko.yaml": "builds:\n  - id: custom\n    dir: ./other\n    main: ./cmd/other\n"
+      },
+      "expect": {
+        "statuses": [
+          "UNRESOLVED"
+        ],
+        "entries": [
+          "cmd/orders"
+        ],
+        "notes": "custom ko"
+      }
+    }
+  ]
+}

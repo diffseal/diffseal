@@ -1,8 +1,8 @@
-import { UNKNOWN_PART, configAddress, isRedacted, isUnknown, reveal, scrubDeep } from '../core/model.js';
+import { Unknown, UNKNOWN_PART, configAddress, isRedacted, isUnknown, reveal, scrubDeep } from '../core/model.js';
 import { parsePolicy } from '../policy/iam.js';
 import { ANY_OF, IAM_PREFIX, UNSCOPED_OPERATIONS, serviceHint } from '../app/actions.js';
 import type { AccessFact, EnvRead, ResourceRef } from '../app/facts.js';
-import type { InfraIndex, Role, RoleStatement } from './infraIndex.js';
+import type { Compute, InfraIndex, Role, RoleStatement } from './infraIndex.js';
 import { MANAGED_POLICY_ACTIONS, managedPolicyName } from './managedPolicies.js';
 
 export type LinkStatus = 'GRANTED' | 'NOT_GRANTED' | 'UNRESOLVED' | 'MISSING';
@@ -26,6 +26,8 @@ export interface AppLink {
 }
 
 export interface ReconcileOptions {
+  /** Proven deployment bindings for particular application files. */
+  fileComputes?: Map<string, Compute[]>;
   /** Roles the app runs as, by name or ARN (from a task definition in the app repo, or configuration). */
   roleNames?: string[];
   /** Env vars read anywhere in each file, used to find the compute when a call itself names no env var. */
@@ -562,7 +564,7 @@ export function reconcile(facts: AccessFact[], envReads: EnvRead[], index: Infra
       actions: [],
       resource: name,
       access: `reads ${name}`,
-      detail: `No Lambda or ECS task in the analyzed Terraform sets ${name}`,
+      detail: index.computes.some(c => c.type === 'kubernetes' || c.type === 'ecs-pipeline') ? `No analyzed compute sets ${name}` : `No Lambda or ECS task in the analyzed Terraform sets ${name}`,
     });
   }
   // Matching reads sensitive values (env, policies); nothing written for the reader may contain one.
@@ -581,8 +583,13 @@ function looksLikeInfraEnv(name: string): boolean {
   return /(_ARN|_URL|_BUCKET|_BUCKET_NAME|_QUEUE|_TOPIC|_TABLE|_TABLE_NAME|_SECRET_NAME|_SECRET_ID|_STREAM|_SFN_NAME|_STATE_MACHINE|_PARAMETER)$/.test(name);
 }
 
+const computeEnv = (c:Compute,name:string):unknown => name in c.env ? c.env[name] : c.opaqueEnv ? new Unknown('External environment source is not statically known') : undefined;
+
 function findTargets(fact: AccessFact, resource: ResourceRef, index: InfraIndex, opts: ReconcileOptions): Target[] {
   const envName = resource.kind === 'env' ? resource.name : undefined;
+  const bound = opts.fileComputes?.get(fact.file);
+  if (bound) return bound.flatMap(c => index.rolesFor(c).map(role => ({root:c.root,role,...(envName?{envName,envValue:computeEnv(c,envName)}:{})})));
+
   if (opts.roleNames?.length) {
     // The role is given; the env var's value still comes from a compute that runs as that role.
     return opts.roleNames.flatMap((n) =>
@@ -590,7 +597,7 @@ function findTargets(fact: AccessFact, resource: ResourceRef, index: InfraIndex,
         const setter = envName
           ? index.computesSetting(envName).find((c) => index.rolesFor(c).some((r) => r.root === role.root && r.instance === role.instance))
           : undefined;
-        return { root: role.root, role, ...(setter && envName ? { envValue: setter.env[envName], envName } : {}) };
+        return { root: role.root, role, ...(setter && envName ? { envValue: computeEnv(setter,envName), envName } : {}) };
       })
     );
   }
@@ -611,7 +618,7 @@ function findTargets(fact: AccessFact, resource: ResourceRef, index: InfraIndex,
   for (const c of candidates) {
     for (const role of index.rolesFor(c)) {
       if (!out.some((o) => o.root === role.root && o.role.instance === role.instance)) {
-        out.push({ root: c.root, role, envValue: envName && envName in c.env ? c.env[envName] : undefined, envName });
+        out.push({ root: c.root, role, envValue: envName ? computeEnv(c,envName) : undefined, envName });
       }
     }
   }

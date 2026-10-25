@@ -1,3 +1,4 @@
+import { deploymentIndex } from '../app/deployments.js';
 import * as path from 'node:path';
 import { analyze } from '../analysis/analyze.js';
 import type { AnalysisResult, Gate, PolicyConfig, ResourceChange } from '../core/model.js';
@@ -181,7 +182,10 @@ function checkAppChanges(
   const scan = scanApp(head, { addedLines });
   if (!scan.facts.length && !scan.envReads.length) return [];
   const evals = discoverRoots(head, opts.rootsUnder).map((r) => evaluated.get(r) ?? evaluateRoot(head, r));
-  return reconcile(scan.facts, scan.envReads, new InfraIndex(evals), { fileEnv: scan.fileEnv, pairWithChangedEnv: true });
+  const index = new InfraIndex(evals);
+  const deployments = deploymentIndex(head, index);
+  index.computes.push(...deployments.computes);
+  return reconcile(scan.facts, scan.envReads, index, { fileEnv: scan.fileEnv, fileComputes: deployments.files, pairWithChangedEnv: true });
 }
 
 const FILE_FUNCTIONS = /\b(file|templatefile|fileexists|filebase64|filebase64sha256|filebase64sha512|filemd5|filesha1|filesha256|filesha512)\s*\(/;

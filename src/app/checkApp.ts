@@ -1,3 +1,4 @@
+import { deploymentIndex } from './deployments.js';
 import * as path from 'node:path';
 import type { Gate } from '../core/model.js';
 import { InfraIndex } from '../reconcile/infraIndex.js';
@@ -37,6 +38,7 @@ export interface CheckAppResult {
   links: AppLink[];
   gate: Gate;
   notes: string[];
+  deployments?: import('./deployments.js').DeploymentMapping[];
 }
 
 export function checkApp(opts: CheckAppOptions): CheckAppResult {
@@ -77,15 +79,22 @@ export function checkApp(opts: CheckAppOptions): CheckAppResult {
   const roots = discoverRoots(infraSource, opts.rootsUnder ?? link.infra?.rootsUnder);
   const index = new InfraIndex(roots.map((r) => evaluateRoot(infraSource, r)));
 
+  const deployments = deploymentIndex(appSource, index);
+  index.computes.push(...deployments.computes);
+  notes.push(...deployments.notes);
+
+  const explicitRoles = Boolean(opts.roles?.length || JSON.parse((baseSource ?? appSource).readFile('.terratrust.json') ?? '{}').roles?.length);
   const roles = opts.roles?.length ? opts.roles : link.roles ?? [];
   for (const r of roles) {
     if (!index.rolesNamed(r).length) notes.push(`Role ${r} is not defined in ${roots.length} Terraform root(s) of ${infraRepo}.`);
   }
-  if (roles.length) notes.push(`Runs as ${roles.join(', ')} (from ${opts.roles?.length ? '--role' : link.sources.join(', ')}).`);
+  if (deployments.files.size && !explicitRoles) notes.push('Deployment bindings select roles for matched source files; repository role hints apply only to unmatched files.');
+  else if (roles.length) notes.push(`Runs as ${roles.join(', ')} (from ${opts.roles?.length ? '--role' : link.sources.join(', ')}).`);
 
   const links = reconcile(scan.facts, scan.envReads, index, {
     roleNames: roles.length ? roles : undefined,
     fileEnv: scan.fileEnv,
+    fileComputes: explicitRoles ? undefined : deployments.files,
     externallyDefinedEnv: new Set(link.env),
     pairWithChangedEnv: Boolean(opts.base),
   });
@@ -97,6 +106,7 @@ export function checkApp(opts: CheckAppOptions): CheckAppResult {
     link,
     roots,
     links,
+    ...(deployments.mappings.length ? {deployments:deployments.mappings} : {}),
     gate: {
       result: attention.length || linkChanged ? 'review' : 'pass',
       reasons: [...attention.map((l) => `${l.status}: ${l.callsite}: ${l.access}`), ...(linkChanged ? ['.terratrust.json changed'] : [])],
