@@ -1,0 +1,936 @@
+{
+  "_meta": {
+    "verified": "2026-10-25",
+    "notes": [
+      "Research and per-claim sources: docs/research/compliance-crosswalk.md.",
+      "fit=direct: the cited text names the thing the rule checks. fit=supporting: the rule produces evidence toward the provision but does not satisfy it alone.",
+      "EU texts were read from the Official Journal versions served by the Publications Office (publications.europa.eu/resource/celex/<CELEX>); EUR-Lex itself returned an AWS WAF challenge to scripted requests. Source URLs point at the EUR-Lex ELI pages for the same acts.",
+      "ISO titles come from ISO's free sample of ISO/IEC 27002:2022 on iso.org (table of contents, clauses 5-8). The ISO/IEC 27001:2022 sample on iso.org says its text is aligned with ISO/IEC 27002:2022, but the Annex A table itself is not in the free sample. Treat the A.x = 27002 clause x mapping as standard practice that was not re-checked against Annex A.",
+      "Not verified, so left out of the arrays: ISO A.5.31, A.8.13 and A.8.15. ISO's sample shows these entries only under their 2013 numbers, and the full Online Browsing Platform requires accepting ISO's terms of use, which was not done. src/policy/rules.ts uses ISO27001:A.8.13 in several rules. Confirm A.8.13 with a licensed copy and add it to backup (direct) and A.8.15 to logging (direct).",
+      "soc2_tsc arrays are empty on purpose. The AICPA 2017 Trust Services Criteria (revised points of focus 2022) PDF is behind an AICPA sign-in (page metadata isLocked=locked, restriction loggedInRole). Unverified candidates from the spec and audit: CC6.1, CC6.3 (least-privilege), CC6.7 (encryption-in-transit), CC8.1 (change-management, supply-chain), CC9.2 (supply-chain), A1.2 (backup, redundancy), A1.3 (restore testing). Check against https://www.aicpa-cima.com/resources/download/2017-trust-services-criteria-with-revised-points-of-focus-2022 before use.",
+      "DORA and its RTS apply only to the financial entities in DORA Art. 2(1)(a)-(t). Show those columns only when the customer declares itself a financial entity. The RTS Title II articles cited here apply to entities outside DORA Art. 16(1); Title III (Arts. 28-41) is the simplified framework.",
+      "Implementing Regulation (EU) 2024/2690 covers only DNS service providers, TLD name registries, cloud computing, data centre, CDN, managed service and managed security service providers, online marketplaces, search engines, social networking platforms and trust service providers (Art. 1). Energy is not covered.",
+      "Sweden: cybersäkerhetslag (2025:1506) 2 kap. 3 § points 1-10 mirror NIS2 Art. 21(2)(a)-(j). For non-digital sectors such as energy, the detailed security-measure rules are MCFFS 2026:11 (in force 2026-10-01). The framework keys in this file are fixed, so Swedish references are listed in the research doc only.",
+      "secure-deletion is mapped as deliberate, irretrievable deletion. If the TerraTrust rule actually checks deletion protection (deletion_protection, recovery_window_in_days, skip_final_snapshot), use the backup mapping instead.",
+      "data-residency entries are all supporting. A region restriction alone does not show compliance with GDPR Chapter V or DORA Art. 30(2)(b), which is a contract clause."
+    ]
+  },
+  "encryption-at-rest": {
+    "iso27001_2022": [
+      {
+        "ref": "A.8.24",
+        "title": "Use of cryptography",
+        "fit": "direct",
+        "source": "https://www.iso.org/standard/75652.html"
+      }
+    ],
+    "nis2": [
+      {
+        "ref": "Art. 21(2)(h)",
+        "title": "policies and procedures regarding the use of cryptography and, where appropriate, encryption",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/dir/2022/2555/oj"
+      }
+    ],
+    "nis2_cir_2024_2690": [
+      {
+        "ref": "Annex 9.2(a)",
+        "title": "Cryptography: type, strength and quality of cryptographic measures, including data at rest and data in transit",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg_impl/2024/2690/oj"
+      },
+      {
+        "ref": "Annex 9.2(c)",
+        "title": "Cryptography: approach to key management, including changing or updating keys",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg_impl/2024/2690/oj"
+      }
+    ],
+    "dora": [
+      {
+        "ref": "Art. 9(4)(d)",
+        "title": "strong authentication mechanisms and protection measures of cryptographic keys whereby data is encrypted",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg/2022/2554/oj"
+      },
+      {
+        "ref": "Art. 9(2)",
+        "title": "ICT security policies, procedures, protocols and tools for availability, authenticity, integrity and confidentiality of data, whether at rest, in use or in transit",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg/2022/2554/oj"
+      }
+    ],
+    "dora_rts_2024_1774": [
+      {
+        "ref": "Art. 6(2)(a)",
+        "title": "Encryption and cryptographic controls: the encryption of data at rest and in transit",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
+      },
+      {
+        "ref": "Art. 7",
+        "title": "Cryptographic key management",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
+      }
+    ],
+    "soc2_tsc": [],
+    "gdpr": [
+      {
+        "ref": "Art. 32(1)(a)",
+        "title": "the pseudonymisation and encryption of personal data",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg/2016/679/oj"
+      }
+    ]
+  },
+  "encryption-in-transit": {
+    "iso27001_2022": [
+      {
+        "ref": "A.8.24",
+        "title": "Use of cryptography",
+        "fit": "direct",
+        "source": "https://www.iso.org/standard/75652.html"
+      }
+    ],
+    "nis2": [
+      {
+        "ref": "Art. 21(2)(h)",
+        "title": "policies and procedures regarding the use of cryptography and, where appropriate, encryption",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/dir/2022/2555/oj"
+      }
+    ],
+    "nis2_cir_2024_2690": [
+      {
+        "ref": "Annex 9.2(a)",
+        "title": "Cryptography: type, strength and quality of cryptographic measures, including data at rest and data in transit",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg_impl/2024/2690/oj"
+      },
+      {
+        "ref": "Annex 9.2(b)",
+        "title": "Cryptography: protocols or families of protocols, cryptographic algorithms and cipher strength to be approved",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg_impl/2024/2690/oj"
+      }
+    ],
+    "dora": [
+      {
+        "ref": "Art. 9(3)(a)",
+        "title": "ensure the security of the means of transfer of data",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg/2022/2554/oj"
+      },
+      {
+        "ref": "Art. 9(2)",
+        "title": "ICT security policies, procedures, protocols and tools for availability, authenticity, integrity and confidentiality of data, whether at rest, in use or in transit",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg/2022/2554/oj"
+      }
+    ],
+    "dora_rts_2024_1774": [
+      {
+        "ref": "Art. 6(2)(a)",
+        "title": "Encryption and cryptographic controls: the encryption of data at rest and in transit",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
+      },
+      {
+        "ref": "Art. 14",
+        "title": "Securing information in transit",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
+      },
+      {
+        "ref": "Art. 13(e)",
+        "title": "Network security management: the encryption of network connections",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
+      }
+    ],
+    "soc2_tsc": [],
+    "gdpr": [
+      {
+        "ref": "Art. 32(1)(a)",
+        "title": "the pseudonymisation and encryption of personal data",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg/2016/679/oj"
+      }
+    ]
+  },
+  "backup": {
+    "iso27001_2022": [
+      {
+        "ref": "A.5.30",
+        "title": "ICT readiness for business continuity",
+        "fit": "supporting",
+        "source": "https://www.iso.org/standard/75652.html"
+      }
+    ],
+    "nis2": [
+      {
+        "ref": "Art. 21(2)(c)",
+        "title": "business continuity, such as backup management and disaster recovery, and crisis management",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/dir/2022/2555/oj"
+      }
+    ],
+    "nis2_cir_2024_2690": [
+      {
+        "ref": "Annex 4.2",
+        "title": "Backup and redundancy management (backup copies, backup plans, integrity checks, recovery testing)",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg_impl/2024/2690/oj"
+      }
+    ],
+    "dora": [
+      {
+        "ref": "Art. 12",
+        "title": "Backup policies and procedures, restoration and recovery procedures and methods",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg/2022/2554/oj"
+      },
+      {
+        "ref": "Art. 11",
+        "title": "Response and recovery",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg/2022/2554/oj"
+      }
+    ],
+    "dora_rts_2024_1774": [
+      {
+        "ref": "Art. 8(2)(b)(i)",
+        "title": "Policies and procedures for ICT operations: backup and restore requirements of ICT systems",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
+      },
+      {
+        "ref": "Art. 39(2)(g)",
+        "title": "Components of the ICT business continuity plan: backup procedures (simplified framework for DORA Art. 16(1) entities only)",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
+      }
+    ],
+    "soc2_tsc": [],
+    "gdpr": [
+      {
+        "ref": "Art. 32(1)(c)",
+        "title": "the ability to restore the availability and access to personal data in a timely manner in the event of a physical or technical incident",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg/2016/679/oj"
+      }
+    ]
+  },
+  "redundancy": {
+    "iso27001_2022": [
+      {
+        "ref": "A.8.14",
+        "title": "Redundancy of information processing facilities",
+        "fit": "direct",
+        "source": "https://www.iso.org/standard/75652.html"
+      },
+      {
+        "ref": "A.5.30",
+        "title": "ICT readiness for business continuity",
+        "fit": "supporting",
+        "source": "https://www.iso.org/standard/75652.html"
+      }
+    ],
+    "nis2": [
+      {
+        "ref": "Art. 21(2)(c)",
+        "title": "business continuity, such as backup management and disaster recovery, and crisis management",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/dir/2022/2555/oj"
+      }
+    ],
+    "nis2_cir_2024_2690": [
+      {
+        "ref": "Annex 4.2.4",
+        "title": "Backup and redundancy management: at least partial redundancy of network and information systems",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg_impl/2024/2690/oj"
+      }
+    ],
+    "dora": [
+      {
+        "ref": "Art. 12(4)",
+        "title": "maintain redundant ICT capacities equipped with resources, capabilities and functions that are adequate to ensure business needs",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg/2022/2554/oj"
+      },
+      {
+        "ref": "Art. 11",
+        "title": "Response and recovery",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg/2022/2554/oj"
+      }
+    ],
+    "dora_rts_2024_1774": [
+      {
+        "ref": "Art. 25(2)(c)",
+        "title": "Testing of the ICT business continuity plans: switchover to the redundant capacity, backups and redundant facilities",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
+      }
+    ],
+    "soc2_tsc": [],
+    "gdpr": [
+      {
+        "ref": "Art. 32(1)(b)",
+        "title": "the ability to ensure the ongoing confidentiality, integrity, availability and resilience of processing systems and services",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg/2016/679/oj"
+      }
+    ]
+  },
+  "least-privilege": {
+    "iso27001_2022": [
+      {
+        "ref": "A.5.15",
+        "title": "Access control",
+        "fit": "direct",
+        "source": "https://www.iso.org/standard/75652.html"
+      },
+      {
+        "ref": "A.5.18",
+        "title": "Access rights",
+        "fit": "direct",
+        "source": "https://www.iso.org/standard/75652.html"
+      },
+      {
+        "ref": "A.8.3",
+        "title": "Information access restriction",
+        "fit": "direct",
+        "source": "https://www.iso.org/standard/75652.html"
+      }
+    ],
+    "nis2": [
+      {
+        "ref": "Art. 21(2)(i)",
+        "title": "human resources security, access control policies and asset management",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/dir/2022/2555/oj"
+      }
+    ],
+    "nis2_cir_2024_2690": [
+      {
+        "ref": "Annex 11.2.2(a)",
+        "title": "Management of access rights: assign and revoke access rights based on need-to-know, least privilege and separation of duties",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg_impl/2024/2690/oj"
+      }
+    ],
+    "dora": [
+      {
+        "ref": "Art. 9(4)(c)",
+        "title": "limit the physical or logical access to information assets and ICT assets to what is required for legitimate and approved functions and activities only",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg/2022/2554/oj"
+      }
+    ],
+    "dora_rts_2024_1774": [
+      {
+        "ref": "Art. 21(a)",
+        "title": "Access control: access rights based on need-to-know, need-to-use and least privilege principles",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
+      },
+      {
+        "ref": "Art. 21(b)",
+        "title": "Access control: segregation of duties",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
+      }
+    ],
+    "soc2_tsc": [],
+    "gdpr": [
+      {
+        "ref": "Art. 25(2)",
+        "title": "Data protection by default, including the accessibility of personal data",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg/2016/679/oj"
+      },
+      {
+        "ref": "Art. 32(1)(b)",
+        "title": "the ability to ensure the ongoing confidentiality, integrity, availability and resilience of processing systems and services",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg/2016/679/oj"
+      }
+    ]
+  },
+  "privileged-access": {
+    "iso27001_2022": [
+      {
+        "ref": "A.8.2",
+        "title": "Privileged access rights",
+        "fit": "direct",
+        "source": "https://www.iso.org/standard/75652.html"
+      }
+    ],
+    "nis2": [
+      {
+        "ref": "Art. 21(2)(i)",
+        "title": "human resources security, access control policies and asset management",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/dir/2022/2555/oj"
+      }
+    ],
+    "nis2_cir_2024_2690": [
+      {
+        "ref": "Annex 11.3",
+        "title": "Privileged accounts and system administration accounts",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg_impl/2024/2690/oj"
+      },
+      {
+        "ref": "Annex 11.4",
+        "title": "Administration systems",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg_impl/2024/2690/oj"
+      }
+    ],
+    "dora": [
+      {
+        "ref": "Art. 9(4)(c)",
+        "title": "limit the physical or logical access to information assets and ICT assets to what is required for legitimate and approved functions and activities only",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg/2022/2554/oj"
+      }
+    ],
+    "dora_rts_2024_1774": [
+      {
+        "ref": "Art. 21(e)(ii)",
+        "title": "Access control: assignment of privileged, emergency, and administrator access on a need-to-use or an ad-hoc basis",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
+      }
+    ],
+    "soc2_tsc": [],
+    "gdpr": [
+      {
+        "ref": "Art. 32(1)(b)",
+        "title": "the ability to ensure the ongoing confidentiality, integrity, availability and resilience of processing systems and services",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg/2016/679/oj"
+      }
+    ]
+  },
+  "authentication": {
+    "iso27001_2022": [
+      {
+        "ref": "A.8.5",
+        "title": "Secure authentication",
+        "fit": "direct",
+        "source": "https://www.iso.org/standard/75652.html"
+      },
+      {
+        "ref": "A.5.17",
+        "title": "Authentication information",
+        "fit": "direct",
+        "source": "https://www.iso.org/standard/75652.html"
+      },
+      {
+        "ref": "A.5.16",
+        "title": "Identity management",
+        "fit": "supporting",
+        "source": "https://www.iso.org/standard/75652.html"
+      }
+    ],
+    "nis2": [
+      {
+        "ref": "Art. 21(2)(j)",
+        "title": "the use of multi-factor authentication or continuous authentication solutions, secured voice, video and text communications and secured emergency communication systems within the entity, where appropriate",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/dir/2022/2555/oj"
+      },
+      {
+        "ref": "Art. 21(2)(i)",
+        "title": "human resources security, access control policies and asset management",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/dir/2022/2555/oj"
+      }
+    ],
+    "nis2_cir_2024_2690": [
+      {
+        "ref": "Annex 11.6",
+        "title": "Authentication",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg_impl/2024/2690/oj"
+      },
+      {
+        "ref": "Annex 11.7",
+        "title": "Multi-factor authentication",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg_impl/2024/2690/oj"
+      },
+      {
+        "ref": "Annex 11.5",
+        "title": "Identification",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg_impl/2024/2690/oj"
+      }
+    ],
+    "dora": [
+      {
+        "ref": "Art. 9(4)(d)",
+        "title": "strong authentication mechanisms and protection measures of cryptographic keys whereby data is encrypted",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg/2022/2554/oj"
+      }
+    ],
+    "dora_rts_2024_1774": [
+      {
+        "ref": "Art. 21(f)",
+        "title": "Access control: authentication methods, including strong authentication for remote and privileged access",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
+      },
+      {
+        "ref": "Art. 20",
+        "title": "Identity management",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
+      }
+    ],
+    "soc2_tsc": [],
+    "gdpr": [
+      {
+        "ref": "Art. 32(1)(b)",
+        "title": "the ability to ensure the ongoing confidentiality, integrity, availability and resilience of processing systems and services",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg/2016/679/oj"
+      }
+    ]
+  },
+  "public-access": {
+    "iso27001_2022": [
+      {
+        "ref": "A.8.3",
+        "title": "Information access restriction",
+        "fit": "direct",
+        "source": "https://www.iso.org/standard/75652.html"
+      },
+      {
+        "ref": "A.5.15",
+        "title": "Access control",
+        "fit": "supporting",
+        "source": "https://www.iso.org/standard/75652.html"
+      },
+      {
+        "ref": "A.8.12",
+        "title": "Data leakage prevention",
+        "fit": "supporting",
+        "source": "https://www.iso.org/standard/75652.html"
+      }
+    ],
+    "nis2": [
+      {
+        "ref": "Art. 21(2)(i)",
+        "title": "human resources security, access control policies and asset management",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/dir/2022/2555/oj"
+      }
+    ],
+    "nis2_cir_2024_2690": [
+      {
+        "ref": "Annex 11.2.2(c)",
+        "title": "Management of access rights: ensure that access to network and information systems is authorised by the relevant persons",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg_impl/2024/2690/oj"
+      },
+      {
+        "ref": "Annex 6.7.2(c)",
+        "title": "Network security: configure controls to prevent accesses and network communication not required for operation",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg_impl/2024/2690/oj"
+      }
+    ],
+    "dora": [
+      {
+        "ref": "Art. 9(4)(c)",
+        "title": "limit the physical or logical access to information assets and ICT assets to what is required for legitimate and approved functions and activities only",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg/2022/2554/oj"
+      }
+    ],
+    "dora_rts_2024_1774": [
+      {
+        "ref": "Art. 21(d)",
+        "title": "Access control: restrictions of access to ICT assets, setting out controls and tools to prevent unauthorised access",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
+      },
+      {
+        "ref": "Art. 11(2)(i)",
+        "title": "Data and system security: security measures to prevent data loss and leakage",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
+      }
+    ],
+    "soc2_tsc": [],
+    "gdpr": [
+      {
+        "ref": "Art. 25(2)",
+        "title": "by default personal data are not made accessible without the individual's intervention to an indefinite number of natural persons",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg/2016/679/oj"
+      }
+    ]
+  },
+  "network-exposure": {
+    "iso27001_2022": [
+      {
+        "ref": "A.8.20",
+        "title": "Networks security",
+        "fit": "direct",
+        "source": "https://www.iso.org/standard/75652.html"
+      },
+      {
+        "ref": "A.8.22",
+        "title": "Segregation of networks",
+        "fit": "direct",
+        "source": "https://www.iso.org/standard/75652.html"
+      }
+    ],
+    "nis2": [
+      {
+        "ref": "Art. 21(2)(e)",
+        "title": "security in network and information systems acquisition, development and maintenance, including vulnerability handling and disclosure",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/dir/2022/2555/oj"
+      },
+      {
+        "ref": "Art. 21(2)(i)",
+        "title": "human resources security, access control policies and asset management",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/dir/2022/2555/oj"
+      }
+    ],
+    "nis2_cir_2024_2690": [
+      {
+        "ref": "Annex 6.7",
+        "title": "Network security",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg_impl/2024/2690/oj"
+      },
+      {
+        "ref": "Annex 6.8",
+        "title": "Network segmentation",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg_impl/2024/2690/oj"
+      }
+    ],
+    "dora": [
+      {
+        "ref": "Art. 9(4)(b)",
+        "title": "establish a sound network and infrastructure management structure using appropriate techniques, methods and protocols",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg/2022/2554/oj"
+      }
+    ],
+    "dora_rts_2024_1774": [
+      {
+        "ref": "Art. 13",
+        "title": "Network security management (segregation and segmentation, securing traffic between internal networks and the internet, firewall rules)",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
+      }
+    ],
+    "soc2_tsc": [],
+    "gdpr": [
+      {
+        "ref": "Art. 32(1)(b)",
+        "title": "the ability to ensure the ongoing confidentiality, integrity, availability and resilience of processing systems and services",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg/2016/679/oj"
+      }
+    ]
+  },
+  "logging": {
+    "iso27001_2022": [
+      {
+        "ref": "A.8.16",
+        "title": "Monitoring activities",
+        "fit": "supporting",
+        "source": "https://www.iso.org/standard/75652.html"
+      },
+      {
+        "ref": "A.5.33",
+        "title": "Protection of records",
+        "fit": "supporting",
+        "source": "https://www.iso.org/standard/75652.html"
+      }
+    ],
+    "nis2": [
+      {
+        "ref": "Art. 21(2)(b)",
+        "title": "incident handling",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/dir/2022/2555/oj"
+      }
+    ],
+    "nis2_cir_2024_2690": [
+      {
+        "ref": "Annex 3.2",
+        "title": "Monitoring and logging",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg_impl/2024/2690/oj"
+      }
+    ],
+    "dora": [
+      {
+        "ref": "Art. 10(1)",
+        "title": "mechanisms to promptly detect anomalous activities",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg/2022/2554/oj"
+      }
+    ],
+    "dora_rts_2024_1774": [
+      {
+        "ref": "Art. 12",
+        "title": "Logging (events to log, retention, protection of logs against tampering, deletion and unauthorised access)",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
+      }
+    ],
+    "soc2_tsc": [],
+    "gdpr": []
+  },
+  "supply-chain": {
+    "iso27001_2022": [
+      {
+        "ref": "A.5.21",
+        "title": "Managing information security in the ICT supply chain",
+        "fit": "direct",
+        "source": "https://www.iso.org/standard/75652.html"
+      },
+      {
+        "ref": "A.8.9",
+        "title": "Configuration management",
+        "fit": "supporting",
+        "source": "https://www.iso.org/standard/75652.html"
+      },
+      {
+        "ref": "A.8.32",
+        "title": "Change management",
+        "fit": "supporting",
+        "source": "https://www.iso.org/standard/75652.html"
+      }
+    ],
+    "nis2": [
+      {
+        "ref": "Art. 21(2)(d)",
+        "title": "supply chain security, including security-related aspects concerning the relationships between each entity and its direct suppliers or service providers",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/dir/2022/2555/oj"
+      },
+      {
+        "ref": "Art. 21(2)(e)",
+        "title": "security in network and information systems acquisition, development and maintenance, including vulnerability handling and disclosure",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/dir/2022/2555/oj"
+      }
+    ],
+    "nis2_cir_2024_2690": [
+      {
+        "ref": "Annex 6.1",
+        "title": "Security in acquisition of ICT services or ICT products",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg_impl/2024/2690/oj"
+      },
+      {
+        "ref": "Annex 5.1",
+        "title": "Supply chain security policy",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg_impl/2024/2690/oj"
+      }
+    ],
+    "dora": [
+      {
+        "ref": "Art. 9(4)(e)",
+        "title": "documented policies, procedures and controls for ICT change management",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg/2022/2554/oj"
+      }
+    ],
+    "dora_rts_2024_1774": [
+      {
+        "ref": "Art. 16(1)(c)",
+        "title": "measures to mitigate the risk of unintentional alteration or intentional manipulation of the ICT systems during development, maintenance, and deployment",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
+      },
+      {
+        "ref": "Art. 16(8)",
+        "title": "source code from ICT third-party service providers or open-source projects analysed and tested prior to deployment in production",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
+      }
+    ],
+    "soc2_tsc": [],
+    "gdpr": []
+  },
+  "change-management": {
+    "iso27001_2022": [
+      {
+        "ref": "A.8.32",
+        "title": "Change management",
+        "fit": "direct",
+        "source": "https://www.iso.org/standard/75652.html"
+      },
+      {
+        "ref": "A.8.9",
+        "title": "Configuration management",
+        "fit": "supporting",
+        "source": "https://www.iso.org/standard/75652.html"
+      }
+    ],
+    "nis2": [
+      {
+        "ref": "Art. 21(2)(e)",
+        "title": "security in network and information systems acquisition, development and maintenance, including vulnerability handling and disclosure",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/dir/2022/2555/oj"
+      }
+    ],
+    "nis2_cir_2024_2690": [
+      {
+        "ref": "Annex 6.4",
+        "title": "Change management, repairs and maintenance",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg_impl/2024/2690/oj"
+      },
+      {
+        "ref": "Annex 6.3",
+        "title": "Configuration management",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg_impl/2024/2690/oj"
+      }
+    ],
+    "dora": [
+      {
+        "ref": "Art. 9(4)(e)",
+        "title": "documented policies, procedures and controls for ICT change management, so that all changes to ICT systems are recorded, tested, assessed, approved, implemented and verified in a controlled manner",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg/2022/2554/oj"
+      }
+    ],
+    "dora_rts_2024_1774": [
+      {
+        "ref": "Art. 17",
+        "title": "ICT change management",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
+      }
+    ],
+    "soc2_tsc": [],
+    "gdpr": [
+      {
+        "ref": "Art. 25(1)",
+        "title": "Data protection by design",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg/2016/679/oj"
+      },
+      {
+        "ref": "Art. 24(1)",
+        "title": "Responsibility of the controller: measures to ensure and to be able to demonstrate that processing is performed in accordance with this Regulation",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg/2016/679/oj"
+      }
+    ]
+  },
+  "data-residency": {
+    "iso27001_2022": [
+      {
+        "ref": "A.5.34",
+        "title": "Privacy and protection of PII",
+        "fit": "supporting",
+        "source": "https://www.iso.org/standard/75652.html"
+      },
+      {
+        "ref": "A.5.23",
+        "title": "Information security for use of cloud services",
+        "fit": "supporting",
+        "source": "https://www.iso.org/standard/75652.html"
+      }
+    ],
+    "nis2": [],
+    "nis2_cir_2024_2690": [],
+    "dora": [
+      {
+        "ref": "Art. 30(2)(b)",
+        "title": "contractual arrangements shall state the locations (regions or countries) where data is to be processed, including the storage location",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg/2022/2554/oj"
+      }
+    ],
+    "dora_rts_2024_1774": [],
+    "soc2_tsc": [],
+    "gdpr": [
+      {
+        "ref": "Art. 44",
+        "title": "General principle for transfers (Chapter V, Arts. 44-50)",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg/2016/679/oj"
+      }
+    ]
+  },
+  "secure-deletion": {
+    "iso27001_2022": [
+      {
+        "ref": "A.8.10",
+        "title": "Information deletion",
+        "fit": "direct",
+        "source": "https://www.iso.org/standard/75652.html"
+      }
+    ],
+    "nis2": [
+      {
+        "ref": "Art. 21(2)(i)",
+        "title": "human resources security, access control policies and asset management",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/dir/2022/2555/oj"
+      }
+    ],
+    "nis2_cir_2024_2690": [
+      {
+        "ref": "Annex 12.2.2(b)",
+        "title": "Handling of assets: rules on the irretrievable deletion and destruction of the assets",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg_impl/2024/2690/oj"
+      }
+    ],
+    "dora": [],
+    "dora_rts_2024_1774": [
+      {
+        "ref": "Art. 11(2)(g)",
+        "title": "Data and system security: the process to securely delete data that the financial entity no longer needs to collect or to store",
+        "fit": "direct",
+        "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
+      },
+      {
+        "ref": "Art. 11(2)(h)",
+        "title": "Data and system security: the process to securely dispose or decommission data storage devices",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
+      }
+    ],
+    "soc2_tsc": [],
+    "gdpr": [
+      {
+        "ref": "Art. 5(1)(e)",
+        "title": "storage limitation",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg/2016/679/oj"
+      },
+      {
+        "ref": "Art. 17",
+        "title": "Right to erasure",
+        "fit": "supporting",
+        "source": "https://eur-lex.europa.eu/eli/reg/2016/679/oj"
+      }
+    ]
+  }
+}

@@ -1,0 +1,474 @@
+{
+  "suite": "terraform/round8eval",
+  "description": "Executable specification fixtures exported from src/terraform/round8eval.test.ts",
+  "cases": [
+    {
+      "kind": "terraform",
+      "name": "round 8 (Codex): evaluator and Terraform semantics: variable inputs are converted to their declared type",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"n\" {\n  type = number\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  count    = var.n\n  name     = \"t\"\n  hash_key = \"id\"\n}\n",
+        "r/terraform.tfvars": "n = \"1\"\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"n\" {\n  type = number\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  count    = var.n\n  name     = \"t\"\n  hash_key = \"id\"\n}\n",
+        "r/terraform.tfvars": "n = \"0\"\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete aws_dynamodb_table.t[0]"
+        ],
+        "changes": [
+          {
+            "address": "aws_dynamodb_table.t[0]",
+            "action": "delete",
+            "confidence": "proven"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 8 (Codex): evaluator and Terraform semantics: indexing an unknown collection keeps the index in its identity",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_availability_zones\" \"z\" {}\nresource \"aws_db_instance\" \"d\" {\n  identifier        = \"d\"\n  availability_zone = data.aws_availability_zones.z.names[0]\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_availability_zones\" \"z\" {}\nresource \"aws_db_instance\" \"d\" {\n  identifier        = \"d\"\n  availability_zone = data.aws_availability_zones.z.names[1]\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_db_instance.d"
+        ],
+        "changes": [
+          {
+            "address": "aws_db_instance.d",
+            "action": "replace",
+            "confidence": "likely",
+            "actionReasonContains": "replace_because_cannot_update",
+            "after": {
+              "identifier": "d"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 8 (Codex): evaluator and Terraform semantics: the identity survives interpolation into a template",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_availability_zones\" \"z\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q-${data.aws_availability_zones.z.names[0]}\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_availability_zones\" \"z\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q-${data.aws_availability_zones.z.names[1]}\"\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_sqs_queue.q"
+        ],
+        "changes": [
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "replace",
+            "confidence": "likely",
+            "actionReasonContains": "replace_because_cannot_update"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 8 (Codex): evaluator and Terraform semantics: different attributes of one resource are different values",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_kms_key\" \"k\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  name              = \"q\"\n  kms_master_key_id = aws_kms_key.k.arn\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_kms_key\" \"k\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  name              = \"q\"\n  kms_master_key_id = aws_kms_key.k.id\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_sqs_queue.q"
+        ],
+        "changes": [
+          {
+            "address": "aws_kms_key.k",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "update",
+            "confidence": "likely",
+            "after": {
+              "name": "q"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 8 (Codex): evaluator and Terraform semantics: a sensitive condition in a template if or a for filter is judged by its value",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = <<EOT\n%{ if sensitive(true) }{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"*\",\"Resource\":\"*\"}]}%{ else }{\"Statement\":[]}%{ endif }\nEOT\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { n = join(\",\", [for x in [\"a\", \"b\"] : x if sensitive(x == \"a\")]) }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_policy.p",
+          "create aws_sqs_queue.q"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_policy.p",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "p"
+            }
+          },
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "q"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.p",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Action \"*\" grants every AWS action (admin-equivalent)"
+          },
+          {
+            "ruleId": "sqs.encryption",
+            "resource": "aws_sqs_queue.q",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "SSE-SQS (SQS managed keys, the default for new queues)"
+          },
+          {
+            "ruleId": "sqs.dlq",
+            "resource": "aws_sqs_queue.q",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "No dead-letter queue: messages that keep failing are dropped after the retention period"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_policy.p",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_policy"
+          },
+          {
+            "resource": "aws_sqs_queue.q",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_sqs_queue"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0,
+          "items": [
+            {
+              "resource": "aws_sqs_queue.q",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            }
+          ]
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL iam.least-privilege: aws_iam_policy.p: Action \"*\" grants every AWS action (admin-equivalent)"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 8 (Codex): evaluator and Terraform semantics: a dynamic block over a set uses the value as the key",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_security_group\" \"s\" {\n  name = \"s\"\n  dynamic \"ingress\" {\n    for_each = toset([\"443\"])\n    content {\n      from_port   = tonumber(ingress.key)\n      to_port     = tonumber(ingress.key)\n      protocol    = \"tcp\"\n      cidr_blocks = [\"0.0.0.0/0\"]\n    }\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_security_group\" \"s\" {\n  name = \"s\"\n  dynamic \"ingress\" {\n    for_each = toset([\"22\"])\n    content {\n      from_port   = tonumber(ingress.key)\n      to_port     = tonumber(ingress.key)\n      protocol    = \"tcp\"\n      cidr_blocks = [\"0.0.0.0/0\"]\n    }\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_security_group.s"
+        ],
+        "changes": [
+          {
+            "address": "aws_security_group.s",
+            "action": "update",
+            "confidence": "proven",
+            "after": {
+              "name": "s",
+              "ingress": [
+                {
+                  "from_port": 22,
+                  "to_port": 22,
+                  "protocol": "tcp",
+                  "cidr_blocks": [
+                    "0.0.0.0/0"
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "network.open-ingress",
+            "resource": "aws_security_group.s",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Allows ports 22 from 0.0.0.0/0"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_security_group.s",
+            "action": "update",
+            "severity": "MEDIUM",
+            "dataLoss": false,
+            "reasonContains": "Changes ingress: removed rules cut traffic immediately"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL network.open-ingress: aws_security_group.s: Allows ports 22 from 0.0.0.0/0"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 8 (Codex): evaluator and Terraform semantics: replace_triggered_by propagates through a long chain",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"terraform_data\" \"r0\" {\n  input = \"1\"\n}\nresource \"terraform_data\" \"r11\" {\n  input = \"x\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.r10]\n  }\n}\nresource \"terraform_data\" \"r10\" {\n  input = \"x\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.r9]\n  }\n}\nresource \"terraform_data\" \"r9\" {\n  input = \"x\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.r8]\n  }\n}\nresource \"terraform_data\" \"r8\" {\n  input = \"x\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.r7]\n  }\n}\nresource \"terraform_data\" \"r7\" {\n  input = \"x\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.r6]\n  }\n}\nresource \"terraform_data\" \"r6\" {\n  input = \"x\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.r5]\n  }\n}\nresource \"terraform_data\" \"r5\" {\n  input = \"x\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.r4]\n  }\n}\nresource \"terraform_data\" \"r4\" {\n  input = \"x\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.r3]\n  }\n}\nresource \"terraform_data\" \"r3\" {\n  input = \"x\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.r2]\n  }\n}\nresource \"terraform_data\" \"r2\" {\n  input = \"x\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.r1]\n  }\n}\nresource \"terraform_data\" \"r1\" {\n  input = \"x\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.r0]\n  }\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  name     = \"t\"\n  hash_key = \"id\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.r11]\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"terraform_data\" \"r0\" {\n  input = \"2\"\n}\nresource \"terraform_data\" \"r11\" {\n  input = \"x\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.r10]\n  }\n}\nresource \"terraform_data\" \"r10\" {\n  input = \"x\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.r9]\n  }\n}\nresource \"terraform_data\" \"r9\" {\n  input = \"x\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.r8]\n  }\n}\nresource \"terraform_data\" \"r8\" {\n  input = \"x\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.r7]\n  }\n}\nresource \"terraform_data\" \"r7\" {\n  input = \"x\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.r6]\n  }\n}\nresource \"terraform_data\" \"r6\" {\n  input = \"x\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.r5]\n  }\n}\nresource \"terraform_data\" \"r5\" {\n  input = \"x\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.r4]\n  }\n}\nresource \"terraform_data\" \"r4\" {\n  input = \"x\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.r3]\n  }\n}\nresource \"terraform_data\" \"r3\" {\n  input = \"x\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.r2]\n  }\n}\nresource \"terraform_data\" \"r2\" {\n  input = \"x\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.r1]\n  }\n}\nresource \"terraform_data\" \"r1\" {\n  input = \"x\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.r0]\n  }\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  name     = \"t\"\n  hash_key = \"id\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.r11]\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_dynamodb_table.t",
+          "replace terraform_data.r1",
+          "replace terraform_data.r10",
+          "replace terraform_data.r11",
+          "replace terraform_data.r2",
+          "replace terraform_data.r3",
+          "replace terraform_data.r4",
+          "replace terraform_data.r5",
+          "replace terraform_data.r6",
+          "replace terraform_data.r7",
+          "replace terraform_data.r8",
+          "replace terraform_data.r9",
+          "update terraform_data.r0"
+        ],
+        "changes": [
+          {
+            "address": "terraform_data.r0",
+            "action": "update",
+            "confidence": "proven",
+            "after": {
+              "input": "2"
+            }
+          },
+          {
+            "address": "terraform_data.r11",
+            "action": "replace",
+            "confidence": "proven",
+            "actionReasonContains": "replace_triggered_by: terraform_data.r10 is replaced",
+            "after": {
+              "input": "x"
+            }
+          },
+          {
+            "address": "terraform_data.r10",
+            "action": "replace",
+            "confidence": "proven",
+            "actionReasonContains": "replace_triggered_by: terraform_data.r9 is replaced",
+            "after": {
+              "input": "x"
+            }
+          },
+          {
+            "address": "terraform_data.r9",
+            "action": "replace",
+            "confidence": "proven",
+            "actionReasonContains": "replace_triggered_by: terraform_data.r8 is replaced",
+            "after": {
+              "input": "x"
+            }
+          },
+          {
+            "address": "terraform_data.r8",
+            "action": "replace",
+            "confidence": "proven",
+            "actionReasonContains": "replace_triggered_by: terraform_data.r7 is replaced",
+            "after": {
+              "input": "x"
+            }
+          },
+          {
+            "address": "terraform_data.r7",
+            "action": "replace",
+            "confidence": "proven",
+            "actionReasonContains": "replace_triggered_by: terraform_data.r6 is replaced",
+            "after": {
+              "input": "x"
+            }
+          },
+          {
+            "address": "terraform_data.r6",
+            "action": "replace",
+            "confidence": "proven",
+            "actionReasonContains": "replace_triggered_by: terraform_data.r5 is replaced",
+            "after": {
+              "input": "x"
+            }
+          },
+          {
+            "address": "terraform_data.r5",
+            "action": "replace",
+            "confidence": "proven",
+            "actionReasonContains": "replace_triggered_by: terraform_data.r4 is replaced",
+            "after": {
+              "input": "x"
+            }
+          },
+          {
+            "address": "terraform_data.r4",
+            "action": "replace",
+            "confidence": "proven",
+            "actionReasonContains": "replace_triggered_by: terraform_data.r3 is replaced",
+            "after": {
+              "input": "x"
+            }
+          },
+          {
+            "address": "terraform_data.r3",
+            "action": "replace",
+            "confidence": "proven",
+            "actionReasonContains": "replace_triggered_by: terraform_data.r2 is replaced",
+            "after": {
+              "input": "x"
+            }
+          },
+          {
+            "address": "terraform_data.r2",
+            "action": "replace",
+            "confidence": "proven",
+            "actionReasonContains": "replace_triggered_by: terraform_data.r1 is replaced",
+            "after": {
+              "input": "x"
+            }
+          },
+          {
+            "address": "terraform_data.r1",
+            "action": "replace",
+            "confidence": "proven",
+            "actionReasonContains": "replace_triggered_by: terraform_data.r0 is updated",
+            "after": {
+              "input": "x"
+            }
+          },
+          {
+            "address": "aws_dynamodb_table.t",
+            "action": "replace",
+            "confidence": "proven",
+            "actionReasonContains": "replace_triggered_by: terraform_data.r11 is replaced",
+            "after": {
+              "name": "t",
+              "hash_key": "id"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 8 (Codex): evaluator and Terraform semantics: a trigger on a moved resource compares it with its previous address",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"old\" {\n  name = \"a\"\n}\nresource \"aws_sns_topic\" \"t\" {\n  name = \"t\"\n  lifecycle {\n    replace_triggered_by = [aws_sqs_queue.old.name]\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmoved {\n  from = aws_sqs_queue.old\n  to   = aws_sqs_queue.new\n}\nresource \"aws_sqs_queue\" \"new\" {\n  name = \"b\"\n}\nresource \"aws_sns_topic\" \"t\" {\n  name = \"t\"\n  lifecycle {\n    replace_triggered_by = [aws_sqs_queue.new.name]\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_sns_topic.t",
+          "replace aws_sqs_queue.new"
+        ],
+        "changes": [
+          {
+            "address": "aws_sqs_queue.new",
+            "action": "replace",
+            "confidence": "proven",
+            "previousAddress": "aws_sqs_queue.old",
+            "actionReasonContains": "replace_because_cannot_update",
+            "after": {
+              "name": "b"
+            }
+          },
+          {
+            "address": "aws_sns_topic.t",
+            "action": "replace",
+            "confidence": "proven",
+            "actionReasonContains": "replace_triggered_by: aws_sqs_queue.new.name is changed",
+            "after": {
+              "name": "t"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 8 (Codex): evaluator and Terraform semantics: nested values convert too: bool, string, set",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"o\" {\n  type = object({ on = bool, port = string, ids = set(string) })\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { on = tostring(var.o.on == true), port = var.o.port, ids = join(\",\", var.o.ids) }\n}\n",
+        "r/terraform.tfvars": "o = { on = \"true\", port = 443, ids = [\"b\", \"a\", \"b\"] }\n"
+      },
+      "expect": {
+        "diagnostics": [],
+        "instanceCount": 1,
+        "instances": [
+          {
+            "address": "aws_sqs_queue.q",
+            "attrs": {
+              "name": "q",
+              "tags": {
+                "on": "true",
+                "port": "443",
+                "ids": "a,b"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

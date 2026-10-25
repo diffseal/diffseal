@@ -1,0 +1,241 @@
+{
+  "suite": "hcl/origin",
+  "description": "Executable specification fixtures exported from src/hcl/origin.test.ts",
+  "cases": [
+    {
+      "kind": "terraform",
+      "name": "an unknown value remembers what produced it (round 9 P1): a changed branch of a conditional with an unknown condition is a change",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_caller_identity\" \"current\" {}\ndata \"aws_vpc\" \"main\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { v = data.aws_caller_identity.current.account_id == \"1\" ? \"10.0.0.0/8\" : \"10.1.0.0/16\" }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_caller_identity\" \"current\" {}\ndata \"aws_vpc\" \"main\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { v = data.aws_caller_identity.current.account_id == \"1\" ? \"0.0.0.0/0\" : \"10.1.0.0/16\" }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_sqs_queue.q"
+        ],
+        "changes": [
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "update",
+            "confidence": "likely",
+            "after": {
+              "name": "q"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "an unknown value remembers what produced it (round 9 P1): a changed known argument of a function over an unknown value is a change",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_caller_identity\" \"current\" {}\ndata \"aws_vpc\" \"main\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { v = cidrsubnet(data.aws_vpc.main.cidr_block, 8, 1) }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_caller_identity\" \"current\" {}\ndata \"aws_vpc\" \"main\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { v = cidrsubnet(data.aws_vpc.main.cidr_block, 8, 2) }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_sqs_queue.q"
+        ],
+        "changes": [
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "update",
+            "confidence": "likely",
+            "after": {
+              "name": "q"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "an unknown value remembers what produced it (round 9 P1): a different function over the same unknown value is a change",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_caller_identity\" \"current\" {}\ndata \"aws_vpc\" \"main\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { v = lower(data.aws_vpc.main.id) }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_caller_identity\" \"current\" {}\ndata \"aws_vpc\" \"main\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { v = upper(data.aws_vpc.main.id) }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_sqs_queue.q"
+        ],
+        "changes": [
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "update",
+            "confidence": "likely",
+            "after": {
+              "name": "q"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "an unknown value remembers what produced it (round 9 P1): a changed operand of an operator over an unknown value is a change",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_caller_identity\" \"current\" {}\ndata \"aws_vpc\" \"main\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { v = data.aws_vpc.main.id == \"a\" }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_caller_identity\" \"current\" {}\ndata \"aws_vpc\" \"main\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { v = data.aws_vpc.main.id == \"b\" }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_sqs_queue.q"
+        ],
+        "changes": [
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "update",
+            "confidence": "likely",
+            "after": {
+              "name": "q"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "an unknown value remembers what produced it (round 9 P1): an unchanged expression over unknown values is not a change [1]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_caller_identity\" \"current\" {}\ndata \"aws_vpc\" \"main\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { v = data.aws_caller_identity.current.account_id == \"1\" ? \"10.0.0.0/8\" : \"10.1.0.0/16\" }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_caller_identity\" \"current\" {}\ndata \"aws_vpc\" \"main\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { v = data.aws_caller_identity.current.account_id == \"1\" ? \"10.0.0.0/8\" : \"10.1.0.0/16\" }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "changes": [
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "no-op",
+            "confidence": "proven"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "an unknown value remembers what produced it (round 9 P1): an unchanged expression over unknown values is not a change [2]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_caller_identity\" \"current\" {}\ndata \"aws_vpc\" \"main\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { v = cidrsubnet(data.aws_vpc.main.cidr_block, 8, 1) }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_caller_identity\" \"current\" {}\ndata \"aws_vpc\" \"main\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { v = cidrsubnet(data.aws_vpc.main.cidr_block, 8, 1) }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "changes": [
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "no-op",
+            "confidence": "proven"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "an unknown value remembers what produced it (round 9 P1): an unchanged expression over unknown values is not a change [3]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_caller_identity\" \"current\" {}\ndata \"aws_vpc\" \"main\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { v = sha256(data.aws_vpc.main.id) }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_caller_identity\" \"current\" {}\ndata \"aws_vpc\" \"main\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { v = sha256(data.aws_vpc.main.id) }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "changes": [
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "no-op",
+            "confidence": "proven"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "an unknown value remembers what produced it (round 9 P1): an unchanged expression over unknown values is not a change [4]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_caller_identity\" \"current\" {}\ndata \"aws_vpc\" \"main\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { v = [for s in data.aws_vpc.main.ids : \"${s}-a\"] }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_caller_identity\" \"current\" {}\ndata \"aws_vpc\" \"main\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { v = [for s in data.aws_vpc.main.ids : \"${s}-a\"] }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "changes": [
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "no-op",
+            "confidence": "proven"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "an unknown value remembers what produced it (round 9 P1): an unchanged expression over unknown values is not a change [5]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_caller_identity\" \"current\" {}\ndata \"aws_vpc\" \"main\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { v = lookup(data.aws_vpc.main.tags, \"Name\", \"x\") }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_caller_identity\" \"current\" {}\ndata \"aws_vpc\" \"main\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { v = lookup(data.aws_vpc.main.tags, \"Name\", \"x\") }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "changes": [
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "no-op",
+            "confidence": "proven"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "an unknown value remembers what produced it (round 9 P1): a changed body of a for expression over an unknown collection is a change",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_caller_identity\" \"current\" {}\ndata \"aws_vpc\" \"main\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { v = [for s in data.aws_vpc.main.ids : \"${s}-a\"] }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_caller_identity\" \"current\" {}\ndata \"aws_vpc\" \"main\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { v = [for s in data.aws_vpc.main.ids : \"${s}-b\"] }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_sqs_queue.q"
+        ],
+        "changes": [
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "update",
+            "confidence": "likely",
+            "after": {
+              "name": "q"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

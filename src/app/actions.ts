@@ -1,0 +1,196 @@
+/**
+ * SDK operation -> IAM actions. Most operations map to `<prefix>:<Operation>`; the table below lists
+ * the ones that do not (S3 list and multipart calls, batch variants, DynamoDB document client).
+ */
+import type { ResourceRef } from './facts.js';
+
+/** SDK service package name -> IAM service prefix. */
+export const IAM_PREFIX: Record<string, string> = {
+  s3: 's3',
+  sqs: 'sqs',
+  sns: 'sns',
+  dynamodb: 'dynamodb',
+  secretsmanager: 'secretsmanager',
+  sfn: 'states',
+  ssm: 'ssm',
+  lambda: 'lambda',
+  kms: 'kms',
+  eventbridge: 'events',
+  cloudwatchevents: 'events',
+  scheduler: 'scheduler',
+  iot: 'iot',
+  iotdataplane: 'iot',
+  cognitoidentityprovider: 'cognito-idp',
+  sts: 'sts',
+  cloudwatch: 'cloudwatch',
+  cloudwatchlogs: 'logs',
+  firehose: 'firehose',
+  kinesis: 'kinesis',
+  athena: 'athena',
+  bedrockruntime: 'bedrock',
+  sesv2: 'ses',
+  ses: 'ses',
+  ecs: 'ecs',
+  ecr: 'ecr',
+  timestreamwrite: 'timestream',
+  timestreamquery: 'timestream',
+  apigatewaymanagementapi: 'execute-api',
+};
+
+const OVERRIDES: Record<string, Record<string, string[]>> = {
+  s3: {
+    ListObjectsV2: ['s3:ListBucket'],
+    ListObjects: ['s3:ListBucket'],
+    ListObjectVersions: ['s3:ListBucketVersions'],
+    HeadObject: ['s3:GetObject'],
+    HeadBucket: ['s3:ListBucket'],
+    DeleteObjects: ['s3:DeleteObject'],
+    // The read is on CopySource, a different bucket: extractors emit it as a separate fact.
+    CopyObject: ['s3:PutObject'],
+    CreateMultipartUpload: ['s3:PutObject'],
+    UploadPart: ['s3:PutObject'],
+    UploadPartCopy: ['s3:PutObject'],
+    CompleteMultipartUpload: ['s3:PutObject'],
+    GetObjectAttributes: ['s3:GetObject', 's3:GetObjectAttributes'],
+    SelectObjectContent: ['s3:GetObject'],
+    ListBuckets: ['s3:ListAllMyBuckets'],
+    ListMultipartUploads: ['s3:ListBucketMultipartUploads'],
+    ListParts: ['s3:ListMultipartUploadParts'],
+  },
+  lambda: {
+    Invoke: ['lambda:InvokeFunction'],
+    InvokeAsync: ['lambda:InvokeFunction'],
+    InvokeWithResponseStream: ['lambda:InvokeFunction'],
+  },
+  // TransactWriteItems needs the per-item action of each write; which ones the call makes is not
+  // known, so reconciliation treats these as "any of" (see ANY_OF).
+  dynamodb: {
+    TransactGetItems: ['dynamodb:GetItem'],
+    TransactWriteItems: ['dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem', 'dynamodb:ConditionCheckItem'],
+  },
+  apigatewaymanagementapi: {
+    PostToConnection: ['execute-api:ManageConnections'],
+    GetConnection: ['execute-api:ManageConnections'],
+    DeleteConnection: ['execute-api:ManageConnections'],
+  },
+  sqs: {
+    SendMessageBatch: ['sqs:SendMessage'],
+    DeleteMessageBatch: ['sqs:DeleteMessage'],
+    ChangeMessageVisibilityBatch: ['sqs:ChangeMessageVisibility'],
+  },
+  sns: { PublishBatch: ['sns:Publish'] },
+  iotdataplane: { Publish: ['iot:Publish'], GetThingShadow: ['iot:GetThingShadow'], UpdateThingShadow: ['iot:UpdateThingShadow'] },
+  bedrockruntime: { Converse: ['bedrock:InvokeModel'], ConverseStream: ['bedrock:InvokeModelWithResponseStream'] },
+  sesv2: { SendEmail: ['ses:SendEmail'] },
+};
+
+/** @aws-sdk/lib-dynamodb DocumentClient command names. */
+export const DOCUMENT_CLIENT: Record<string, string> = {
+  Put: 'PutItem',
+  Get: 'GetItem',
+  Query: 'Query',
+  Scan: 'Scan',
+  Update: 'UpdateItem',
+  Delete: 'DeleteItem',
+  BatchWrite: 'BatchWriteItem',
+  BatchGet: 'BatchGetItem',
+  TransactWrite: 'TransactWriteItems',
+  TransactGet: 'TransactGetItems',
+};
+
+/** Operations that need some of their actions, not all: the call does not say which. */
+export const ANY_OF = new Set(['dynamodb:TransactWriteItems']);
+
+export function actionsFor(service: string, operation: string): string[] {
+  const o = OVERRIDES[service]?.[operation];
+  if (o) return o;
+  const prefix = IAM_PREFIX[service] ?? service;
+  return [`${prefix}:${operation}`];
+}
+
+/** The input field that names the resource an operation acts on, per service. */
+export const RESOURCE_FIELDS: Record<string, string[]> = {
+  s3: ['Bucket'],
+  sqs: ['QueueUrl', 'QueueName'],
+  sns: ['TopicArn', 'TargetArn'],
+  dynamodb: ['TableName'],
+  secretsmanager: ['SecretId'],
+  // Go uses StateMachineArn; the JavaScript v3 SDK and boto3 use the API's own camelCase members.
+  sfn: ['StateMachineArn', 'ExecutionArn', 'stateMachineArn', 'executionArn'],
+  ssm: ['Name', 'Path'],
+  lambda: ['FunctionName'],
+  kms: ['KeyId'],
+  eventbridge: ['EventBusName'],
+  scheduler: ['GroupName', 'Name'],
+  iotdataplane: ['Topic', 'ThingName'],
+  kinesis: ['StreamName', 'StreamARN'],
+  firehose: ['DeliveryStreamName'],
+  timestreamwrite: ['DatabaseName'],
+};
+
+/** Operations that do not act on a named resource (Resource "*" is expected). */
+export const UNSCOPED_OPERATIONS = new Set([
+  'sts:GetCallerIdentity',
+  's3:ListAllMyBuckets',
+  'sqs:ListQueues',
+  'sns:ListTopics',
+  'secretsmanager:ListSecrets',
+  'dynamodb:ListTables',
+  'lambda:ListFunctions',
+  'states:ListStateMachines',
+  'ssm:DescribeParameters',
+  'cloudwatch:PutMetricData',
+  'iot:DescribeEndpoint',
+]);
+
+/** Turn a printf-style format into a glob: "provider/%s/creds" -> "provider/*\/creds". */
+export function formatToGlob(format: string): string {
+  return format.replace(/%[-+# 0-9.*]*[a-zA-Z]/g, '*').replace(/%%/g, '%');
+}
+
+const NAME_HINTS: Array<[RegExp, string]> = [
+  [/TOPIC/, 'sns'],
+  [/QUEUE/, 'sqs'],
+  [/BUCKET/, 's3'],
+  [/TABLE/, 'dynamodb'],
+  [/SECRET/, 'secretsmanager'],
+  [/(SFN|STATE_?MACHINE|WORKFLOW)/, 'sfn'],
+  [/(PARAM|SSM)/, 'ssm'],
+  [/(FUNCTION|LAMBDA)/, 'lambda'],
+  [/(EVENT_?BUS)/, 'eventbridge'],
+  [/(KMS|KEY_ID|KEY_ARN)/, 'kms'],
+  [/STREAM/, 'kinesis'],
+];
+
+const ARN_SERVICE: Record<string, string> = { states: 'sfn', events: 'eventbridge', logs: 'cloudwatchlogs' };
+
+/** Which SDK service a resource reference most likely belongs to, from an env var name or an ARN. */
+export function serviceHint(ref: { kind: string; name?: string; value?: string; glob?: string }): string | undefined {
+  const text = ref.kind === 'env' ? ref.name : ref.kind === 'literal' ? ref.value : ref.kind === 'pattern' ? ref.glob : undefined;
+  if (!text) return undefined;
+  const arn = text.match(/^arn:aws[\w-]*:([a-z0-9-]+):/);
+  if (arn) return ARN_SERVICE[arn[1]] ?? arn[1];
+  if (/^https:\/\/sqs\./.test(text)) return 'sqs';
+  if (ref.kind !== 'env') return undefined;
+  return NAME_HINTS.find(([re]) => re.test(text.toUpperCase()))?.[1];
+}
+
+/**
+ * The source of CopySource: the bucket of "bucket/key" or "/bucket/key", or an access point ARN with its
+ * object key ("arn:...:accesspoint/ap/object/key"), which is the resource IAM checks. A bucket that is
+ * entirely unknown (`${b}/${k}`) stays unresolved: a `*` there would claim the code needs every bucket.
+ */
+export function copySourceBucket(ref: ResourceRef, text: string): ResourceRef {
+  const sourceOf = (x: string) => {
+    const s = x.split('?')[0];
+    return s.startsWith('arn:') ? s : s.replace(/^\//, '').split('/')[0];
+  };
+  if (ref.kind === 'literal') return { ...ref, value: sourceOf(ref.value) };
+  if (ref.kind === 'pattern') {
+    const glob = sourceOf(ref.glob);
+    return /^\**$/.test(glob) ? { kind: 'unresolved', text } : { ...ref, glob };
+  }
+  return ref;
+}
+
+export const COPY_OPERATIONS = new Set(['CopyObject', 'UploadPartCopy']);

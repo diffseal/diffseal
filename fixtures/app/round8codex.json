@@ -1,0 +1,71 @@
+{
+  "suite": "app/round8codex",
+  "description": "Executable specification fixtures exported from src/app/round8codex.test.ts",
+  "cases": [
+    {
+      "kind": "app",
+      "name": "round8codex: an exported same-package helper is followed inside its own package (round 8 gemini)",
+      "files": {
+        "store/store.go": "package store\n\nimport (\n\t\"context\"\n\t\"github.com/aws/aws-sdk-go-v2/aws\"\n\t\"github.com/aws/aws-sdk-go-v2/service/dynamodb\"\n)\n\nfunc QueryOrders(ctx context.Context, c *dynamodb.Client) {\n\tc.Query(ctx, &dynamodb.QueryInput{TableName: aws.String(\"orders\")})\n}\n\nfunc HandleRequest(ctx context.Context, c *dynamodb.Client) {\n\tQueryOrders(ctx, c)\n}\n",
+        "cmd/x/main.go": "package main\n\nimport \"example.com/mono/store\"\n\nfunc main() {\n\tstore.HandleRequest(nil, nil)\n}\n"
+      },
+      "entryFiles": [
+        "cmd/x/main.go"
+      ],
+      "goModule": "example.com/mono",
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "literal",
+            "value": "orders"
+          }
+        ],
+        "facts": [
+          {
+            "service": "dynamodb",
+            "operation": "Query",
+            "actions": [
+              "dynamodb:Query"
+            ],
+            "resource": {
+              "kind": "literal",
+              "value": "orders"
+            },
+            "file": "cmd/x/main.go"
+          }
+        ],
+        "envReads": []
+      }
+    },
+    {
+      "kind": "app",
+      "name": "round8codex: a commented-out assignment does not override the real one (round 8 codex)",
+      "files": {
+        "h.ts": "import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';\nconst s3 = new S3Client({});\nexport async function h() {\n  const bucket = \"forbidden\";\n  // const bucket = \"allowed\";\n  await s3.send(new GetObjectCommand({ Bucket: bucket, Key: \"k\" }));\n}\n"
+      },
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "literal",
+            "value": "forbidden"
+          }
+        ],
+        "facts": [
+          {
+            "service": "s3",
+            "operation": "GetObject",
+            "actions": [
+              "s3:GetObject"
+            ],
+            "resource": {
+              "kind": "literal",
+              "value": "forbidden"
+            },
+            "file": "h.ts"
+          }
+        ],
+        "envReads": []
+      }
+    }
+  ]
+}

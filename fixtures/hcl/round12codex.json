@@ -1,0 +1,78 @@
+{
+  "suite": "hcl/round12codex",
+  "description": "Executable specification fixtures exported from src/hcl/round12codex.test.ts",
+  "cases": [
+    {
+      "kind": "terraform",
+      "name": "format() follows Go fmt (round 12 codex): a changed width is a change",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = format(\"logs-%03d\", 1)\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = format(\"logs-%04d\", 1)\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_s3_bucket.b"
+        ],
+        "changes": [
+          {
+            "address": "aws_s3_bucket.b",
+            "action": "replace",
+            "confidence": "proven",
+            "actionReasonContains": "replace_because_cannot_update",
+            "after": {
+              "bucket": "logs-0001"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "unsupported functions keep their arguments in their identity (round 12 codex): changing an argument of an unsupported function is a change, and the same call stays equal [1]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = matchkeys([\"old\"], [\"k\"], [\"k\"])[0]\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = matchkeys([\"new\"], [\"k\"], [\"k\"])[0]\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_s3_bucket.b"
+        ],
+        "changes": [
+          {
+            "address": "aws_s3_bucket.b",
+            "action": "replace",
+            "confidence": "likely",
+            "actionReasonContains": "replace_because_cannot_update"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "unsupported functions keep their arguments in their identity (round 12 codex): changing an argument of an unsupported function is a change, and the same call stays equal [2]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = matchkeys([\"old\"], [\"k\"], [\"k\"])[0]\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = matchkeys([\"old\"], [\"k\"], [\"k\"])[0]\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "changes": [
+          {
+            "address": "aws_s3_bucket.b",
+            "action": "no-op",
+            "confidence": "proven"
+          }
+        ]
+      }
+    }
+  ]
+}

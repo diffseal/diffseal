@@ -1,0 +1,266 @@
+{
+  "suite": "terraform/round13eval",
+  "description": "Executable specification fixtures exported from src/terraform/round13eval.test.ts",
+  "cases": [
+    {
+      "kind": "terraform",
+      "name": "round 13 codex/gemini: evaluator and Terraform: a dependent of a replaced resource computed attribute is a likely change, a replacement when ForceNew [1]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_ebs_snapshot_copy\" \"s\" {\n  source_snapshot_id = \"snap-1\"\n  source_region      = \"eu-west-1\"\n}\nresource \"aws_ebs_volume\" \"v\" {\n  availability_zone = \"eu-west-1a\"\n  snapshot_id       = aws_ebs_snapshot_copy.s.id\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_ebs_snapshot_copy\" \"s\" {\n  source_snapshot_id = \"snap-2\"\n  source_region      = \"eu-west-1\"\n}\nresource \"aws_ebs_volume\" \"v\" {\n  availability_zone = \"eu-west-1a\"\n  snapshot_id       = aws_ebs_snapshot_copy.s.id\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_ebs_snapshot_copy.s",
+          "replace aws_ebs_volume.v"
+        ],
+        "changes": [
+          {
+            "address": "aws_ebs_snapshot_copy.s",
+            "action": "replace",
+            "confidence": "proven",
+            "actionReasonContains": "replace_because_cannot_update",
+            "after": {
+              "source_snapshot_id": "snap-2",
+              "source_region": "eu-west-1"
+            }
+          },
+          {
+            "address": "aws_ebs_volume.v",
+            "action": "replace",
+            "confidence": "likely",
+            "actionReasonContains": "snapshot_id reads a computed attribute of aws_ebs_snapshot_copy.s, which is replaced",
+            "after": {
+              "availability_zone": "eu-west-1a"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 13 codex/gemini: evaluator and Terraform: a dependent of a replaced resource computed attribute is a likely change, a replacement when ForceNew [2]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_ebs_snapshot_copy\" \"s\" {\n  source_snapshot_id = \"snap-1\"\n  source_region      = \"eu-west-1\"\n}\nresource \"aws_ebs_volume\" \"v\" {\n  availability_zone = \"eu-west-1a\"\n  snapshot_id       = aws_ebs_snapshot_copy.s.id\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_ebs_snapshot_copy\" \"s\" {\n  source_snapshot_id = \"snap-1\"\n  source_region      = \"eu-west-1\"\n}\nresource \"aws_ebs_volume\" \"v\" {\n  availability_zone = \"eu-west-1a\"\n  snapshot_id       = aws_ebs_snapshot_copy.s.id\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "changes": [
+          {
+            "address": "aws_ebs_snapshot_copy.s",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "aws_ebs_volume.v",
+            "action": "no-op",
+            "confidence": "proven"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 13 codex/gemini: evaluator and Terraform: a dependent through a config attribute of a replaced resource keeps its known value",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_ebs_snapshot_copy\" \"s\" {\n  source_snapshot_id = \"snap-1\"\n  source_region      = \"eu-west-1\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = aws_ebs_snapshot_copy.s.source_region\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_ebs_snapshot_copy\" \"s\" {\n  source_snapshot_id = \"snap-2\"\n  source_region      = \"eu-west-1\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = aws_ebs_snapshot_copy.s.source_region\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_ebs_snapshot_copy.s"
+        ],
+        "changes": [
+          {
+            "address": "aws_ebs_snapshot_copy.s",
+            "action": "replace",
+            "confidence": "proven",
+            "actionReasonContains": "replace_because_cannot_update",
+            "after": {
+              "source_snapshot_id": "snap-2",
+              "source_region": "eu-west-1"
+            }
+          },
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "no-op",
+            "confidence": "proven"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 13 codex/gemini: evaluator and Terraform: a changed count expression that is not known statically is an uncertain change [1]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"replicas\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  count = var.replicas\n  name  = \"q\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"replicas\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  count = var.replicas - 1\n  name  = \"q\"\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_sqs_queue.q[*]"
+        ],
+        "changes": [
+          {
+            "address": "aws_sqs_queue.q[*]",
+            "action": "update",
+            "confidence": "unknown",
+            "actionReasonContains": "count or for_each of aws_sqs_queue.q changed and is not known statically, so instances may be added or removed",
+            "after": {
+              "name": "q"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 13 codex/gemini: evaluator and Terraform: a changed count expression that is not known statically is an uncertain change [2]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"replicas\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  count = var.replicas\n  name  = \"q\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"replicas\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  count = var.replicas\n  name  = \"q\"\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "changes": [
+          {
+            "address": "aws_sqs_queue.q[*]",
+            "action": "no-op",
+            "confidence": "proven"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 13 codex/gemini: evaluator and Terraform: ignore_changes on a field inside a sensitive collection [1]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"null_resource\" \"n\" {\n  triggers = sensitive({ ignored = \"a\", tracked = \"same\" })\n  lifecycle {\n    ignore_changes = [triggers.ignored]\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"null_resource\" \"n\" {\n  triggers = sensitive({ ignored = \"b\", tracked = \"same\" })\n  lifecycle {\n    ignore_changes = [triggers.ignored]\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "changes": [
+          {
+            "address": "null_resource.n",
+            "action": "no-op",
+            "confidence": "proven"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 13 codex/gemini: evaluator and Terraform: ignore_changes on a field inside a sensitive collection [2]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"null_resource\" \"n\" {\n  triggers = sensitive({ ignored = \"a\", tracked = \"same\" })\n  lifecycle {\n    ignore_changes = [triggers.ignored]\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"null_resource\" \"n\" {\n  triggers = sensitive({ ignored = \"a\", tracked = \"same\" })\n  lifecycle {\n    ignore_changes = [triggers.ignored]\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "changes": [
+          {
+            "address": "null_resource.n",
+            "action": "no-op",
+            "confidence": "proven"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 13 codex/gemini: evaluator and Terraform: a condition or principal with an unknown type is unknown, never \"[object Object]\"",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"op\" {}\nvariable \"ptype\" {}\ndata \"aws_iam_policy_document\" \"d\" {\n  statement {\n    actions   = [\"s3:GetObject\"]\n    resources = [\"arn:aws:s3:::b/*\"]\n    principals {\n      type        = \"*\"\n      identifiers = [\"*\"]\n    }\n    condition {\n      test     = var.op\n      variable = \"aws:SourceVpce\"\n      values   = [\"vpce-1\"]\n    }\n  }\n}\ndata \"aws_iam_policy_document\" \"t\" {\n  statement {\n    actions = [\"sts:AssumeRole\"]\n    principals {\n      type        = var.ptype\n      identifiers = [\"*\"]\n    }\n  }\n}\nresource \"aws_s3_bucket_policy\" \"p\" {\n  bucket = \"b\"\n  policy = data.aws_iam_policy_document.d.json\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = data.aws_iam_policy_document.t.json\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_role.r",
+          "create aws_s3_bucket_policy.p"
+        ],
+        "changes": [
+          {
+            "address": "aws_s3_bucket_policy.p",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "bucket": "b"
+            }
+          },
+          {
+            "address": "aws_iam_role.r",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "r"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "s3.bucket-policy",
+            "resource": "aws_s3_bucket_policy.p",
+            "status": "UNKNOWN",
+            "preExisting": null,
+            "detailContains": "Who the bucket policy admits depends on principals or conditions not known statically"
+          },
+          {
+            "ruleId": "iam.trust",
+            "resource": "aws_iam_role.r",
+            "status": "UNKNOWN",
+            "preExisting": null,
+            "detailContains": "Who can assume this role is not known statically"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_s3_bucket_policy.p",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_s3_bucket_policy"
+          },
+          {
+            "resource": "aws_iam_role.r",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_role"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        },
+        "forbiddenSubstrings": [
+          "[object Object]"
+        ]
+      }
+    }
+  ]
+}

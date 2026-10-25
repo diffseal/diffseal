@@ -1,0 +1,610 @@
+{
+  "suite": "analysis/round10",
+  "description": "Executable specification fixtures exported from src/analysis/round10.test.ts",
+  "cases": [
+    {
+      "kind": "reconcile",
+      "name": "round 10: a grant on a full secret ARN with a six-letter word at the end is not proof for a shorter name [1]",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"secretsmanager:GetSecretValue\", Resource = \"arn:aws:secretsmanager:eu-west-1:111122223333:secret:prod/db-reader-??????\" }] })\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "secretsmanager",
+          "actions": [
+            "secretsmanager:GetSecretValue"
+          ],
+          "resource": {
+            "kind": "literal",
+            "value": "prod/db"
+          }
+        }
+      ],
+      "options": {
+        "roleNames": [
+          "r"
+        ]
+      },
+      "expect": {
+        "exactStatuses": [
+          "NOT_GRANTED"
+        ],
+        "links": [
+          {
+            "status": "NOT_GRANTED",
+            "access": "secretsmanager:GetSecretValue on prod/db",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "role r does not allow secretsmanager:GetSecretValue on prod/db, so the call fails with AccessDenied when it runs under this role. Add a statement to aws_iam_role_policy.p (infra/prod/main.tf:8).",
+            "suggestion": {
+              "file": "infra/prod/main.tf",
+              "target": "aws_iam_role_policy.p",
+              "code": "{\n  Effect   = \"Allow\"\n  Action   = [\"secretsmanager:GetSecretValue\"]\n  Resource = [\"arn:aws:secretsmanager:<region>:<account-id>:secret:prod/db-??????\"]\n}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "reconcile",
+      "name": "round 10: a grant on a full secret ARN with a six-letter word at the end is not proof for a shorter name [2]",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"secretsmanager:GetSecretValue\", Resource = \"arn:aws:secretsmanager:eu-west-1:111122223333:secret:prod/db-AbCdEf\" }] })\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "secretsmanager",
+          "actions": [
+            "secretsmanager:GetSecretValue"
+          ],
+          "resource": {
+            "kind": "literal",
+            "value": "prod/db"
+          }
+        }
+      ],
+      "options": {
+        "roleNames": [
+          "r"
+        ]
+      },
+      "expect": {
+        "exactStatuses": [
+          "UNRESOLVED"
+        ],
+        "links": [
+          {
+            "status": "UNRESOLVED",
+            "access": "secretsmanager:GetSecretValue on prod/db",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "Cannot tell whether role r allows secretsmanager:GetSecretValue on prod/db"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "reconcile",
+      "name": "round 10: two Terraform secrets are matched by address, not by trimming a name",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_secretsmanager_secret\" \"db\" {\n  name = \"prod/db\"\n}\nresource \"aws_secretsmanager_secret\" \"reader\" {\n  name = \"prod/db-reader\"\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"secretsmanager:GetSecretValue\", Resource = aws_secretsmanager_secret.reader.arn }] })\n}\nresource \"aws_lambda_function\" \"f\" {\n  function_name = \"f\"\n  role          = aws_iam_role.r.arn\n  environment {\n    variables = { SECRET_ID = aws_secretsmanager_secret.db.arn }\n  }\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "secretsmanager",
+          "actions": [
+            "secretsmanager:GetSecretValue"
+          ],
+          "resource": {
+            "kind": "env",
+            "name": "SECRET_ID"
+          }
+        }
+      ],
+      "expect": {
+        "exactStatuses": [
+          "NOT_GRANTED"
+        ],
+        "links": [
+          {
+            "status": "NOT_GRANTED",
+            "access": "secretsmanager:GetSecretValue on $SECRET_ID (prod/db)",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "role r does not allow secretsmanager:GetSecretValue on prod/db, so the call fails with AccessDenied when it runs under this role. Add a statement to aws_iam_role_policy.p (infra/prod/main.tf:14).",
+            "suggestion": {
+              "file": "infra/prod/main.tf",
+              "target": "aws_iam_role_policy.p",
+              "code": "{\n  Effect   = \"Allow\"\n  Action   = [\"secretsmanager:GetSecretValue\"]\n  Resource = [aws_secretsmanager_secret.db.arn]\n}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "reconcile",
+      "name": "round 10: an unknown :root in NotPrincipal is the role account only when it comes from the caller identity",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"audit_account_id\" {}\ndata \"aws_caller_identity\" \"me\" {}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_kms_key\" \"k\" {\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { AWS = aws_iam_role.r.arn }, Action = \"kms:*\", Resource = \"*\" }, { Effect = \"Deny\", NotPrincipal = { AWS = [aws_iam_role.r.arn, \"arn:aws:iam::${var.audit_account_id}:root\"] }, Action = \"kms:*\", Resource = \"*\" }] })\n}\nresource \"aws_sqs_queue\" \"jobs\" {\n  name              = \"jobs\"\n  kms_master_key_id = aws_kms_key.k.arn\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = [\"sqs:SendMessage\", \"kms:GenerateDataKey\", \"kms:Decrypt\"], Resource = \"*\" }] })\n}\nresource \"aws_lambda_function\" \"f\" {\n  function_name = \"f\"\n  role          = aws_iam_role.r.arn\n  environment {\n    variables = { JOBS_QUEUE_URL = aws_sqs_queue.jobs.url }\n  }\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "sqs",
+          "actions": [
+            "sqs:SendMessage"
+          ],
+          "resource": {
+            "kind": "env",
+            "name": "JOBS_QUEUE_URL"
+          }
+        }
+      ],
+      "expect": {
+        "exactStatuses": [
+          "GRANTED",
+          "UNRESOLVED"
+        ],
+        "links": [
+          {
+            "status": "GRANTED",
+            "access": "sqs:SendMessage on $JOBS_QUEUE_URL (jobs)",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "role r allows it (aws_iam_role_policy.p, infra/prod/main.tf:17)"
+          },
+          {
+            "status": "UNRESOLVED",
+            "access": "kms:GenerateDataKey, kms:Decrypt on aws_kms_key.k, the customer managed key of jobs",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "Cannot tell whether role r may use aws_kms_key.k (conditional or unreadable grants)"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "reconcile",
+      "name": "secret names compared in full ARN form (round 10 codex): prod/db-* covers prod/db but not prod/dbOther [1]",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"secretsmanager:GetSecretValue\", Resource = \"arn:aws:secretsmanager:eu-west-1:111122223333:secret:prod/db-*\" }] })\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "secretsmanager",
+          "actions": [
+            "secretsmanager:GetSecretValue"
+          ],
+          "resource": {
+            "kind": "literal",
+            "value": "prod/db"
+          }
+        }
+      ],
+      "options": {
+        "roleNames": [
+          "r"
+        ]
+      },
+      "expect": {
+        "exactStatuses": [
+          "GRANTED"
+        ],
+        "links": [
+          {
+            "status": "GRANTED",
+            "access": "secretsmanager:GetSecretValue on prod/db",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "role r allows it (aws_iam_role_policy.p, infra/prod/main.tf:8)"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "reconcile",
+      "name": "secret names compared in full ARN form (round 10 codex): prod/db-* covers prod/db but not prod/dbOther [2]",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"secretsmanager:GetSecretValue\", Resource = \"arn:aws:secretsmanager:eu-west-1:111122223333:secret:prod/db-*\" }] })\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "secretsmanager",
+          "actions": [
+            "secretsmanager:GetSecretValue"
+          ],
+          "resource": {
+            "kind": "literal",
+            "value": "prod/dbOther"
+          }
+        }
+      ],
+      "options": {
+        "roleNames": [
+          "r"
+        ]
+      },
+      "expect": {
+        "exactStatuses": [
+          "NOT_GRANTED"
+        ],
+        "links": [
+          {
+            "status": "NOT_GRANTED",
+            "access": "secretsmanager:GetSecretValue on prod/dbOther",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "role r does not allow secretsmanager:GetSecretValue on prod/dbOther, so the call fails with AccessDenied when it runs under this role. Add a statement to aws_iam_role_policy.p (infra/prod/main.tf:8).",
+            "suggestion": {
+              "file": "infra/prod/main.tf",
+              "target": "aws_iam_role_policy.p",
+              "code": "{\n  Effect   = \"Allow\"\n  Action   = [\"secretsmanager:GetSecretValue\"]\n  Resource = [\"arn:aws:secretsmanager:<region>:<account-id>:secret:prod/dbOther-??????\"]\n}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "reconcile",
+      "name": "secret names compared in full ARN form (round 10 codex): prod/db-?????? and the full ARN of prod/db [1]",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"secretsmanager:GetSecretValue\", Resource = \"arn:aws:secretsmanager:eu-west-1:111122223333:secret:prod/db-??????\" }] })\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "secretsmanager",
+          "actions": [
+            "secretsmanager:GetSecretValue"
+          ],
+          "resource": {
+            "kind": "literal",
+            "value": "arn:aws:secretsmanager:eu-west-1:111122223333:secret:prod/db-AbCdEf"
+          }
+        }
+      ],
+      "options": {
+        "roleNames": [
+          "r"
+        ]
+      },
+      "expect": {
+        "exactStatuses": [
+          "UNRESOLVED"
+        ],
+        "links": [
+          {
+            "status": "UNRESOLVED",
+            "access": "secretsmanager:GetSecretValue on arn:aws:secretsmanager:eu-west-1:111122223333:secret:prod/db-AbCdEf",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "Cannot tell whether role r allows secretsmanager:GetSecretValue on arn:aws:secretsmanager:eu-west-1:111122223333:secret:prod/db-AbCdEf"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "reconcile",
+      "name": "secret names compared in full ARN form (round 10 codex): prod/db-?????? and the full ARN of prod/db [2]",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"secretsmanager:GetSecretValue\", Resource = \"arn:aws:secretsmanager:eu-west-1:111122223333:secret:prod/db-*\" }] })\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "secretsmanager",
+          "actions": [
+            "secretsmanager:GetSecretValue"
+          ],
+          "resource": {
+            "kind": "literal",
+            "value": "arn:aws:secretsmanager:eu-west-1:111122223333:secret:prod/db-AbCdEf"
+          }
+        }
+      ],
+      "options": {
+        "roleNames": [
+          "r"
+        ]
+      },
+      "expect": {
+        "exactStatuses": [
+          "GRANTED"
+        ],
+        "links": [
+          {
+            "status": "GRANTED",
+            "access": "secretsmanager:GetSecretValue on arn:aws:secretsmanager:eu-west-1:111122223333:secret:prod/db-AbCdEf",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "role r allows it (aws_iam_role_policy.p, infra/prod/main.tf:8)"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "reconcile",
+      "name": "secret names compared in full ARN form (round 10 codex): prod/db-?????? and the full ARN of prod/db [3]",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"secretsmanager:GetSecretValue\", Resource = \"arn:aws:secretsmanager:eu-west-1:111122223333:secret:prod/db-??????\" }] })\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "secretsmanager",
+          "actions": [
+            "secretsmanager:GetSecretValue"
+          ],
+          "resource": {
+            "kind": "literal",
+            "value": "prod/db"
+          }
+        }
+      ],
+      "options": {
+        "roleNames": [
+          "r"
+        ]
+      },
+      "expect": {
+        "exactStatuses": [
+          "GRANTED"
+        ],
+        "links": [
+          {
+            "status": "GRANTED",
+            "access": "secretsmanager:GetSecretValue on prod/db",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "role r allows it (aws_iam_role_policy.p, infra/prod/main.tf:8)"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "reconcile",
+      "name": "secret names compared in full ARN form (round 10 codex): a key policy grant does not override a conditional deny in the role policy (round 10 codex)",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_kms_key\" \"k\" {\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { AWS = aws_iam_role.r.arn }, Action = \"kms:*\", Resource = \"*\" }] })\n}\nresource \"aws_sqs_queue\" \"jobs\" {\n  name              = \"jobs\"\n  kms_master_key_id = aws_kms_key.k.arn\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = [\"sqs:SendMessage\"], Resource = \"*\" }, { Effect = \"Deny\", Action = [\"kms:Decrypt\", \"kms:GenerateDataKey\"], Resource = \"*\", Condition = { Bool = { \"aws:ViaAWSService\" = \"false\" } } }] })\n}\nresource \"aws_lambda_function\" \"f\" {\n  function_name = \"f\"\n  role          = aws_iam_role.r.arn\n  environment {\n    variables = { JOBS_QUEUE_URL = aws_sqs_queue.jobs.url }\n  }\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "sqs",
+          "actions": [
+            "sqs:SendMessage"
+          ],
+          "resource": {
+            "kind": "env",
+            "name": "JOBS_QUEUE_URL"
+          }
+        }
+      ],
+      "expect": {
+        "exactStatuses": [
+          "GRANTED",
+          "UNRESOLVED"
+        ],
+        "links": [
+          {
+            "status": "GRANTED",
+            "access": "sqs:SendMessage on $JOBS_QUEUE_URL (jobs)",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "role r allows it (aws_iam_role_policy.p, infra/prod/main.tf:15)"
+          },
+          {
+            "status": "UNRESOLVED",
+            "access": "kms:GenerateDataKey, kms:Decrypt on aws_kms_key.k, the customer managed key of jobs",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "Cannot tell whether role r may use aws_kms_key.k (conditional or unreadable grants)"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "round 10: in a plan, a computed PITR block nobody configured is not an unknown dynamic block",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_dynamodb_table.t",
+            "mode": "managed",
+            "type": "aws_dynamodb_table",
+            "name": "t",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "name": "t",
+                "hash_key": "id"
+              },
+              "after_unknown": {
+                "point_in_time_recovery": true
+              },
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_dynamodb_table.t"
+        ],
+        "changes": [
+          {
+            "address": "aws_dynamodb_table.t",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "dynamodb.pitr",
+            "resource": "aws_dynamodb_table.t",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Point-in-time recovery disabled"
+          },
+          {
+            "ruleId": "dynamodb.encryption",
+            "resource": "aws_dynamodb_table.t",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Encrypted with an AWS owned key (DynamoDB default)"
+          },
+          {
+            "ruleId": "dynamodb.deletion-protection",
+            "resource": "aws_dynamodb_table.t",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "Deletion protection disabled"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_dynamodb_table.t",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_dynamodb_table"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL dynamodb.pitr: aws_dynamodb_table.t: Point-in-time recovery disabled"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 10: a for body that reads a changed local is a change",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"dns_a_record_set\" \"x\" {\n  host = \"example.com\"\n}\nlocals {\n  suffix = \"/32\"\n}\nresource \"aws_security_group_rule\" \"r\" {\n  type              = \"ingress\"\n  security_group_id = \"sg-1\"\n  from_port         = 22\n  to_port           = 22\n  protocol          = \"tcp\"\n  cidr_blocks       = [for ip in data.dns_a_record_set.x.addrs : \"${ip}${local.suffix}\"]\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"dns_a_record_set\" \"x\" {\n  host = \"example.com\"\n}\nlocals {\n  suffix = \"/0\"\n}\nresource \"aws_security_group_rule\" \"r\" {\n  type              = \"ingress\"\n  security_group_id = \"sg-1\"\n  from_port         = 22\n  to_port           = 22\n  protocol          = \"tcp\"\n  cidr_blocks       = [for ip in data.dns_a_record_set.x.addrs : \"${ip}${local.suffix}\"]\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_security_group_rule.r"
+        ],
+        "changes": [
+          {
+            "address": "aws_security_group_rule.r",
+            "action": "replace",
+            "confidence": "likely",
+            "actionReasonContains": "replace_because_cannot_update",
+            "after": {
+              "type": "ingress",
+              "security_group_id": "sg-1",
+              "from_port": 22,
+              "to_port": 22,
+              "protocol": "tcp"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 10: a template branch that reads a changed variable is a change",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"cidr\" {\n  default = \"10.0.0.0/8\"\n}\ndata \"aws_ssm_parameter\" \"flag\" {\n  name = \"f\"\n}\nresource \"aws_ssm_parameter\" \"p\" {\n  name  = \"p\"\n  type  = \"String\"\n  value = \"%{ if data.aws_ssm_parameter.flag.value }${var.cidr}%{ else }10.0.0.0/8%{ endif }\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"cidr\" {\n  default = \"0.0.0.0/0\"\n}\ndata \"aws_ssm_parameter\" \"flag\" {\n  name = \"f\"\n}\nresource \"aws_ssm_parameter\" \"p\" {\n  name  = \"p\"\n  type  = \"String\"\n  value = \"%{ if data.aws_ssm_parameter.flag.value }${var.cidr}%{ else }10.0.0.0/8%{ endif }\"\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_ssm_parameter.p"
+        ],
+        "changes": [
+          {
+            "address": "aws_ssm_parameter.p",
+            "action": "update",
+            "confidence": "likely",
+            "after": {
+              "name": "p",
+              "type": "String"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

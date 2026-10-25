@@ -1,0 +1,484 @@
+{
+  "suite": "terraform/round7",
+  "description": "Executable specification fixtures exported from src/terraform/round7.test.ts",
+  "cases": [
+    {
+      "kind": "terraform",
+      "name": "round 7 (Terraform and policy): a module call gaining count is not an implicit move: its resources are destroyed and created",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"m\" {\n  \n  source = \"./m\"\n}\n",
+        "r/m/main.tf": "resource \"aws_dynamodb_table\" \"t\" {\n  name     = \"t\"\n  hash_key = \"id\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"m\" {\n  count = 1\n  source = \"./m\"\n}\n",
+        "r/m/main.tf": "resource \"aws_dynamodb_table\" \"t\" {\n  name     = \"t\"\n  hash_key = \"id\"\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create module.m[0].aws_dynamodb_table.t",
+          "delete module.m.aws_dynamodb_table.t"
+        ],
+        "changes": [
+          {
+            "address": "module.m[0].aws_dynamodb_table.t",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "t",
+              "hash_key": "id"
+            }
+          },
+          {
+            "address": "module.m.aws_dynamodb_table.t",
+            "action": "delete",
+            "confidence": "proven",
+            "actionReasonContains": "looks like a rename to module.m[0].aws_dynamodb_table.t without a moved block; add moved { from = module.m.aws_dynamodb_table.t, to = module.m[0].aws_dynamodb_table.t } to keep it"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 7 (Terraform and policy): a resource gaining count is still an implicit move",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  \n  name     = \"t\"\n  hash_key = \"id\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  count = 1\n  name     = \"t\"\n  hash_key = \"id\"\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "move aws_dynamodb_table.t[0]"
+        ],
+        "changes": [
+          {
+            "address": "aws_dynamodb_table.t[0]",
+            "action": "move",
+            "confidence": "proven",
+            "previousAddress": "aws_dynamodb_table.t",
+            "after": {
+              "name": "t",
+              "hash_key": "id"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 7 (Terraform and policy): replace_triggered_by on a resource replaces the resource when the trigger is updated",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"terraform_data\" \"rev\" {\n  input = \"1\"\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  name     = \"t\"\n  hash_key = \"id\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.rev]\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"terraform_data\" \"rev\" {\n  input = \"2\"\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  name     = \"t\"\n  hash_key = \"id\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.rev]\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_dynamodb_table.t",
+          "update terraform_data.rev"
+        ],
+        "changes": [
+          {
+            "address": "terraform_data.rev",
+            "action": "update",
+            "confidence": "proven",
+            "after": {
+              "input": "2"
+            }
+          },
+          {
+            "address": "aws_dynamodb_table.t",
+            "action": "replace",
+            "confidence": "proven",
+            "actionReasonContains": "replace_triggered_by: terraform_data.rev is updated",
+            "after": {
+              "name": "t",
+              "hash_key": "id"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "dynamodb.pitr",
+            "resource": "aws_dynamodb_table.t",
+            "status": "FAIL",
+            "preExisting": true,
+            "detailContains": "Point-in-time recovery disabled"
+          },
+          {
+            "ruleId": "dynamodb.encryption",
+            "resource": "aws_dynamodb_table.t",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Encrypted with an AWS owned key (DynamoDB default)"
+          },
+          {
+            "ruleId": "dynamodb.deletion-protection",
+            "resource": "aws_dynamodb_table.t",
+            "status": "WARN",
+            "preExisting": true,
+            "detailContains": "Deletion protection disabled"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_dynamodb_table.t",
+            "action": "replace",
+            "severity": "CRITICAL",
+            "dataLoss": true,
+            "reasonContains": "Replaces aws_dynamodb_table: loses the items in the table (replace_triggered_by: terraform_data.rev is updated)"
+          },
+          {
+            "resource": "terraform_data.rev",
+            "action": "update",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "In-place update of input"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "block",
+          "reasonsContain": [
+            "CRITICAL: aws_dynamodb_table.t: Replaces aws_dynamodb_table: loses the items in the table (replace_triggered_by: terraform_data.rev is updated)"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 7 (Terraform and policy): replace_triggered_by on an attribute replaces only when that attribute changes [1]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_ssm_parameter\" \"v\" {\n  name  = \"v\"\n  type  = \"String\"\n  value = \"1\"\n  tags  = { t = \"a\" }\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  lifecycle {\n    replace_triggered_by = [aws_ssm_parameter.v.value]\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_ssm_parameter\" \"v\" {\n  name  = \"v\"\n  type  = \"String\"\n  value = \"2\"\n  tags  = { t = \"a\" }\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  lifecycle {\n    replace_triggered_by = [aws_ssm_parameter.v.value]\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_sqs_queue.q",
+          "update aws_ssm_parameter.v"
+        ],
+        "changes": [
+          {
+            "address": "aws_ssm_parameter.v",
+            "action": "update",
+            "confidence": "proven",
+            "after": {
+              "name": "v",
+              "type": "String",
+              "value": "2",
+              "tags": {
+                "t": "a"
+              }
+            }
+          },
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "replace",
+            "confidence": "proven",
+            "actionReasonContains": "replace_triggered_by: aws_ssm_parameter.v.value is changed",
+            "after": {
+              "name": "q"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 7 (Terraform and policy): replace_triggered_by on an attribute replaces only when that attribute changes [2]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_ssm_parameter\" \"v\" {\n  name  = \"v\"\n  type  = \"String\"\n  value = \"1\"\n  tags  = { t = \"a\" }\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  lifecycle {\n    replace_triggered_by = [aws_ssm_parameter.v.value]\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_ssm_parameter\" \"v\" {\n  name  = \"v\"\n  type  = \"String\"\n  value = \"1\"\n  tags  = { t = \"b\" }\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  lifecycle {\n    replace_triggered_by = [aws_ssm_parameter.v.value]\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_ssm_parameter.v"
+        ],
+        "changes": [
+          {
+            "address": "aws_ssm_parameter.v",
+            "action": "update",
+            "confidence": "proven",
+            "after": {
+              "name": "v",
+              "type": "String",
+              "value": "1",
+              "tags": {
+                "t": "b"
+              }
+            }
+          },
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "no-op",
+            "confidence": "proven"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 7 (Terraform and policy): replace_triggered_by with count.index follows the matching instance",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  revs = [\"a\", \"b\"]\n}\nresource \"terraform_data\" \"rev\" {\n  count = 2\n  input = local.revs[count.index]\n}\nresource \"aws_sqs_queue\" \"q\" {\n  count = 2\n  name  = \"q${count.index}\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.rev[count.index]]\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  revs = [\"a\", \"c\"]\n}\nresource \"terraform_data\" \"rev\" {\n  count = 2\n  input = local.revs[count.index]\n}\nresource \"aws_sqs_queue\" \"q\" {\n  count = 2\n  name  = \"q${count.index}\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.rev[count.index]]\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_sqs_queue.q[1]",
+          "update terraform_data.rev[1]"
+        ],
+        "changes": [
+          {
+            "address": "terraform_data.rev[0]",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "terraform_data.rev[1]",
+            "action": "update",
+            "confidence": "proven",
+            "after": {
+              "input": "c"
+            }
+          },
+          {
+            "address": "aws_sqs_queue.q[0]",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "aws_sqs_queue.q[1]",
+            "action": "replace",
+            "confidence": "proven",
+            "actionReasonContains": "replace_triggered_by: terraform_data.rev[1] is updated",
+            "after": {
+              "name": "q1"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 7 (Terraform and policy): repeated condition blocks on one key add up their values",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_iam_policy_document\" \"d\" {\n  statement {\n    actions   = [\"s3:GetObject\"]\n    resources = [\"arn:aws:s3:::b/*\"]\n    principals {\n      type        = \"*\"\n      identifiers = [\"*\"]\n    }\n    condition {\n      test     = \"StringLike\"\n      variable = \"aws:SourceArn\"\n      values   = [\"*\"]\n    }\n    condition {\n      test     = \"StringLike\"\n      variable = \"aws:SourceArn\"\n      values   = [\"arn:aws:sns:eu-west-1:111122223333:t\"]\n    }\n  }\n}\nresource \"aws_s3_bucket_policy\" \"p\" {\n  bucket = \"b\"\n  policy = data.aws_iam_policy_document.d.json\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_s3_bucket_policy.p"
+        ],
+        "changes": [
+          {
+            "address": "aws_s3_bucket_policy.p",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "bucket": "b",
+              "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\"],\"Resource\":[\"arn:aws:s3:::b/*\"],\"Principal\":\"*\",\"Condition\":{\"StringLike\":{\"aws:SourceArn\":[\"*\",\"arn:aws:sns:eu-west-1:111122223333:t\"]}}}]}"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "s3.bucket-policy",
+            "resource": "aws_s3_bucket_policy.p",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Bucket policy allows any principal without a condition"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_s3_bucket_policy.p",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_s3_bucket_policy"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL s3.bucket-policy: aws_s3_bucket_policy.p: Bucket policy allows any principal without a condition"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 7 (Terraform and policy): a standalone aws_kms_key_policy is checked like a key policy argument",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_kms_key\" \"k\" {}\nresource \"aws_kms_key_policy\" \"p\" {\n  key_id = aws_kms_key.k.id\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"kms:*\", Resource = \"*\" }] })\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_kms_key.k",
+          "create aws_kms_key_policy.p"
+        ],
+        "changes": [
+          {
+            "address": "aws_kms_key.k",
+            "action": "create",
+            "confidence": "proven"
+          },
+          {
+            "address": "aws_kms_key_policy.p",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "policy": "{\"Statement\":[{\"Action\":\"kms:*\",\"Effect\":\"Allow\",\"Principal\":\"*\",\"Resource\":\"*\"}]}"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "kms.rotation",
+            "resource": "aws_kms_key.k",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Automatic key rotation disabled"
+          },
+          {
+            "ruleId": "kms.key-policy",
+            "resource": "aws_kms_key_policy.p",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Key policy allows any principal without a condition"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_kms_key.k",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_kms_key"
+          },
+          {
+            "resource": "aws_kms_key_policy.p",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_kms_key_policy"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 1,
+          "items": [
+            {
+              "resource": "aws_kms_key.k",
+              "kind": "fixed",
+              "noteContains": "$1/month per key + $0.03 per 10k requests"
+            }
+          ]
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL kms.rotation: aws_kms_key.k: Automatic key rotation disabled",
+            "FAIL kms.key-policy: aws_kms_key_policy.p: Key policy allows any principal without a condition"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 7 (Terraform and policy): not_principals in a policy document becomes NotPrincipal [1]",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_iam_policy_document\" \"d\" {\n  statement {\n    actions   = [\"s3:GetObject\"]\n    resources = [\"arn:aws:s3:::b/*\"]\n    not_principals {\n      type        = \"AWS\"\n      identifiers = [\"arn:aws:iam::111122223333:role/admin\"]\n    }\n  }\n}\nresource \"aws_s3_bucket_policy\" \"p\" {\n  bucket = \"b\"\n  policy = data.aws_iam_policy_document.d.json\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_s3_bucket_policy.p"
+        ],
+        "changes": [
+          {
+            "address": "aws_s3_bucket_policy.p",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "bucket": "b",
+              "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\"],\"Resource\":[\"arn:aws:s3:::b/*\"],\"NotPrincipal\":{\"AWS\":[\"arn:aws:iam::111122223333:role/admin\"]}}]}"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "s3.bucket-policy",
+            "resource": "aws_s3_bucket_policy.p",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Bucket policy allows any principal without a condition"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_s3_bucket_policy.p",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_s3_bucket_policy"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL s3.bucket-policy: aws_s3_bucket_policy.p: Bucket policy allows any principal without a condition"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 7 (Terraform and policy): not_principals in a policy document becomes NotPrincipal [2]",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_iam_policy_document\" \"d\" {\n  statement {\n    actions   = [\"s3:GetObject\"]\n    resources = [\"arn:aws:s3:::b/*\"]\n    not_principals {\n      type        = \"AWS\"\n      identifiers = [\"arn:aws:iam::111122223333:role/admin\"]\n    }\n  }\n}\nresource \"aws_s3_bucket_policy\" \"p\" {\n  bucket = \"b\"\n  policy = data.aws_iam_policy_document.d.json\n}\n"
+      },
+      "expect": {
+        "diagnostics": [],
+        "instanceCount": 2,
+        "instances": [
+          {
+            "address": "aws_s3_bucket_policy.p",
+            "attrs": {
+              "bucket": "b",
+              "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\"],\"Resource\":[\"arn:aws:s3:::b/*\"],\"NotPrincipal\":{\"AWS\":[\"arn:aws:iam::111122223333:role/admin\"]}}]}"
+            },
+            "references": {
+              "policy": [
+                "data.aws_iam_policy_document.d"
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

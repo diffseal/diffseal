@@ -1,0 +1,199 @@
+{
+  "suite": "terraform/expressions-and-iam",
+  "description": "Executable specification fixtures for HCL expression evaluation, functions, unknown identity, and IAM policy condition semantics",
+  "cases": [
+    {
+      "kind": "terraform",
+      "name": "evaluate: templates, single interpolation, configured arguments, for expressions, conditionals, functions, try, and splat",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"env\" {\n  default = \"prod\"\n}\nvariable \"n\" {\n  default = 5\n}\nvariable \"on\" {\n  default = false\n}\nvariable \"u\" {}\nvariable \"missing\" {\n  default = {}\n}\nvariable \"l\" {\n  default = [{ n = 1 }, { n = 2 }]\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"exports-prod\"\n}\nresource \"terraform_data\" \"out\" {\n  input = {\n    tpl            = \"acme-${var.env}\"\n    single_num     = \"${var.n}\"\n    bucket_arg     = aws_s3_bucket.b.bucket\n    json_known     = jsonencode({ a = 1 })\n    for_list       = [for s in [\"a\", \"b\"] : upper(s) if s != \"b\"]\n    for_map        = { for k, v in { x = 1 } : k => v * 2 }\n    cond           = var.on ? \"yes\" : \"no\"\n    coal           = coalesce(null, \"\", \"z\")\n    lkp            = lookup({ a = 1 }, \"b\", 7)\n    fmt            = format(\"%s-%d\", \"q\", 3)\n    merged         = merge({ a = 1 }, { b = 2 })\n    set_val        = toset([\"b\", \"a\", \"b\"])\n    subnet         = cidrsubnet(\"10.0.0.0/16\", 8, 2)\n    try_fallback   = try(var.missing.x, \"fallback\")\n    equal_branches = var.u ? \"same\" : \"same\"\n    len_with_u     = length([var.u, 2])\n    keys_with_u    = keys({ k = var.u })\n    try_bad_json   = try(jsondecode(\"\"), {})\n    try_named_re   = try(regex(\"(?P<n>a)\", \"a\"), \"x\")\n    try_icase_re   = try(regex(\"(?i)ABC\", \"abc\"), \"no\")\n    try_bad_re     = try(regex(\"([\", \"a\"), \"bad-regex\")\n    splat_list     = var.l[*].n\n  }\n}\n"
+      },
+      "expect": {
+        "instances": [
+          {
+            "address": "terraform_data.out",
+            "attrs": {
+              "input": {
+                "tpl": "acme-prod",
+                "single_num": 5,
+                "bucket_arg": "exports-prod",
+                "json_known": "{\"a\":1}",
+                "for_list": ["A"],
+                "for_map": { "x": 2 },
+                "cond": "no",
+                "coal": "z",
+                "lkp": 7,
+                "fmt": "q-3",
+                "merged": { "a": 1, "b": 2 },
+                "set_val": ["a", "b"],
+                "subnet": "10.0.2.0/24",
+                "try_fallback": "fallback",
+                "equal_branches": "same",
+                "len_with_u": 2,
+                "keys_with_u": ["k"],
+                "try_bad_json": {},
+                "try_named_re": { "n": "a" },
+                "try_icase_re": "abc",
+                "try_bad_re": "bad-regex",
+                "splat_list": [1, 2]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "format() follows Go fmt (round 12 codex) and chunklist / range / set / regexall / formatlist semantics",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"c\" {}\nresource \"terraform_data\" \"out\" {\n  input = {\n    f01 = format(\"logs-%03d\", 1)\n    f02 = format(\"logs-%04d\", 1)\n    f03 = format(\"[%-5s]\", \"ab\")\n    f04 = format(\"[%5s]\", \"ab\")\n    f05 = format(\"%5.2f\", 3.14159)\n    f06 = format(\"%x\", 255)\n    f07 = format(\"%X\", 255)\n    f08 = format(\"%o\", 8)\n    f09 = format(\"%b\", 5)\n    f10 = format(\"%+d\", 5)\n    f11 = format(\"% d\", 5)\n    f12 = format(\"%t\", true)\n    f13 = format(\"%q\", \"a\")\n    f14 = format(\"%.2s\", \"abcdef\")\n    f15 = format(\"%#x\", 255)\n    f16 = format(\"%e\", 1234.5678)\n    f17 = format(\"%d%%\", 50)\n    f18 = format(\"%-4d|\", 7)\n    eq_diff_known = ({ cidr = var.c, a = 1 } == { cidr = \"x\", a = 2 })\n    eq_diff_len   = ([var.c] == [var.c, \"a\"])\n    eq_known_t    = ({ a = [1, 2] } == { a = [1, 2] })\n    eq_known_f    = ([\"a\"] == [\"b\"])\n    chunk_zero    = chunklist([1, 2, 3], 0)\n    chunk_empty   = chunklist([], 2)\n    chunk_two     = chunklist([1, 2, 3], 2)\n    chunk_neg     = try(chunklist([1], -1), \"err\")\n    chunk_frac    = try(chunklist([1], 1.5), \"err\")\n    range_zero    = try(range(2, 0, 0), \"err\")\n    range_huge    = try(range(0, 100000), \"err\")\n    range_down    = range(4, 1)\n    range_empty   = try(range(1, 4, -1), \"err\")\n    range_step    = range(10, 5, -2)\n    set_eq        = (toset([\"a\", \"b\"]) == setunion([\"b\"], [\"a\"]))\n    set_ne        = (toset([\"a\", \"b\"]) != toset([\"b\", \"c\"]))\n    re_named      = regexall(\"(?P<name>[a-z]+)\", \"old\")[0].name\n    fmtlist_empty = formatlist(\"arn:aws:s3:::%s/*\", [])\n    fmtlist_pairs = formatlist(\"%s-%s\", [\"a\", \"b\"], [\"x\", \"y\"])\n  }\n}\n"
+      },
+      "expect": {
+        "instances": [
+          {
+            "address": "terraform_data.out",
+            "attrs": {
+              "input": {
+                "f01": "logs-001",
+                "f02": "logs-0001",
+                "f03": "[ab   ]",
+                "f04": "[   ab]",
+                "f05": " 3.14",
+                "f06": "ff",
+                "f07": "FF",
+                "f08": "10",
+                "f09": "101",
+                "f10": "+5",
+                "f11": " 5",
+                "f12": "true",
+                "f13": "\"a\"",
+                "f14": "ab",
+                "f15": "0xff",
+                "f16": "1.234568e+03",
+                "f17": "50%",
+                "f18": "7   |",
+                "eq_diff_known": false,
+                "eq_diff_len": false,
+                "eq_known_t": true,
+                "eq_known_f": false,
+                "chunk_zero": [[1, 2, 3]],
+                "chunk_empty": [],
+                "chunk_two": [[1, 2], [3]],
+                "chunk_neg": "err",
+                "chunk_frac": "err",
+                "range_zero": "err",
+                "range_huge": "err",
+                "range_down": [4, 3, 2],
+                "range_empty": "err",
+                "range_step": [10, 8, 6],
+                "set_eq": true,
+                "set_ne": true,
+                "re_named": "old",
+                "fmtlist_empty": [],
+                "fmtlist_pairs": ["a-x", "b-y"]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "unknown identity: an object with an unknown key keeps its values in its identity, and references to different resources differ",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"k\" {}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"exports-prod\"\n}\nresource \"aws_s3_bucket\" \"o\" {\n  bucket = \"other-prod\"\n}\nresource \"terraform_data\" \"same_key_val\" {\n  input = { (var.k) = \"old\" }\n}\nresource \"terraform_data\" \"changed_key_val\" {\n  input = { (var.k) = \"old\" }\n}\nresource \"terraform_data\" \"changed_ref\" {\n  input = aws_s3_bucket.b.arn\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"k\" {}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"exports-prod\"\n}\nresource \"aws_s3_bucket\" \"o\" {\n  bucket = \"other-prod\"\n}\nresource \"terraform_data\" \"same_key_val\" {\n  input = { (var.k) = \"old\" }\n}\nresource \"terraform_data\" \"changed_key_val\" {\n  input = { (var.k) = \"new\" }\n}\nresource \"terraform_data\" \"changed_ref\" {\n  input = aws_s3_bucket.o.arn\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update terraform_data.changed_key_val",
+          "update terraform_data.changed_ref"
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "partially known resources in IAM identity policies (src/policy/iam.test.ts)",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"region\" {}\nvariable \"acct\" {}\nvariable \"mod_out\" {}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"exports-prod\"\n}\nresource \"aws_s3_bucket\" \"config\" {\n  bucket = \"config-prod\"\n}\nresource \"aws_sns_topic\" \"t\" {\n  name = \"events\"\n}\nresource \"aws_iam_policy\" \"tenant_wildcard\" {\n  name   = \"p1\"\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"secretsmanager:GetSecretValue\", Resource = \"arn:aws:secretsmanager:${var.region}:${var.acct}:secret:provider/*/api-credentials-??????\" }] })\n}\nresource \"aws_iam_policy\" \"bucket_objects\" {\n  name   = \"p2\"\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = [\"s3:GetObject\"], Resource = \"${aws_s3_bucket.b.arn}/*\" }] })\n}\nresource \"aws_iam_policy\" \"topic_arn\" {\n  name   = \"p3\"\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"sns:Publish\", Resource = aws_sns_topic.t.arn }] })\n}\nresource \"aws_iam_policy\" \"unknown_shape\" {\n  name   = \"p4\"\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"secretsmanager:GetSecretValue\", Resource = var.mod_out }] })\n}\nresource \"aws_iam_policy\" \"fixed_secret\" {\n  name   = \"p5\"\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"secretsmanager:GetSecretValue\", Resource = \"arn:aws:secretsmanager:${var.region}:${var.acct}:secret:jev/api-key-??????\" }] })\n}\nresource \"aws_iam_policy\" \"subpath_object\" {\n  name   = \"p6\"\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = [\"s3:GetObject\"], Resource = \"${aws_s3_bucket.config.arn}/gateway/otel.yaml\" }] })\n}\nresource \"aws_iam_policy\" \"ecs_exec\" {\n  name   = \"p7\"\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = [\"ssmmessages:CreateControlChannel\", \"ssmmessages:CreateDataChannel\", \"ssmmessages:OpenControlChannel\", \"ssmmessages:OpenDataChannel\"], Resource = \"*\" }] })\n}\n"
+      },
+      "expect": {
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.tenant_wildcard",
+            "status": "WARN"
+          },
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.bucket_objects",
+            "status": "PASS"
+          },
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.topic_arn",
+            "status": "PASS"
+          },
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.unknown_shape",
+            "status": "UNKNOWN"
+          },
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.fixed_secret",
+            "status": "PASS"
+          },
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.subpath_object",
+            "status": "PASS"
+          },
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.ecs_exec",
+            "status": "PASS"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "trust policy conditions and resource policy narrowing operators (unknownBlocks, round6, round6codex, round7)",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"eff\" {}\nvariable \"extra_stmt\" {}\nvariable \"vpce_id\" {}\nvariable \"secret_policy\" {\n  sensitive = true\n}\nresource \"aws_iam_role\" \"org_not_eq\" {\n  name               = \"r1\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"sts:AssumeRoleWithWebIdentity\", Principal = \"*\", Condition = { StringNotEquals = { \"aws:PrincipalOrgID\" = \"o-123\" } } }] })\n}\nresource \"aws_iam_role\" \"org_eq\" {\n  name               = \"r2\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"sts:AssumeRoleWithWebIdentity\", Principal = \"*\", Condition = { StringEquals = { \"aws:PrincipalOrgID\" = \"o-123\" } } }] })\n}\nresource \"aws_iam_role\" \"gh_not_like\" {\n  name               = \"r3\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"sts:AssumeRoleWithWebIdentity\", Principal = { Federated = \"arn:aws:iam::1:oidc-provider/token.actions.githubusercontent.com\" }, Condition = { StringEquals = { \"token.actions.githubusercontent.com:aud\" = \"sts.amazonaws.com\" }, StringNotLike = { \"token.actions.githubusercontent.com:sub\" = \"repo:evil/*\" } } }] })\n}\nresource \"aws_iam_role\" \"org_wildcard\" {\n  name               = \"r4\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"sts:AssumeRoleWithWebIdentity\", Principal = \"*\", Condition = { StringLike = { \"aws:PrincipalOrgID\" = \"*\" } } }] })\n}\nresource \"aws_iam_role\" \"org_if_exists\" {\n  name               = \"r5\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"sts:AssumeRoleWithWebIdentity\", Principal = \"*\", Condition = { StringEqualsIfExists = { \"aws:PrincipalOrgID\" = \"o-123\" } } }] })\n}\nresource \"aws_iam_role\" \"unknown_effect\" {\n  name               = \"r6\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = var.eff, Action = \"sts:AssumeRole\", Principal = \"*\" }] })\n}\nresource \"aws_iam_role\" \"not_principal\" {\n  name               = \"r7\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"sts:AssumeRole\", NotPrincipal = { AWS = \"arn:aws:iam::111122223333:role/x\" } }] })\n}\nresource \"aws_iam_policy\" \"sensitive_unknown\" {\n  name   = \"p_sens\"\n  policy = var.secret_policy\n}\nresource \"aws_iam_policy\" \"unknown_stmt_member\" {\n  name   = \"p_mem\"\n  policy = jsonencode({ Statement = concat([{ Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b/*\" }], [var.extra_stmt]) })\n}\nresource \"aws_s3_bucket_policy\" \"secure_transport_only\" {\n  bucket = \"b1\"\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b1/*\", Condition = { Bool = { \"aws:SecureTransport\" = \"true\" } } }] })\n}\nresource \"aws_s3_bucket_policy\" \"vpce_scoped\" {\n  bucket = \"b2\"\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b2/*\", Condition = { StringEquals = { \"aws:SourceVpce\" = \"vpce-1\" } } }] })\n}\nresource \"aws_s3_bucket_policy\" \"vpce_unknown_exact\" {\n  bucket = \"b3\"\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b3/*\", Condition = { StringEquals = { \"aws:SourceVpce\" = var.vpce_id } } }] })\n}\nresource \"aws_s3_bucket_policy\" \"wide_cidrs\" {\n  bucket = \"b4\"\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b4/*\", Condition = { IpAddress = { \"aws:SourceIp\" = [\"0.0.0.0/1\", \"128.0.0.0/1\"] } } }] })\n}\nresource \"aws_s3_bucket_policy\" \"narrow_cidr\" {\n  bucket = \"b5\"\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b5/*\", Condition = { IpAddress = { \"aws:SourceIp\" = \"203.0.113.0/24\" } } }] })\n}\nresource \"aws_s3_bucket_policy\" \"arn_equals_wildcard\" {\n  bucket = \"b6\"\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b6/*\", Condition = { ArnEquals = { \"aws:PrincipalArn\" = \"arn:aws:iam::*:*\" } } }] })\n}\nresource \"aws_s3_bucket_policy\" \"arn_equals_exact\" {\n  bucket = \"b7\"\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b7/*\", Condition = { ArnEquals = { \"aws:PrincipalArn\" = \"arn:aws:iam::111122223333:role/x\" } } }] })\n}\nresource \"aws_s3_bucket_policy\" \"org_prefix_wildcard\" {\n  bucket = \"b8\"\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b8/*\", Condition = { StringLike = { \"aws:PrincipalOrgID\" = \"o-*\" } } }] })\n}\nresource \"aws_s3_bucket_policy\" \"anded_operators\" {\n  bucket = \"b9\"\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b9/*\", Condition = { StringEquals = { \"aws:SourceAccount\" = \"111122223333\" }, StringLike = { \"aws:SourceAccount\" = \"*\" } } }] })\n}\n"
+      },
+      "expect": {
+        "findings": [
+          { "ruleId": "iam.trust", "resource": "aws_iam_role.org_not_eq", "status": "FAIL" },
+          { "ruleId": "iam.trust", "resource": "aws_iam_role.org_eq", "status": "WARN" },
+          { "ruleId": "iam.trust", "resource": "aws_iam_role.gh_not_like", "status": "FAIL" },
+          { "ruleId": "iam.trust", "resource": "aws_iam_role.org_wildcard", "status": "FAIL" },
+          { "ruleId": "iam.trust", "resource": "aws_iam_role.org_if_exists", "status": "FAIL" },
+          { "ruleId": "iam.trust", "resource": "aws_iam_role.unknown_effect", "status": "FAIL" },
+          { "ruleId": "iam.trust", "resource": "aws_iam_role.not_principal", "status": "FAIL" },
+          { "ruleId": "iam.least-privilege", "resource": "aws_iam_policy.sensitive_unknown", "status": "UNKNOWN" },
+          { "ruleId": "iam.least-privilege", "resource": "aws_iam_policy.unknown_stmt_member", "status": "UNKNOWN" },
+          { "ruleId": "s3.bucket-policy", "resource": "aws_s3_bucket_policy.secure_transport_only", "status": "FAIL" },
+          { "ruleId": "s3.bucket-policy", "resource": "aws_s3_bucket_policy.wide_cidrs", "status": "FAIL" },
+          { "ruleId": "s3.bucket-policy", "resource": "aws_s3_bucket_policy.arn_equals_wildcard", "status": "FAIL" },
+          { "ruleId": "s3.bucket-policy", "resource": "aws_s3_bucket_policy.org_prefix_wildcard", "status": "FAIL" }
+        ],
+        "noFindingFor": [
+          { "ruleId": "s3.bucket-policy", "resource": "aws_s3_bucket_policy.vpce_scoped" },
+          { "ruleId": "s3.bucket-policy", "resource": "aws_s3_bucket_policy.vpce_unknown_exact" },
+          { "ruleId": "s3.bucket-policy", "resource": "aws_s3_bucket_policy.narrow_cidr" },
+          { "ruleId": "s3.bucket-policy", "resource": "aws_s3_bucket_policy.arn_equals_exact" },
+          { "ruleId": "s3.bucket-policy", "resource": "aws_s3_bucket_policy.anded_operators" }
+        ]
+      }
+    }
+  ]
+}

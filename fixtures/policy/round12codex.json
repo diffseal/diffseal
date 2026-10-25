@@ -1,0 +1,347 @@
+{
+  "suite": "policy/round12codex",
+  "description": "Executable specification fixtures exported from src/policy/round12codex.test.ts",
+  "cases": [
+    {
+      "kind": "terraform",
+      "name": "round 12 codex: policy and cost: a KMS data source lookup of an AWS managed alias is not a customer managed key",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_kms_alias\" \"sqs\" {\n  name = \"alias/aws/sqs\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name              = \"q\"\n  kms_master_key_id = data.aws_kms_alias.sqs.target_key_arn\n}\n"
+      },
+      "policy": {
+        "requireCustomerManagedKeys": true
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_sqs_queue.q"
+        ],
+        "changes": [
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "q"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "sqs.encryption",
+            "resource": "aws_sqs_queue.q",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "SSE-KMS with the AWS managed key aws/sqs; policy requires a customer managed KMS key"
+          },
+          {
+            "ruleId": "sqs.dlq",
+            "resource": "aws_sqs_queue.q",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "No dead-letter queue: messages that keep failing are dropped after the retention period"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_sqs_queue.q",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_sqs_queue"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0,
+          "items": [
+            {
+              "resource": "aws_sqs_queue.q",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            }
+          ]
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 12 codex: policy and cost: a KMS data source lookup of a key not known statically is UNKNOWN, a managed key is still a CMK [1]",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"key\" {}\ndata \"aws_kms_key\" \"k\" {\n  key_id = var.key\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name              = \"q\"\n  kms_master_key_id = data.aws_kms_key.k.arn\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_sqs_queue.q"
+        ],
+        "changes": [
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "q"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "sqs.encryption",
+            "resource": "aws_sqs_queue.q",
+            "status": "UNKNOWN",
+            "preExisting": null,
+            "detailContains": "KMS key not known until apply"
+          },
+          {
+            "ruleId": "sqs.dlq",
+            "resource": "aws_sqs_queue.q",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "No dead-letter queue: messages that keep failing are dropped after the retention period"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_sqs_queue.q",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_sqs_queue"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0,
+          "items": [
+            {
+              "resource": "aws_sqs_queue.q",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            }
+          ]
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 12 codex: policy and cost: a KMS data source lookup of a key not known statically is UNKNOWN, a managed key is still a CMK [2]",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_kms_key\" \"k\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  name              = \"q\"\n  kms_master_key_id = aws_kms_key.k.arn\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_kms_key.k",
+          "create aws_sqs_queue.q"
+        ],
+        "changes": [
+          {
+            "address": "aws_kms_key.k",
+            "action": "create",
+            "confidence": "proven"
+          },
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "q"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "kms.rotation",
+            "resource": "aws_kms_key.k",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Automatic key rotation disabled"
+          },
+          {
+            "ruleId": "sqs.encryption",
+            "resource": "aws_sqs_queue.q",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "SSE-KMS with a customer managed key"
+          },
+          {
+            "ruleId": "sqs.dlq",
+            "resource": "aws_sqs_queue.q",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "No dead-letter queue: messages that keep failing are dropped after the retention period"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_kms_key.k",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_kms_key"
+          },
+          {
+            "resource": "aws_sqs_queue.q",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_sqs_queue"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 1,
+          "items": [
+            {
+              "resource": "aws_kms_key.k",
+              "kind": "fixed",
+              "noteContains": "$1/month per key + $0.03 per 10k requests"
+            },
+            {
+              "resource": "aws_sqs_queue.q",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            }
+          ]
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL kms.rotation: aws_kms_key.k: Automatic key rotation disabled"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 12 codex: policy and cost: an explicitly set but unknown sqs_managed_sse_enabled is UNKNOWN",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"sse\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  name                    = \"q\"\n  sqs_managed_sse_enabled = var.sse\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_sqs_queue.q"
+        ],
+        "changes": [
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "q"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "sqs.encryption",
+            "resource": "aws_sqs_queue.q",
+            "status": "UNKNOWN",
+            "preExisting": null,
+            "detailContains": "sqs_managed_sse_enabled not known until apply"
+          },
+          {
+            "ruleId": "sqs.dlq",
+            "resource": "aws_sqs_queue.q",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "No dead-letter queue: messages that keep failing are dropped after the retention period"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_sqs_queue.q",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_sqs_queue"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0,
+          "items": [
+            {
+              "resource": "aws_sqs_queue.q",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            }
+          ]
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 12 codex: policy and cost: multi_az written as a string still doubles the RDS cost",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_db_instance\" \"d\" {\n  identifier     = \"d\"\n  instance_class = \"db.r6g.large\"\n  multi_az       = \"false\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_db_instance\" \"d\" {\n  identifier     = \"d\"\n  instance_class = \"db.r6g.large\"\n  multi_az       = \"true\"\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_db_instance.d"
+        ],
+        "changes": [
+          {
+            "address": "aws_db_instance.d",
+            "action": "update",
+            "confidence": "proven",
+            "after": {
+              "identifier": "d",
+              "instance_class": "db.r6g.large",
+              "multi_az": "true"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "rds.encryption",
+            "resource": "aws_db_instance.d",
+            "status": "FAIL",
+            "preExisting": true,
+            "detailContains": "Storage not encrypted (encryption can only be enabled at creation)"
+          },
+          {
+            "ruleId": "rds.deletion-protection",
+            "resource": "aws_db_instance.d",
+            "status": "WARN",
+            "preExisting": true,
+            "detailContains": "Deletion protection disabled"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_db_instance.d",
+            "action": "update",
+            "severity": "MEDIUM",
+            "dataLoss": false,
+            "reasonContains": "Changes multi_az: may reboot or fail over the database"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 156.95,
+          "items": [
+            {
+              "resource": "aws_db_instance.d",
+              "kind": "scaling",
+              "noteContains": "db.r6g.large compute, storage extra -> db.r6g.large Multi-AZ compute, storage extra"
+            }
+          ]
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    }
+  ]
+}

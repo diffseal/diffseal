@@ -1,0 +1,354 @@
+{
+  "suite": "analysis/round8",
+  "description": "Executable specification fixtures exported from src/analysis/round8.test.ts",
+  "cases": [
+    {
+      "kind": "app",
+      "name": "round 8: Python clients and tables set as class attributes are found through self",
+      "files": {
+        "s.py": "import os\nimport boto3\n\nclass Store:\n    table = boto3.resource(\"dynamodb\").Table(os.environ[\"TABLE\"])\n\n    def put(self, item):\n        self.table.put_item(Item=item)\n"
+      },
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "env",
+            "name": "TABLE"
+          }
+        ],
+        "facts": [
+          {
+            "service": "dynamodb",
+            "operation": "PutItem",
+            "actions": [
+              "dynamodb:PutItem"
+            ],
+            "resource": {
+              "kind": "env",
+              "name": "TABLE"
+            },
+            "file": "s.py"
+          }
+        ],
+        "envReads": [
+          {
+            "name": "TABLE"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "app",
+      "name": "round 8: Python: a module-level client assigned below the function that uses it is found",
+      "files": {
+        "h.py": "import boto3\n\ndef handler(e, c):\n    s3.get_object(Bucket=\"b\", Key=\"k\")\n\ns3 = boto3.client(\"s3\")\n"
+      },
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "literal",
+            "value": "b"
+          }
+        ],
+        "facts": [
+          {
+            "service": "s3",
+            "operation": "GetObject",
+            "actions": [
+              "s3:GetObject"
+            ],
+            "resource": {
+              "kind": "literal",
+              "value": "b"
+            },
+            "file": "h.py"
+          }
+        ],
+        "envReads": []
+      }
+    },
+    {
+      "kind": "app",
+      "name": "round 8: Go: a comparison is not an assignment",
+      "files": {
+        "cmd/x/main.go": "package main\n\nimport (\n\t\"context\"\n\t\"errors\"\n\t\"os\"\n\t\"github.com/aws/aws-sdk-go-v2/aws\"\n\t\"github.com/aws/aws-sdk-go-v2/service/dynamodb\"\n\t\"github.com/aws/aws-sdk-go-v2/service/sns\"\n)\n\nfunc main() {\n\tctx := context.Background()\n\tvar client *dynamodb.Client\n\ttable := os.Getenv(\"ORDERS_TABLE\")\n\tif table == \"\" {\n\t\tpanic(errors.New(\"unset\"))\n\t}\n\tclient.PutItem(ctx, &dynamodb.PutItemInput{TableName: aws.String(table)})\n}\n"
+      },
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "env",
+            "name": "ORDERS_TABLE"
+          }
+        ],
+        "facts": [
+          {
+            "service": "dynamodb",
+            "operation": "PutItem",
+            "actions": [
+              "dynamodb:PutItem"
+            ],
+            "resource": {
+              "kind": "env",
+              "name": "ORDERS_TABLE"
+            },
+            "file": "cmd/x/main.go"
+          }
+        ],
+        "envReads": [
+          {
+            "name": "ORDERS_TABLE"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "app",
+      "name": "round 8: Go: new(expr) is followed in direct SDK calls too",
+      "files": {
+        "cmd/x/main.go": "package main\n\nimport (\n\t\"context\"\n\t\"errors\"\n\t\"os\"\n\t\"github.com/aws/aws-sdk-go-v2/aws\"\n\t\"github.com/aws/aws-sdk-go-v2/service/dynamodb\"\n\t\"github.com/aws/aws-sdk-go-v2/service/sns\"\n)\n\nfunc main() {\n\tctx := context.Background()\n\tvar client *sns.Client\n\ttopic := os.Getenv(\"ORDERS_TOPIC\")\n\tclient.Publish(ctx, &sns.PublishInput{TopicArn: new(topic)})\n\tclient.Publish(ctx, &sns.PublishInput{TopicArn: new(\"arn:aws:sns:eu-west-1:111122223333:x\")})\n}\n"
+      },
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "env",
+            "name": "ORDERS_TOPIC"
+          },
+          {
+            "kind": "literal",
+            "value": "arn:aws:sns:eu-west-1:111122223333:x"
+          }
+        ],
+        "facts": [
+          {
+            "service": "sns",
+            "operation": "Publish",
+            "actions": [
+              "sns:Publish"
+            ],
+            "resource": {
+              "kind": "env",
+              "name": "ORDERS_TOPIC"
+            },
+            "file": "cmd/x/main.go"
+          },
+          {
+            "service": "sns",
+            "operation": "Publish",
+            "actions": [
+              "sns:Publish"
+            ],
+            "resource": {
+              "kind": "literal",
+              "value": "arn:aws:sns:eu-west-1:111122223333:x"
+            },
+            "file": "cmd/x/main.go"
+          }
+        ],
+        "envReads": [
+          {
+            "name": "ORDERS_TOPIC"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "app",
+      "name": "round 8: Go: a helper passing an env read on to an inner helper fixes the resource",
+      "files": {
+        "orders/pub.go": "package orders\n\nimport (\n\t\"context\"\n\t\"os\"\n\t\"github.com/aws/aws-sdk-go-v2/aws\"\n\t\"github.com/aws/aws-sdk-go-v2/service/sns\"\n)\n\nvar client *sns.Client\n\nfunc publish(ctx context.Context, topic string, msg string) {\n\tclient.Publish(ctx, &sns.PublishInput{TopicArn: aws.String(topic), Message: aws.String(msg)})\n}\n\nfunc PublishOrder(ctx context.Context, msg string) {\n\tpublish(ctx, os.Getenv(\"ORDERS_TOPIC\"), msg)\n}\n",
+        "cmd/x/main.go": "package main\n\nimport \"example.com/mono/orders\"\n\nfunc main() {\n\torders.PublishOrder(nil, \"hello\")\n}\n"
+      },
+      "entryFiles": [
+        "cmd/x/main.go"
+      ],
+      "goModule": "example.com/mono",
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "env",
+            "name": "ORDERS_TOPIC"
+          }
+        ],
+        "facts": [
+          {
+            "service": "sns",
+            "operation": "Publish",
+            "actions": [
+              "sns:Publish"
+            ],
+            "resource": {
+              "kind": "env",
+              "name": "ORDERS_TOPIC"
+            },
+            "file": "cmd/x/main.go"
+          }
+        ],
+        "envReads": []
+      }
+    },
+    {
+      "kind": "reconcile",
+      "name": "round 8: an ARN with a variable partition is not a definite mismatch",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"sns:Publish\", Resource = \"arn:aws:sns:eu-west-1:111122223333:orders\" }] })\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "sns",
+          "actions": [
+            "sns:Publish"
+          ],
+          "resource": {
+            "kind": "pattern",
+            "glob": "arn:*:sns:*:*:orders"
+          }
+        }
+      ],
+      "options": {
+        "roleNames": [
+          "r"
+        ]
+      },
+      "expect": {
+        "exactStatuses": [
+          "GRANTED"
+        ],
+        "links": [
+          {
+            "status": "GRANTED",
+            "access": "sns:Publish on arn:*:sns:*:*:orders",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "role r allows it (aws_iam_role_policy.p, infra/prod/main.tf:8)"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "reconcile",
+      "name": "round 8: a key policy NotPrincipal that lists the role but not its account does not prove the role exempt",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_kms_key\" \"k\" {\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { AWS = aws_iam_role.r.arn }, Action = \"kms:*\", Resource = \"*\" }, { Effect = \"Deny\", NotPrincipal = { AWS = aws_iam_role.r.arn }, Action = \"kms:*\", Resource = \"*\" }] })\n}\nresource \"aws_sqs_queue\" \"jobs\" {\n  name              = \"jobs\"\n  kms_master_key_id = aws_kms_key.k.arn\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = [\"sqs:SendMessage\", \"kms:GenerateDataKey\", \"kms:Decrypt\"], Resource = \"*\" }] })\n}\nresource \"aws_lambda_function\" \"f\" {\n  function_name = \"f\"\n  role          = aws_iam_role.r.arn\n  environment {\n    variables = { JOBS_QUEUE_URL = aws_sqs_queue.jobs.url }\n  }\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "sqs",
+          "actions": [
+            "sqs:SendMessage"
+          ],
+          "resource": {
+            "kind": "env",
+            "name": "JOBS_QUEUE_URL"
+          }
+        }
+      ],
+      "expect": {
+        "exactStatuses": [
+          "GRANTED",
+          "NOT_GRANTED"
+        ],
+        "links": [
+          {
+            "status": "GRANTED",
+            "access": "sqs:SendMessage on $JOBS_QUEUE_URL (jobs)",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "role r allows it (aws_iam_role_policy.p, infra/prod/main.tf:15)"
+          },
+          {
+            "status": "NOT_GRANTED",
+            "access": "kms:GenerateDataKey, kms:Decrypt on aws_kms_key.k, the customer managed key of jobs",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "jobs is encrypted with aws_kms_key.k, and role r may not use it, so sqs:SendMessage fails with AccessDenied.",
+            "suggestion": {
+              "file": "infra/prod/main.tf",
+              "target": "aws_iam_role_policy.p",
+              "code": "{\n  Effect   = \"Allow\"\n  Action   = [\"kms:GenerateDataKey\", \"kms:Decrypt\"]\n  Resource = [aws_kms_key.k.arn]\n}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 8: replace_triggered_by on an attribute that does not change does not replace",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  name     = \"orders\"\n  hash_key = \"id\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  lifecycle {\n    replace_triggered_by = [aws_dynamodb_table.t.name]\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  name     = \"orders\"\n  hash_key = \"pk\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  lifecycle {\n    replace_triggered_by = [aws_dynamodb_table.t.name]\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_dynamodb_table.t"
+        ],
+        "changes": [
+          {
+            "address": "aws_dynamodb_table.t",
+            "action": "replace",
+            "confidence": "proven",
+            "actionReasonContains": "replace_because_cannot_update",
+            "after": {
+              "name": "orders",
+              "hash_key": "pk"
+            }
+          },
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "no-op",
+            "confidence": "proven"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 8: replace_triggered_by on a computed attribute of an updated resource is a likely replace",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"terraform_data\" \"rev\" {\n  input = \"1\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.rev.output]\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"terraform_data\" \"rev\" {\n  input = \"2\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  lifecycle {\n    replace_triggered_by = [terraform_data.rev.output]\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_sqs_queue.q",
+          "update terraform_data.rev"
+        ],
+        "changes": [
+          {
+            "address": "terraform_data.rev",
+            "action": "update",
+            "confidence": "proven",
+            "after": {
+              "input": "2"
+            }
+          },
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "replace",
+            "confidence": "likely",
+            "actionReasonContains": "replace_triggered_by: terraform_data.rev.output is updated",
+            "after": {
+              "name": "q"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

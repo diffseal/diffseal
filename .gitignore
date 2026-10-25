@@ -1,0 +1,11 @@
+# No trailing slash: a worktree links node_modules as a symlink, which must be ignored too.
+node_modules
+dist/
+# Replay output can contain excerpts of the analyzed (proprietary) repository.
+dry-runs/
+# Local dry-run output of analyzed repositories never belongs in the repository.
+examples/output/*dry-runs*/
+# The Action runs the bundled file, so it is committed.
+!dist/
+dist/*
+!dist/action.js

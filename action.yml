@@ -1,0 +1,65 @@
+name: 'TerraTrust'
+description: 'Review Terraform changes and the AWS access application code needs, without cloud credentials.'
+author: 'TerraTrust'
+branding:
+  icon: 'shield'
+  color: 'green'
+
+inputs:
+  mode:
+    description: >-
+      pr: replay the pull request's changes (needs actions/checkout with fetch-depth: 0).
+      plan: review a `terraform show -json` file.
+      app: check the app's AWS calls against the IAM roles in Terraform (this repository or infra-path).
+    required: false
+    default: 'pr'
+  plan-json:
+    description: 'Plan JSON for mode: plan'
+    required: false
+    default: 'tfplan.json'
+  base:
+    description: 'Compare against this revision. Defaults to the first parent of HEAD (the PR base for pull_request merge refs).'
+    required: false
+  roots-under:
+    description: 'Only use Terraform roots under this path, e.g. infra/envs/prod'
+    required: false
+  infra-path:
+    description: 'mode: app. Path where the infrastructure repository is checked out, when it is a different repository.'
+    required: false
+  role:
+    description: 'mode: app. IAM role names or ARNs the app runs as, comma-separated, when task definitions or .terratrust.json do not say.'
+    required: false
+  entry:
+    description: 'mode: app. Main package directories to check one binary, comma-separated.'
+    required: false
+  policy:
+    description: 'Path to a policy JSON (requireCustomerManagedKeys, minBackupRetentionDays, blockOn).'
+    required: false
+  strict:
+    description: 'Fail the job on REVIEW as well as BLOCK.'
+    required: false
+    default: 'false'
+  advisory:
+    description: 'Report and comment without failing the job, even on BLOCK.'
+    required: false
+    default: 'false'
+  comment:
+    description: 'Post or update one PR comment with the report.'
+    required: false
+    default: 'true'
+  comment-author:
+    description: 'Login that owns the report comment. Only a comment by this login is updated; set it when using an App token.'
+    required: false
+    default: 'github-actions[bot]'
+  github-token:
+    description: 'Token for the PR comment. Needs pull-requests: write.'
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  gate:
+    description: 'pass, review or block'
+
+runs:
+  using: 'node24'
+  main: 'dist/action.js'

@@ -1,0 +1,212 @@
+{
+  "suite": "analysis/round6",
+  "description": "Executable specification fixtures exported from src/analysis/round6.test.ts",
+  "cases": [
+    {
+      "kind": "terraform",
+      "name": "round 6: adding count with a value known only at apply is not a proven delete",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"enabled\" {}\nresource \"aws_dynamodb_table\" \"t\" {\n  \n  name     = \"t\"\n  hash_key = \"id\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"enabled\" {}\nresource \"aws_dynamodb_table\" \"t\" {\n  count = var.enabled ? 1 : 0\n  name     = \"t\"\n  hash_key = \"id\"\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_dynamodb_table.t"
+        ],
+        "changes": [
+          {
+            "address": "aws_dynamodb_table.t",
+            "action": "update",
+            "confidence": "unknown",
+            "actionReasonContains": "count or for_each of aws_dynamodb_table.t is not known statically at head, so instances may be kept, added or removed",
+            "after": {
+              "name": "t",
+              "hash_key": "id"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 6: adding count = 1 moves the resource to [0], as Terraform does",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  \n  name     = \"t\"\n  hash_key = \"id\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  count = 1\n  name     = \"t\"\n  hash_key = \"id\"\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "move aws_dynamodb_table.t[0]"
+        ],
+        "changes": [
+          {
+            "address": "aws_dynamodb_table.t[0]",
+            "action": "move",
+            "confidence": "proven",
+            "previousAddress": "aws_dynamodb_table.t",
+            "after": {
+              "name": "t",
+              "hash_key": "id"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 6: a ForceNew argument that is sensitive and not known is a likely replacement, not a proven one",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"db_user\" {\n  sensitive = true\n}\nvariable \"admin_user\" {\n  sensitive = true\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"c\"\n  master_username    = var.db_user\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"db_user\" {\n  sensitive = true\n}\nvariable \"admin_user\" {\n  sensitive = true\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"c\"\n  master_username    = var.admin_user\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_rds_cluster.c"
+        ],
+        "changes": [
+          {
+            "address": "aws_rds_cluster.c",
+            "action": "replace",
+            "confidence": "likely",
+            "actionReasonContains": "replace_because_cannot_update",
+            "after": {
+              "cluster_identifier": "c"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 6: scrubbing leaves policy grammar, action names and paths alone",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"partner\" {\n  sensitive = true\n  default   = \"123456789012\"\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"b\"\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { AWS = \"arn:aws:iam::${var.partner}:root\" }, Action = \"s3:GetObject\", Resource = \"*\" }] })\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_policy.p",
+          "create aws_s3_bucket.b"
+        ],
+        "changes": [
+          {
+            "address": "aws_s3_bucket.b",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "bucket": "b"
+            }
+          },
+          {
+            "address": "aws_iam_policy.p",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "p"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "s3.encryption",
+            "resource": "aws_s3_bucket.b",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "No bucket encryption configuration: S3 applies SSE-S3 (AES256) to all new objects by default since January 2023"
+          },
+          {
+            "ruleId": "s3.public-access",
+            "resource": "aws_s3_bucket.b",
+            "status": "UNKNOWN",
+            "preExisting": null,
+            "detailContains": "No bucket-level public access block. New buckets block public access by default since April 2023 and an account-level block may apply, but neither is visible here"
+          },
+          {
+            "ruleId": "s3.versioning",
+            "resource": "aws_s3_bucket.b",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "Object versioning not enabled"
+          },
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.p",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Resource \"*\" for s3:GetObject"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_s3_bucket.b",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_s3_bucket"
+          },
+          {
+            "resource": "aws_iam_policy.p",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_policy"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0,
+          "items": [
+            {
+              "resource": "aws_s3_bucket.b",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            }
+          ]
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL iam.least-privilege: aws_iam_policy.p: Resource \"*\" for s3:GetObject"
+          ]
+        },
+        "forbiddenSubstrings": [
+          "123456789012"
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 6: a for over a map with one sensitive element keeps its keys for for_each",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"db_password\" {\n  sensitive = true\n  default   = \"hunter2\"\n}\nlocals {\n  services = { api = { enabled = true, env = { DB_PASSWORD = var.db_password } }, worker = { enabled = true, env = {} } }\n}\nresource \"aws_sqs_queue\" \"q\" {\n  for_each = { for k, s in local.services : k => s if s.enabled }\n  name     = \"${each.key}-q\"\n}\n"
+      },
+      "expect": {
+        "diagnostics": [],
+        "instanceCount": 2,
+        "instances": [
+          {
+            "address": "aws_sqs_queue.q[\"api\"]",
+            "attrs": {
+              "name": "api-q"
+            }
+          },
+          {
+            "address": "aws_sqs_queue.q[\"worker\"]",
+            "attrs": {
+              "name": "worker-q"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

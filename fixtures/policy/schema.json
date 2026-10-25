@@ -1,0 +1,56 @@
+{
+  "suite": "policy/schema",
+  "description": "Executable specification fixtures for provider schema type coercion in policy and blast-radius analysis",
+  "cases": [
+    {
+      "kind": "terraform",
+      "name": "provider schema coercion: deletion_protection on aws_db_instance is a boolean",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"app-db\"\n  engine              = \"postgres\"\n  instance_class      = \"db.t4g.micro\"\n  storage_encrypted   = true\n  deletion_protection = \"true\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete aws_db_instance.db"
+        ],
+        "blast": [
+          {
+            "resource": "aws_db_instance.db",
+            "action": "delete",
+            "severity": "HIGH",
+            "dataLoss": false,
+            "reasonContains": "deletion_protection = true"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "provider schema coercion: deletion_protection on aws_cognito_user_pool is a string, not coerced to boolean true",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_cognito_user_pool\" \"pool\" {\n  name                = \"users\"\n  deletion_protection = \"true\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete aws_cognito_user_pool.pool"
+        ],
+        "blast": [
+          {
+            "resource": "aws_cognito_user_pool.pool",
+            "action": "delete",
+            "severity": "CRITICAL",
+            "dataLoss": true,
+            "reasonContains": "Deletes aws_cognito_user_pool: loses every user and their password"
+          }
+        ]
+      }
+    }
+  ]
+}

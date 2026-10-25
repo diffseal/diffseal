@@ -1,0 +1,216 @@
+{
+  "suite": "analysis/round10codex",
+  "description": "Executable specification fixtures exported from src/analysis/round10codex.test.ts",
+  "cases": [
+    {
+      "kind": "terraform",
+      "name": "round 10 (codex): a sensitive force_destroy still lets S3 delete the objects: data loss, not a guard",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket        = \"b\"\n  force_destroy = sensitive(true)\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete aws_s3_bucket.b"
+        ],
+        "changes": [
+          {
+            "address": "aws_s3_bucket.b",
+            "action": "delete",
+            "confidence": "proven"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_s3_bucket.b",
+            "action": "delete",
+            "severity": "CRITICAL",
+            "dataLoss": true,
+            "reasonContains": "Deletes aws_s3_bucket: loses the objects in the bucket"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "block",
+          "reasonsContain": [
+            "CRITICAL: aws_s3_bucket.b: Deletes aws_s3_bucket: loses the objects in the bucket"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 10 (codex): a sensitive deletion_protection still guards the delete",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  name                        = \"t\"\n  hash_key                    = \"id\"\n  deletion_protection_enabled = sensitive(true)\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete aws_dynamodb_table.t"
+        ],
+        "changes": [
+          {
+            "address": "aws_dynamodb_table.t",
+            "action": "delete",
+            "confidence": "proven"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_dynamodb_table.t",
+            "action": "delete",
+            "severity": "HIGH",
+            "dataLoss": false,
+            "reasonContains": "Deletes aws_dynamodb_table: loses the items in the table. deletion_protection_enabled = true, so the apply will fail mid-way"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "HIGH: aws_dynamodb_table.t: Deletes aws_dynamodb_table: loses the items in the table. deletion_protection_enabled = true, so the apply will fail mid-way"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 10 (codex): a source_policy_documents list that is sensitive as a whole is merged",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_iam_policy_document\" \"d\" {\n  source_policy_documents = sensitive([jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"*\", Resource = \"*\" }] })])\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = data.aws_iam_policy_document.d.json\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_policy.p"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_policy.p",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "p"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.p",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Action \"*\" grants every AWS action (admin-equivalent)"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_policy.p",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_policy"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL iam.least-privilege: aws_iam_policy.p: Action \"*\" grants every AWS action (admin-equivalent)"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 10 (codex): an override_policy_documents list that is sensitive as a whole is merged",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_iam_policy_document\" \"d\" {\n  override_policy_documents = sensitive([jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"*\", Resource = \"*\" }] })])\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = data.aws_iam_policy_document.d.json\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_policy.p"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_policy.p",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "p"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.p",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Action \"*\" grants every AWS action (admin-equivalent)"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_policy.p",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_policy"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL iam.least-privilege: aws_iam_policy.p: Action \"*\" grants every AWS action (admin-equivalent)"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 10 (codex): a ForceNew block with an unknown attribute inside is a likely replacement, not a proven one",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_ssm_parameter\" \"a\" {\n  name = \"a\"\n}\ndata \"aws_ssm_parameter\" \"b\" {\n  name = \"b\"\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  name     = \"t\"\n  hash_key = \"id\"\n  local_secondary_index {\n    name            = data.aws_ssm_parameter.a.value\n    range_key       = \"sk\"\n    projection_type = \"ALL\"\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_ssm_parameter\" \"a\" {\n  name = \"a\"\n}\ndata \"aws_ssm_parameter\" \"b\" {\n  name = \"b\"\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  name     = \"t\"\n  hash_key = \"id\"\n  local_secondary_index {\n    name            = data.aws_ssm_parameter.b.value\n    range_key       = \"sk\"\n    projection_type = \"ALL\"\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_dynamodb_table.t"
+        ],
+        "changes": [
+          {
+            "address": "aws_dynamodb_table.t",
+            "action": "replace",
+            "confidence": "likely",
+            "actionReasonContains": "replace_because_cannot_update",
+            "after": {
+              "name": "t",
+              "hash_key": "id"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

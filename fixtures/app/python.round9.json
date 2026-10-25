@@ -1,0 +1,138 @@
+{
+  "suite": "app/python.round9",
+  "description": "Executable specification fixtures exported from src/app/python.round9.test.ts",
+  "cases": [
+    {
+      "kind": "app",
+      "name": "Python bindings (round 9): a client set in a base class is found through self in a subclass",
+      "files": {
+        "a.py": "import boto3\n\nclass Base:\n    def __init__(self):\n        self.s3 = boto3.client(\"s3\")\n\nclass Uploader(Base):\n    def run(self):\n        self.s3.put_object(Bucket=\"uploads\", Key=\"k\", Body=b\"\")\n"
+      },
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "literal",
+            "value": "uploads"
+          }
+        ],
+        "facts": [
+          {
+            "service": "s3",
+            "operation": "PutObject",
+            "actions": [
+              "s3:PutObject"
+            ],
+            "resource": {
+              "kind": "literal",
+              "value": "uploads"
+            },
+            "file": "a.py"
+          }
+        ],
+        "envReads": []
+      }
+    },
+    {
+      "kind": "app",
+      "name": "Python bindings (round 9): an unrelated class with the same attribute name is not used when the name is ambiguous",
+      "files": {
+        "a.py": "import boto3\n\nclass A:\n    def __init__(self):\n        self.client = boto3.client(\"sqs\")\n\nclass B:\n    def __init__(self):\n        self.client = boto3.client(\"s3\")\n\nclass C:\n    def run(self):\n        self.client.put_object(Bucket=\"b\", Key=\"k\")\n"
+      },
+      "expect": {
+        "exactResources": [],
+        "facts": [],
+        "envReads": []
+      }
+    },
+    {
+      "kind": "app",
+      "name": "Python bindings (round 9): one binding of the name in the file is used when the class does not set it",
+      "files": {
+        "a.py": "import boto3\n\nclass A:\n    def __init__(self):\n        self.ddb = boto3.client(\"dynamodb\")\n\nclass Mixin:\n    def get(self):\n        self.ddb.get_item(TableName=\"orders\", Key={})\n"
+      },
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "literal",
+            "value": "orders"
+          }
+        ],
+        "facts": [
+          {
+            "service": "dynamodb",
+            "operation": "GetItem",
+            "actions": [
+              "dynamodb:GetItem"
+            ],
+            "resource": {
+              "kind": "literal",
+              "value": "orders"
+            },
+            "file": "a.py"
+          }
+        ],
+        "envReads": []
+      }
+    },
+    {
+      "kind": "app",
+      "name": "Python bindings (round 9): a triple-quoted string with a line at column 0 does not end the class",
+      "files": {
+        "a.py": "import boto3\n\nclass Repo:\n    def __init__(self):\n        self.ddb = boto3.client(\"dynamodb\")\n        self.sql = \"\"\"\nSELECT 1\n\"\"\"\n\n    def get(self):\n        self.ddb.get_item(TableName=\"orders\", Key={})\n"
+      },
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "literal",
+            "value": "orders"
+          }
+        ],
+        "facts": [
+          {
+            "service": "dynamodb",
+            "operation": "GetItem",
+            "actions": [
+              "dynamodb:GetItem"
+            ],
+            "resource": {
+              "kind": "literal",
+              "value": "orders"
+            },
+            "file": "a.py"
+          }
+        ],
+        "envReads": []
+      }
+    },
+    {
+      "kind": "app",
+      "name": "Python bindings (round 9): a docstring at column 0 does not hide a function-local client",
+      "files": {
+        "a.py": "import boto3\n\ndef handler(e, c):\n    \"\"\"\nDoc at column 0\n\"\"\"\n    s3 = boto3.client(\"s3\")\n    s3.get_object(Bucket=\"b\", Key=\"k\")\n"
+      },
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "literal",
+            "value": "b"
+          }
+        ],
+        "facts": [
+          {
+            "service": "s3",
+            "operation": "GetObject",
+            "actions": [
+              "s3:GetObject"
+            ],
+            "resource": {
+              "kind": "literal",
+              "value": "b"
+            },
+            "file": "a.py"
+          }
+        ],
+        "envReads": []
+      }
+    }
+  ]
+}

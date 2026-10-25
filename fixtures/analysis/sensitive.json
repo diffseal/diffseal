@@ -1,0 +1,817 @@
+{
+  "suite": "analysis/sensitive",
+  "description": "Executable specification fixtures exported from src/analysis/sensitive.test.ts",
+  "cases": [
+    {
+      "kind": "terraform",
+      "name": "sensitive values are judged and never printed (round 4): the grant diff of a sensitive policy update does not print its resources",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = sensitive(jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::secret-bucket-one/*\" }] }))\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = sensitive(jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::secret-bucket-two/*\" }] }))\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_iam_policy.p"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_policy.p",
+            "action": "update",
+            "confidence": "likely",
+            "after": {
+              "name": "p"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.p",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Explicit actions on explicit resources"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_policy.p",
+            "action": "update",
+            "severity": "LOW",
+            "dataLoss": false,
+            "reasonContains": "Revokes s3:GetObject on (sensitive); callers that still need it get AccessDenied. Grants s3:GetObject on (sensitive)"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        },
+        "forbiddenSubstrings": [
+          "secret-bucket-one",
+          "secret-bucket-two"
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "sensitive values are judged and never printed (round 4): a sensitive child module output stays sensitive in the parent",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"m\" {\n  source = \"./m\"\n}\nresource \"aws_ssm_parameter\" \"p\" {\n  name  = \"p\"\n  type  = \"String\"\n  value = module.m.secret\n}\n",
+        "r/m/main.tf": "output \"secret\" {\n  value     = \"hunter2\"\n  sensitive = true\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_ssm_parameter.p"
+        ],
+        "changes": [
+          {
+            "address": "aws_ssm_parameter.p",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "p",
+              "type": "String"
+            }
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_ssm_parameter.p",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_ssm_parameter"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        },
+        "forbiddenSubstrings": [
+          "hunter2"
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "sensitive values are judged and never printed (round 4): operators and conditionals compare sensitive values by value",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  mode = sensitive(\"public\")\n}\nresource \"aws_security_group_rule\" \"s\" {\n  type              = \"ingress\"\n  security_group_id = \"sg-1\"\n  from_port         = 22\n  to_port           = 22\n  protocol          = \"tcp\"\n  cidr_blocks       = [local.mode == \"public\" ? \"0.0.0.0/0\" : \"10.0.0.0/8\"]\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_security_group_rule.s"
+        ],
+        "changes": [
+          {
+            "address": "aws_security_group_rule.s",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "type": "ingress",
+              "security_group_id": "sg-1",
+              "from_port": 22,
+              "to_port": 22,
+              "protocol": "tcp"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "network.open-ingress",
+            "resource": "aws_security_group_rule.s",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Allows ports 22 from (sensitive)"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_security_group_rule.s",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_security_group_rule"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL network.open-ingress: aws_security_group_rule.s: Allows ports 22 from (sensitive)"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "sensitive values are judged and never printed (round 4): a sensitive source document is merged, not dropped",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_iam_policy_document\" \"d\" {\n  source_policy_documents = [sensitive(jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"*\", Resource = \"*\" }] }))]\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = data.aws_iam_policy_document.d.json\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_policy.p"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_policy.p",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "p"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.p",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Action \"*\" grants every AWS action (admin-equivalent)"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_policy.p",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_policy"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL iam.least-privilege: aws_iam_policy.p: Action \"*\" grants every AWS action (admin-equivalent)"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "partly known sensitive values (round 4 claude): a sensitive string with an unknown part does not print its known text",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_db_instance\" \"db\" {\n  identifier = \"db\"\n}\nresource \"aws_ssm_parameter\" \"p\" {\n  name  = \"p\"\n  type  = \"String\"\n  value = sensitive(\"postgres://app:hunter2@${aws_db_instance.db.address}/app\")\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_db_instance.db",
+          "create aws_ssm_parameter.p"
+        ],
+        "changes": [
+          {
+            "address": "aws_db_instance.db",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "identifier": "db"
+            }
+          },
+          {
+            "address": "aws_ssm_parameter.p",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "p",
+              "type": "String"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "rds.encryption",
+            "resource": "aws_db_instance.db",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Storage not encrypted (encryption can only be enabled at creation)"
+          },
+          {
+            "ruleId": "rds.deletion-protection",
+            "resource": "aws_db_instance.db",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "Deletion protection disabled"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_db_instance.db",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_db_instance"
+          },
+          {
+            "resource": "aws_ssm_parameter.p",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_ssm_parameter"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0,
+          "items": [
+            {
+              "resource": "aws_db_instance.db",
+              "kind": "fixed",
+              "noteContains": "Fixed charge, size not known statically"
+            }
+          ]
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL rds.encryption: aws_db_instance.db: Storage not encrypted (encryption can only be enabled at creation)"
+          ]
+        },
+        "forbiddenSubstrings": [
+          "hunter2"
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "partly known sensitive values (round 4 claude): a missing key looked up by a sensitive index is not printed in the error",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  m = { a = 1 }\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { x = local.m[sensitive(\"hunter2\")] }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_sqs_queue.q"
+        ],
+        "changes": [
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "q"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "sqs.encryption",
+            "resource": "aws_sqs_queue.q",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "SSE-SQS (SQS managed keys, the default for new queues)"
+          },
+          {
+            "ruleId": "sqs.dlq",
+            "resource": "aws_sqs_queue.q",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "No dead-letter queue: messages that keep failing are dropped after the retention period"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_sqs_queue.q",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_sqs_queue"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0,
+          "items": [
+            {
+              "resource": "aws_sqs_queue.q",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            }
+          ]
+        },
+        "gate": {
+          "result": "pass"
+        },
+        "forbiddenSubstrings": [
+          "hunter2"
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "inline role policies are judged together (round 4): a new admin policy is not hidden behind an older finding on another inline policy",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"lambda.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n  inline_policy {\n    name   = \"old\"\n    policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"*\" }] })\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"lambda.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n  inline_policy {\n    name   = \"old\"\n    policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"*\" }] })\n  }\n  inline_policy {\n    name   = \"admin\"\n    policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"*\", Resource = \"*\" }] })\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_iam_role.r"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_role.r",
+            "action": "update",
+            "confidence": "proven",
+            "after": {
+              "name": "r",
+              "assume_role_policy": "{\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"}}]}",
+              "inline_policy": [
+                {
+                  "name": "old",
+                  "policy": "{\"Statement\":[{\"Action\":\"s3:GetObject\",\"Effect\":\"Allow\",\"Resource\":\"*\"}]}"
+                },
+                {
+                  "name": "admin",
+                  "policy": "{\"Statement\":[{\"Action\":\"*\",\"Effect\":\"Allow\",\"Resource\":\"*\"}]}"
+                }
+              ]
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_role.r",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Inline policy \"admin\": Action \"*\" grants every AWS action (admin-equivalent) (1 issue already present before this change)"
+          },
+          {
+            "ruleId": "iam.trust",
+            "resource": "aws_iam_role.r",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Trust limited to specific principals"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_role.r",
+            "action": "update",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "In-place update of inline_policy"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL iam.least-privilege: aws_iam_role.r: Inline policy \"admin\": Action \"*\" grants every AWS action (admin-equivalent) (1 issue already present before this change)"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "sensitive values next to unknown ones (round 5): a policy with one sensitive part and an unknown ARN is still judged",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"partner\" {\n  sensitive = true\n  default   = \"123456789012\"\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"b\"\n}\nresource \"aws_s3_bucket_policy\" \"p\" {\n  bucket = aws_s3_bucket.b.id\n  policy = jsonencode({ Statement = [\n    { Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"${aws_s3_bucket.b.arn}/*\" },\n    { Effect = \"Allow\", Principal = { AWS = \"arn:aws:iam::${var.partner}:root\" }, Action = \"s3:ListBucket\", Resource = aws_s3_bucket.b.arn },\n  ] })\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_s3_bucket.b",
+          "create aws_s3_bucket_policy.p"
+        ],
+        "changes": [
+          {
+            "address": "aws_s3_bucket.b",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "bucket": "b"
+            }
+          },
+          {
+            "address": "aws_s3_bucket_policy.p",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "bucket": "b"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "s3.encryption",
+            "resource": "aws_s3_bucket.b",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "No bucket encryption configuration: S3 applies SSE-S3 (AES256) to all new objects by default since January 2023"
+          },
+          {
+            "ruleId": "s3.public-access",
+            "resource": "aws_s3_bucket.b",
+            "status": "UNKNOWN",
+            "preExisting": null,
+            "detailContains": "No bucket-level public access block. New buckets block public access by default since April 2023 and an account-level block may apply, but neither is visible here"
+          },
+          {
+            "ruleId": "s3.versioning",
+            "resource": "aws_s3_bucket.b",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "Object versioning not enabled"
+          },
+          {
+            "ruleId": "s3.bucket-policy",
+            "resource": "aws_s3_bucket_policy.p",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Bucket policy allows any principal without a condition"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_s3_bucket.b",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_s3_bucket"
+          },
+          {
+            "resource": "aws_s3_bucket_policy.p",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_s3_bucket_policy"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0,
+          "items": [
+            {
+              "resource": "aws_s3_bucket.b",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            }
+          ]
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL s3.bucket-policy: aws_s3_bucket_policy.p: Bucket policy allows any principal without a condition"
+          ]
+        },
+        "forbiddenSubstrings": [
+          "123456789012"
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "sensitive values next to unknown ones (round 5): a for expression over a sensitive list iterates its values",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"cidrs\" {\n  type      = list(string)\n  sensitive = true\n  default   = [\"0.0.0.0/0\"]\n}\nresource \"aws_security_group_rule\" \"s\" {\n  type              = \"ingress\"\n  security_group_id = \"sg-1\"\n  from_port         = 22\n  to_port           = 22\n  protocol          = \"tcp\"\n  cidr_blocks       = [for c in var.cidrs : c]\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_security_group_rule.s"
+        ],
+        "changes": [
+          {
+            "address": "aws_security_group_rule.s",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "type": "ingress",
+              "security_group_id": "sg-1",
+              "from_port": 22,
+              "to_port": 22,
+              "protocol": "tcp"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "network.open-ingress",
+            "resource": "aws_security_group_rule.s",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Allows ports 22 from (sensitive)"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_security_group_rule.s",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_security_group_rule"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL network.open-ingress: aws_security_group_rule.s: Allows ports 22 from (sensitive)"
+          ]
+        },
+        "forbiddenSubstrings": [
+          "0.0.0.0/0"
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "sensitive values next to unknown ones (round 5): a for expression over an inline sensitive() list is judged too (round 5 codex)",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_security_group_rule\" \"s\" {\n  type              = \"ingress\"\n  security_group_id = \"sg-1\"\n  from_port         = 22\n  to_port           = 22\n  protocol          = \"tcp\"\n  cidr_blocks       = [for c in sensitive([\"0.0.0.0/0\"]) : c]\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_security_group_rule.s"
+        ],
+        "changes": [
+          {
+            "address": "aws_security_group_rule.s",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "type": "ingress",
+              "security_group_id": "sg-1",
+              "from_port": 22,
+              "to_port": 22,
+              "protocol": "tcp"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "network.open-ingress",
+            "resource": "aws_security_group_rule.s",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Allows ports 22 from (sensitive)"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_security_group_rule.s",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_security_group_rule"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL network.open-ingress: aws_security_group_rule.s: Allows ports 22 from (sensitive)"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "sensitive values next to unknown ones (round 5): a template for directive over a sensitive list keeps the result sensitive",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"names\" {\n  sensitive = true\n  default   = [\"hunter2\"]\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { t = \"%{for n in var.names}${n}%{endfor}\" }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_sqs_queue.q"
+        ],
+        "changes": [
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "q"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "sqs.encryption",
+            "resource": "aws_sqs_queue.q",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "SSE-SQS (SQS managed keys, the default for new queues)"
+          },
+          {
+            "ruleId": "sqs.dlq",
+            "resource": "aws_sqs_queue.q",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "No dead-letter queue: messages that keep failing are dropped after the retention period"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_sqs_queue.q",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_sqs_queue"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0,
+          "items": [
+            {
+              "resource": "aws_sqs_queue.q",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            }
+          ]
+        },
+        "gate": {
+          "result": "pass"
+        },
+        "forbiddenSubstrings": [
+          "hunter2"
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "sensitive values next to unknown ones (round 5): scrubbing never rewrites resource addresses",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_ecs_task_definition\" \"api\" {\n  family                = \"api\"\n  container_definitions = sensitive(jsonencode([{ name = \"api\", image = \"x\" }]))\n}\nresource \"aws_security_group_rule\" \"api\" {\n  type              = \"ingress\"\n  security_group_id = \"sg-1\"\n  from_port         = 22\n  to_port           = 22\n  protocol          = \"tcp\"\n  cidr_blocks       = [\"0.0.0.0/0\"]\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_ecs_task_definition.api",
+          "create aws_security_group_rule.api"
+        ],
+        "changes": [
+          {
+            "address": "aws_ecs_task_definition.api",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "family": "api"
+            }
+          },
+          {
+            "address": "aws_security_group_rule.api",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "type": "ingress",
+              "security_group_id": "sg-1",
+              "from_port": 22,
+              "to_port": 22,
+              "protocol": "tcp",
+              "cidr_blocks": [
+                "0.0.0.0/0"
+              ]
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "network.open-ingress",
+            "resource": "aws_security_group_rule.api",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Allows ports 22 from 0.0.0.0/0"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_ecs_task_definition.api",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_ecs_task_definition"
+          },
+          {
+            "resource": "aws_security_group_rule.api",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_security_group_rule"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL network.open-ingress: aws_security_group_rule.api: Allows ports 22 from 0.0.0.0/0"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "sensitive values next to unknown ones (round 5): a sensitive value that spells a gate result never rewrites the gate (round 9 codex P1)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  name     = \"orders\"\n  hash_key = \"id\"\n}\nresource \"aws_ssm_parameter\" \"p\" {\n  name  = \"p\"\n  type  = \"String\"\n  value = sensitive(\"block\")\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_ssm_parameter\" \"p\" {\n  name  = \"p\"\n  type  = \"String\"\n  value = sensitive(\"block\")\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete aws_dynamodb_table.t"
+        ],
+        "changes": [
+          {
+            "address": "aws_ssm_parameter.p",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "aws_dynamodb_table.t",
+            "action": "delete",
+            "confidence": "proven"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_dynamodb_table.t",
+            "action": "delete",
+            "severity": "CRITICAL",
+            "dataLoss": true,
+            "reasonContains": "Deletes aws_dynamodb_table: loses the items in the table"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "block",
+          "reasonsContain": [
+            "CRITICAL: aws_dynamodb_table.t: Deletes aws_dynamodb_table: loses the items in the table"
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,5310 @@
+{
+  "suite": "analysis/analyze",
+  "description": "Executable specification fixtures exported from src/analysis/analyze.test.ts",
+  "cases": [
+    {
+      "kind": "plan",
+      "name": "Robustness (review batch 1): an imported resource is an import, not a create that costs money [1]",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_s3_bucket.good",
+            "mode": "managed",
+            "type": "aws_s3_bucket",
+            "name": "good",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "bucket": "good"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          },
+          {
+            "address": "aws_s3_bucket.bad",
+            "mode": "managed",
+            "type": "aws_s3_bucket",
+            "name": "bad",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "bucket": "bad"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          },
+          {
+            "address": "aws_s3_bucket_server_side_encryption_configuration.good",
+            "mode": "managed",
+            "type": "aws_s3_bucket_server_side_encryption_configuration",
+            "name": "good",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "rule": [
+                  {
+                    "apply_server_side_encryption_by_default": [
+                      {
+                        "sse_algorithm": "AES256"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          },
+          {
+            "address": "aws_s3_bucket_public_access_block.good",
+            "mode": "managed",
+            "type": "aws_s3_bucket_public_access_block",
+            "name": "good",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "block_public_acls": true,
+                "block_public_policy": true,
+                "ignore_public_acls": true,
+                "restrict_public_buckets": true
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          },
+          {
+            "address": "aws_s3_bucket_versioning.good",
+            "mode": "managed",
+            "type": "aws_s3_bucket_versioning",
+            "name": "good",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "versioning_configuration": [
+                  {
+                    "status": "Enabled"
+                  }
+                ]
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": [
+              {
+                "address": "aws_s3_bucket_server_side_encryption_configuration.good",
+                "mode": "managed",
+                "type": "aws_s3_bucket_server_side_encryption_configuration",
+                "name": "good",
+                "expressions": {
+                  "bucket": {
+                    "references": [
+                      "aws_s3_bucket.good.id",
+                      "aws_s3_bucket.good"
+                    ]
+                  }
+                }
+              },
+              {
+                "address": "aws_s3_bucket_public_access_block.good",
+                "mode": "managed",
+                "type": "aws_s3_bucket_public_access_block",
+                "name": "good",
+                "expressions": {
+                  "bucket": {
+                    "references": [
+                      "aws_s3_bucket.good.id",
+                      "aws_s3_bucket.good"
+                    ]
+                  }
+                }
+              },
+              {
+                "address": "aws_s3_bucket_versioning.good",
+                "mode": "managed",
+                "type": "aws_s3_bucket_versioning",
+                "name": "good",
+                "expressions": {
+                  "bucket": {
+                    "references": [
+                      "aws_s3_bucket.good.id",
+                      "aws_s3_bucket.good"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_s3_bucket.bad",
+          "create aws_s3_bucket.good",
+          "create aws_s3_bucket_public_access_block.good",
+          "create aws_s3_bucket_server_side_encryption_configuration.good",
+          "create aws_s3_bucket_versioning.good"
+        ],
+        "changes": [
+          {
+            "address": "aws_s3_bucket.good",
+            "action": "create",
+            "confidence": "proven"
+          },
+          {
+            "address": "aws_s3_bucket.bad",
+            "action": "create",
+            "confidence": "proven"
+          },
+          {
+            "address": "aws_s3_bucket_server_side_encryption_configuration.good",
+            "action": "create",
+            "confidence": "proven",
+            "references": {
+              "bucket": [
+                "aws_s3_bucket.good"
+              ]
+            }
+          },
+          {
+            "address": "aws_s3_bucket_public_access_block.good",
+            "action": "create",
+            "confidence": "proven",
+            "references": {
+              "bucket": [
+                "aws_s3_bucket.good"
+              ]
+            }
+          },
+          {
+            "address": "aws_s3_bucket_versioning.good",
+            "action": "create",
+            "confidence": "proven",
+            "references": {
+              "bucket": [
+                "aws_s3_bucket.good"
+              ]
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "s3.encryption",
+            "resource": "aws_s3_bucket.good",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "SSE-S3 (AES256, S3 managed keys)"
+          },
+          {
+            "ruleId": "s3.public-access",
+            "resource": "aws_s3_bucket.good",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "All four public access block flags enabled"
+          },
+          {
+            "ruleId": "s3.versioning",
+            "resource": "aws_s3_bucket.good",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Object versioning enabled"
+          },
+          {
+            "ruleId": "s3.encryption",
+            "resource": "aws_s3_bucket.bad",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "No bucket encryption configuration: S3 applies SSE-S3 (AES256) to all new objects by default since January 2023"
+          },
+          {
+            "ruleId": "s3.public-access",
+            "resource": "aws_s3_bucket.bad",
+            "status": "UNKNOWN",
+            "preExisting": null,
+            "detailContains": "No bucket-level public access block. New buckets block public access by default since April 2023 and an account-level block may apply, but neither is visible here"
+          },
+          {
+            "ruleId": "s3.versioning",
+            "resource": "aws_s3_bucket.bad",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "Object versioning not enabled"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_s3_bucket.good",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_s3_bucket"
+          },
+          {
+            "resource": "aws_s3_bucket.bad",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_s3_bucket"
+          },
+          {
+            "resource": "aws_s3_bucket_server_side_encryption_configuration.good",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_s3_bucket_server_side_encryption_configuration"
+          },
+          {
+            "resource": "aws_s3_bucket_public_access_block.good",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_s3_bucket_public_access_block"
+          },
+          {
+            "resource": "aws_s3_bucket_versioning.good",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_s3_bucket_versioning"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0,
+          "items": [
+            {
+              "resource": "aws_s3_bucket.good",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            },
+            {
+              "resource": "aws_s3_bucket.bad",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            }
+          ]
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "readPlan: marks values flagged in after_unknown as Unknown instead of dropping them",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_sqs_queue.q",
+            "mode": "managed",
+            "type": "aws_sqs_queue",
+            "name": "q",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "name": "q"
+              },
+              "after_unknown": {
+                "kms_master_key_id": true,
+                "arn": true
+              },
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_sqs_queue.q"
+        ],
+        "changes": [
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "readPlan: redacts values flagged in after_sensitive so reports never print secrets",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_db_instance.db",
+            "mode": "managed",
+            "type": "aws_db_instance",
+            "name": "db",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "password": "hunter2",
+                "identifier": "db"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {
+                "password": true
+              }
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_db_instance.db"
+        ],
+        "changes": [
+          {
+            "address": "aws_db_instance.db",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "forbiddenSubstrings": [
+          "hunter2"
+        ]
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "readPlan: a sensitive policy in a plan is still judged, and its value is not printed (round 3 P1)",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_iam_policy.p",
+            "mode": "managed",
+            "type": "aws_iam_policy",
+            "name": "p",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "name": "p",
+                "policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"*\",\"Resource\":\"*\"}]}"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {
+                "policy": true
+              }
+            }
+          },
+          {
+            "address": "aws_security_group_rule.s",
+            "mode": "managed",
+            "type": "aws_security_group_rule",
+            "name": "s",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "type": "ingress",
+                "from_port": 22,
+                "to_port": 22,
+                "protocol": "tcp",
+                "cidr_blocks": [
+                  "0.0.0.0/0"
+                ],
+                "security_group_id": "sg-1"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {
+                "cidr_blocks": true
+              }
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_policy.p",
+          "create aws_security_group_rule.s"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_policy.p",
+            "action": "create",
+            "confidence": "proven"
+          },
+          {
+            "address": "aws_security_group_rule.s",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.p",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Action \"*\" grants every AWS action (admin-equivalent)"
+          },
+          {
+            "ruleId": "network.open-ingress",
+            "resource": "aws_security_group_rule.s",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Allows ports 22 from (sensitive)"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_policy.p",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_policy"
+          },
+          {
+            "resource": "aws_security_group_rule.s",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_security_group_rule"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL iam.least-privilege: aws_iam_policy.p: Action \"*\" grants every AWS action (admin-equivalent)",
+            "FAIL network.open-ingress: aws_security_group_rule.s: Allows ports 22 from (sensitive)"
+          ]
+        },
+        "forbiddenSubstrings": [
+          "0.0.0.0/0"
+        ]
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "readPlan: attaches configuration references to resources, including inside modules",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "module.m.aws_s3_bucket_versioning.v",
+            "module_address": "module.m",
+            "mode": "managed",
+            "type": "aws_s3_bucket_versioning",
+            "name": "v",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "versioning_configuration": [
+                  {
+                    "status": "Enabled"
+                  }
+                ]
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "module_calls": {
+              "m": {
+                "module": {
+                  "resources": [
+                    {
+                      "address": "aws_s3_bucket_versioning.v",
+                      "mode": "managed",
+                      "type": "aws_s3_bucket_versioning",
+                      "name": "v",
+                      "expressions": {
+                        "bucket": {
+                          "references": [
+                            "aws_s3_bucket.b.id",
+                            "aws_s3_bucket.b"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create module.m.aws_s3_bucket_versioning.v"
+        ],
+        "changes": [
+          {
+            "address": "module.m.aws_s3_bucket_versioning.v",
+            "action": "create",
+            "confidence": "proven",
+            "references": {
+              "bucket": [
+                "module.m.aws_s3_bucket.b"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "readPlan: includes data sources from prior_state as context",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        },
+        "prior_state": {
+          "values": {
+            "root_module": {
+              "resources": [
+                {
+                  "address": "data.aws_iam_policy_document.d",
+                  "mode": "data",
+                  "type": "aws_iam_policy_document",
+                  "name": "d",
+                  "values": {
+                    "json": "{}"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [],
+        "changes": [
+          {
+            "address": "data.aws_iam_policy_document.d",
+            "action": "no-op",
+            "confidence": "proven",
+            "mode": "data"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "DynamoDB (audit P1): PITR explicitly disabled fails backup control",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_dynamodb_table.t",
+            "mode": "managed",
+            "type": "aws_dynamodb_table",
+            "name": "t",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "point_in_time_recovery": [
+                  {
+                    "enabled": false
+                  }
+                ],
+                "server_side_encryption": []
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_dynamodb_table.t"
+        ],
+        "changes": [
+          {
+            "address": "aws_dynamodb_table.t",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "dynamodb.pitr",
+            "resource": "aws_dynamodb_table.t",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Point-in-time recovery disabled"
+          },
+          {
+            "ruleId": "dynamodb.encryption",
+            "resource": "aws_dynamodb_table.t",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Encrypted with an AWS owned key (DynamoDB default)"
+          },
+          {
+            "ruleId": "dynamodb.deletion-protection",
+            "resource": "aws_dynamodb_table.t",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "Deletion protection disabled"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_dynamodb_table.t",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_dynamodb_table"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL dynamodb.pitr: aws_dynamodb_table.t: Point-in-time recovery disabled"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "DynamoDB (audit P1): without a CMK the table is still encrypted with an AWS owned key, so encryption passes by default",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_dynamodb_table.t",
+            "mode": "managed",
+            "type": "aws_dynamodb_table",
+            "name": "t",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "point_in_time_recovery": [
+                  {
+                    "enabled": true
+                  }
+                ],
+                "server_side_encryption": []
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_dynamodb_table.t"
+        ],
+        "changes": [
+          {
+            "address": "aws_dynamodb_table.t",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "dynamodb.pitr",
+            "resource": "aws_dynamodb_table.t",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Point-in-time recovery enabled"
+          },
+          {
+            "ruleId": "dynamodb.encryption",
+            "resource": "aws_dynamodb_table.t",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Encrypted with an AWS owned key (DynamoDB default)"
+          },
+          {
+            "ruleId": "dynamodb.deletion-protection",
+            "resource": "aws_dynamodb_table.t",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "Deletion protection disabled"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_dynamodb_table.t",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_dynamodb_table"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "DynamoDB (audit P1): a policy that requires customer managed keys warns on AWS owned keys",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_dynamodb_table.t",
+            "mode": "managed",
+            "type": "aws_dynamodb_table",
+            "name": "t",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "point_in_time_recovery": [
+                  {
+                    "enabled": true
+                  }
+                ]
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "policy": {
+        "requireCustomerManagedKeys": true
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_dynamodb_table.t"
+        ],
+        "changes": [
+          {
+            "address": "aws_dynamodb_table.t",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "dynamodb.pitr",
+            "resource": "aws_dynamodb_table.t",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Point-in-time recovery enabled"
+          },
+          {
+            "ruleId": "dynamodb.encryption",
+            "resource": "aws_dynamodb_table.t",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "Encrypted with an AWS owned key (DynamoDB default); policy requires a customer managed KMS key"
+          },
+          {
+            "ruleId": "dynamodb.deletion-protection",
+            "resource": "aws_dynamodb_table.t",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "Deletion protection disabled"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_dynamodb_table.t",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_dynamodb_table"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "Module instances (round 2 gemini): a helper in one module instance does not satisfy a bucket in another",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "module.b[\"secure\"].aws_s3_bucket.this",
+            "module_address": "module.b[\"secure\"]",
+            "mode": "managed",
+            "type": "aws_s3_bucket",
+            "name": "this",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "bucket": "s"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          },
+          {
+            "address": "module.b[\"public\"].aws_s3_bucket.this",
+            "module_address": "module.b[\"public\"]",
+            "mode": "managed",
+            "type": "aws_s3_bucket",
+            "name": "this",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "bucket": "p"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          },
+          {
+            "address": "module.b[\"secure\"].aws_s3_bucket_versioning.this",
+            "module_address": "module.b[\"secure\"]",
+            "mode": "managed",
+            "type": "aws_s3_bucket_versioning",
+            "name": "this",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "versioning_configuration": [
+                  {
+                    "status": "Enabled"
+                  }
+                ]
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "module_calls": {
+              "b": {
+                "module": {
+                  "resources": [
+                    {
+                      "address": "aws_s3_bucket_versioning.this",
+                      "mode": "managed",
+                      "type": "aws_s3_bucket_versioning",
+                      "name": "this",
+                      "expressions": {
+                        "bucket": {
+                          "references": [
+                            "aws_s3_bucket.this.id",
+                            "aws_s3_bucket.this"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create module.b[\"public\"].aws_s3_bucket.this",
+          "create module.b[\"secure\"].aws_s3_bucket.this",
+          "create module.b[\"secure\"].aws_s3_bucket_versioning.this"
+        ],
+        "changes": [
+          {
+            "address": "module.b[\"secure\"].aws_s3_bucket.this",
+            "action": "create",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.b[\"public\"].aws_s3_bucket.this",
+            "action": "create",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.b[\"secure\"].aws_s3_bucket_versioning.this",
+            "action": "create",
+            "confidence": "proven",
+            "references": {
+              "bucket": [
+                "module.b.aws_s3_bucket.this"
+              ]
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "s3.encryption",
+            "resource": "module.b[\"secure\"].aws_s3_bucket.this",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "No bucket encryption configuration: S3 applies SSE-S3 (AES256) to all new objects by default since January 2023"
+          },
+          {
+            "ruleId": "s3.public-access",
+            "resource": "module.b[\"secure\"].aws_s3_bucket.this",
+            "status": "UNKNOWN",
+            "preExisting": null,
+            "detailContains": "No bucket-level public access block. New buckets block public access by default since April 2023 and an account-level block may apply, but neither is visible here"
+          },
+          {
+            "ruleId": "s3.versioning",
+            "resource": "module.b[\"secure\"].aws_s3_bucket.this",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Object versioning enabled"
+          },
+          {
+            "ruleId": "s3.encryption",
+            "resource": "module.b[\"public\"].aws_s3_bucket.this",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "No bucket encryption configuration: S3 applies SSE-S3 (AES256) to all new objects by default since January 2023"
+          },
+          {
+            "ruleId": "s3.public-access",
+            "resource": "module.b[\"public\"].aws_s3_bucket.this",
+            "status": "UNKNOWN",
+            "preExisting": null,
+            "detailContains": "No bucket-level public access block. New buckets block public access by default since April 2023 and an account-level block may apply, but neither is visible here"
+          },
+          {
+            "ruleId": "s3.versioning",
+            "resource": "module.b[\"public\"].aws_s3_bucket.this",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "Object versioning not enabled"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "module.b[\"secure\"].aws_s3_bucket.this",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_s3_bucket"
+          },
+          {
+            "resource": "module.b[\"public\"].aws_s3_bucket.this",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_s3_bucket"
+          },
+          {
+            "resource": "module.b[\"secure\"].aws_s3_bucket_versioning.this",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_s3_bucket_versioning"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0,
+          "items": [
+            {
+              "resource": "module.b[\"secure\"].aws_s3_bucket.this",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            },
+            {
+              "resource": "module.b[\"public\"].aws_s3_bucket.this",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            }
+          ]
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "S3 helper association (audit P2): a short expiry lifecycle explains missing versioning instead of warning",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_s3_bucket.tmp",
+            "mode": "managed",
+            "type": "aws_s3_bucket",
+            "name": "tmp",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "bucket": "tmp"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          },
+          {
+            "address": "aws_s3_bucket_lifecycle_configuration.tmp",
+            "mode": "managed",
+            "type": "aws_s3_bucket_lifecycle_configuration",
+            "name": "tmp",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "rule": [
+                  {
+                    "status": "Enabled",
+                    "expiration": [
+                      {
+                        "days": 1
+                      }
+                    ]
+                  }
+                ]
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": [
+              {
+                "address": "aws_s3_bucket_lifecycle_configuration.tmp",
+                "mode": "managed",
+                "type": "aws_s3_bucket_lifecycle_configuration",
+                "name": "tmp",
+                "expressions": {
+                  "bucket": {
+                    "references": [
+                      "aws_s3_bucket.tmp.id",
+                      "aws_s3_bucket.tmp"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_s3_bucket.tmp",
+          "create aws_s3_bucket_lifecycle_configuration.tmp"
+        ],
+        "changes": [
+          {
+            "address": "aws_s3_bucket.tmp",
+            "action": "create",
+            "confidence": "proven"
+          },
+          {
+            "address": "aws_s3_bucket_lifecycle_configuration.tmp",
+            "action": "create",
+            "confidence": "proven",
+            "references": {
+              "bucket": [
+                "aws_s3_bucket.tmp"
+              ]
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "s3.encryption",
+            "resource": "aws_s3_bucket.tmp",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "No bucket encryption configuration: S3 applies SSE-S3 (AES256) to all new objects by default since January 2023"
+          },
+          {
+            "ruleId": "s3.public-access",
+            "resource": "aws_s3_bucket.tmp",
+            "status": "UNKNOWN",
+            "preExisting": null,
+            "detailContains": "No bucket-level public access block. New buckets block public access by default since April 2023 and an account-level block may apply, but neither is visible here"
+          },
+          {
+            "ruleId": "s3.versioning",
+            "resource": "aws_s3_bucket.tmp",
+            "status": "INFO",
+            "preExisting": null,
+            "detailContains": "Objects expire after 1 day(s); versioning is not expected for short-lived data"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_s3_bucket.tmp",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_s3_bucket"
+          },
+          {
+            "resource": "aws_s3_bucket_lifecycle_configuration.tmp",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_s3_bucket_lifecycle_configuration"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0,
+          "items": [
+            {
+              "resource": "aws_s3_bucket.tmp",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            }
+          ]
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "SQS (audit P3a, P9): a KMS key known only after apply passes when config references an aws_kms_key",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_sqs_queue.q",
+            "mode": "managed",
+            "type": "aws_sqs_queue",
+            "name": "q",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "name": "q"
+              },
+              "after_unknown": {
+                "kms_master_key_id": true
+              },
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": [
+              {
+                "address": "aws_sqs_queue.q",
+                "mode": "managed",
+                "type": "aws_sqs_queue",
+                "name": "q",
+                "expressions": {
+                  "kms_master_key_id": {
+                    "references": [
+                      "aws_kms_key.k.arn",
+                      "aws_kms_key.k"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_sqs_queue.q"
+        ],
+        "changes": [
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "create",
+            "confidence": "proven",
+            "references": {
+              "kms_master_key_id": [
+                "aws_kms_key.k"
+              ]
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "sqs.encryption",
+            "resource": "aws_sqs_queue.q",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "SSE-KMS with a customer managed key"
+          },
+          {
+            "ruleId": "sqs.dlq",
+            "resource": "aws_sqs_queue.q",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "No dead-letter queue: messages that keep failing are dropped after the retention period"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_sqs_queue.q",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_sqs_queue"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0,
+          "items": [
+            {
+              "resource": "aws_sqs_queue.q",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            }
+          ]
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "SQS (audit P3a, P9): a module DLQ that another queue redrives into is not asked to have its own DLQ",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "module.orders.aws_sqs_queue.dlq",
+            "module_address": "module.orders",
+            "mode": "managed",
+            "type": "aws_sqs_queue",
+            "name": "dlq",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "name": "orders-dlq"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          },
+          {
+            "address": "module.orders.aws_sqs_queue.queue",
+            "module_address": "module.orders",
+            "mode": "managed",
+            "type": "aws_sqs_queue",
+            "name": "queue",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "name": "orders"
+              },
+              "after_unknown": {
+                "redrive_policy": true
+              },
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "module_calls": {
+              "orders": {
+                "module": {
+                  "resources": [
+                    {
+                      "address": "aws_sqs_queue.queue",
+                      "mode": "managed",
+                      "type": "aws_sqs_queue",
+                      "name": "queue",
+                      "expressions": {
+                        "redrive_policy": {
+                          "references": [
+                            "aws_sqs_queue.dlq.arn",
+                            "aws_sqs_queue.dlq"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create module.orders.aws_sqs_queue.dlq",
+          "create module.orders.aws_sqs_queue.queue"
+        ],
+        "changes": [
+          {
+            "address": "module.orders.aws_sqs_queue.dlq",
+            "action": "create",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.orders.aws_sqs_queue.queue",
+            "action": "create",
+            "confidence": "proven",
+            "references": {
+              "redrive_policy": [
+                "module.orders.aws_sqs_queue.dlq"
+              ]
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "sqs.encryption",
+            "resource": "module.orders.aws_sqs_queue.dlq",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "SSE-SQS (SQS managed keys, the default for new queues)"
+          },
+          {
+            "ruleId": "sqs.encryption",
+            "resource": "module.orders.aws_sqs_queue.queue",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "SSE-SQS (SQS managed keys, the default for new queues)"
+          },
+          {
+            "ruleId": "sqs.dlq",
+            "resource": "module.orders.aws_sqs_queue.queue",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Redrive policy routes failed messages to a dead-letter queue"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "module.orders.aws_sqs_queue.dlq",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_sqs_queue"
+          },
+          {
+            "resource": "module.orders.aws_sqs_queue.queue",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_sqs_queue"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0,
+          "items": [
+            {
+              "resource": "module.orders.aws_sqs_queue.dlq",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            },
+            {
+              "resource": "module.orders.aws_sqs_queue.queue",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            }
+          ]
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "SQS (audit P3a, P9): default SSE-SQS is reported as AWS managed encryption, not as unencrypted",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_sqs_queue.q",
+            "mode": "managed",
+            "type": "aws_sqs_queue",
+            "name": "q",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "name": "q",
+                "kms_master_key_id": null,
+                "sqs_managed_sse_enabled": true
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_sqs_queue.q"
+        ],
+        "changes": [
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "sqs.encryption",
+            "resource": "aws_sqs_queue.q",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "SSE-SQS (SQS managed keys, the default for new queues)"
+          },
+          {
+            "ruleId": "sqs.dlq",
+            "resource": "aws_sqs_queue.q",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "No dead-letter queue: messages that keep failing are dropped after the retention period"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_sqs_queue.q",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_sqs_queue"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0,
+          "items": [
+            {
+              "resource": "aws_sqs_queue.q",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            }
+          ]
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "SQS (audit P3a, P9): SNS topic without kms_master_key_id warns, AWS managed alias passes (a production commit)",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_sns_topic.plain",
+            "mode": "managed",
+            "type": "aws_sns_topic",
+            "name": "plain",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "name": "plain"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          },
+          {
+            "address": "aws_sns_topic.enc",
+            "mode": "managed",
+            "type": "aws_sns_topic",
+            "name": "enc",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "name": "enc",
+                "kms_master_key_id": "alias/aws/sns"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_sns_topic.enc",
+          "create aws_sns_topic.plain"
+        ],
+        "changes": [
+          {
+            "address": "aws_sns_topic.plain",
+            "action": "create",
+            "confidence": "proven"
+          },
+          {
+            "address": "aws_sns_topic.enc",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "sns.encryption",
+            "resource": "aws_sns_topic.plain",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "SNS does not encrypt messages at rest unless kms_master_key_id is set"
+          },
+          {
+            "ruleId": "sns.encryption",
+            "resource": "aws_sns_topic.enc",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Encrypted with the AWS managed key aws/sns"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_sns_topic.plain",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_sns_topic"
+          },
+          {
+            "resource": "aws_sns_topic.enc",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_sns_topic"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0,
+          "items": [
+            {
+              "resource": "aws_sns_topic.plain",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            },
+            {
+              "resource": "aws_sns_topic.enc",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            }
+          ]
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "IAM (audit P3b, P4): ${name} -> ${expected} [1]",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_iam_policy.service_star",
+            "mode": "managed",
+            "type": "aws_iam_policy",
+            "name": "service_star",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "name": "service_star",
+                "policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"s3:*\",\"Resource\":\"arn:aws:s3:::*\"}]}"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_policy.service_star"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_policy.service_star",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.service_star",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Action \"s3:*\" grants every s3 action; resource \"arn:aws:s3:::*\" matches every resource of the service"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_policy.service_star",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_policy"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL iam.least-privilege: aws_iam_policy.service_star: Action \"s3:*\" grants every s3 action; resource \"arn:aws:s3:::*\" matches every resource of the service"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "IAM (audit P3b, P4): ${name} -> ${expected} [2]",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_iam_policy.star_in_list",
+            "mode": "managed",
+            "type": "aws_iam_policy",
+            "name": "star_in_list",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "name": "star_in_list",
+                "policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"*\"],\"Resource\":[\"arn:aws:s3:::b/*\",\"*\"]}]}"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_policy.star_in_list"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_policy.star_in_list",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.star_in_list",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Action \"*\" grants every AWS action (admin-equivalent); Resource \"*\" for s3:GetObject"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_policy.star_in_list",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_policy"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL iam.least-privilege: aws_iam_policy.star_in_list: Action \"*\" grants every AWS action (admin-equivalent); Resource \"*\" for s3:GetObject"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "IAM (audit P3b, P4): ${name} -> ${expected} [3]",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_iam_policy.not_action",
+            "mode": "managed",
+            "type": "aws_iam_policy",
+            "name": "not_action",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "name": "not_action",
+                "policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"NotAction\":\"iam:*\",\"Resource\":\"*\"}]}"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_policy.not_action"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_policy.not_action",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.not_action",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Allow with NotAction [iam:*] grants every other action"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_policy.not_action",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_policy"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL iam.least-privilege: aws_iam_policy.not_action: Allow with NotAction [iam:*] grants every other action"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "IAM (audit P3b, P4): ${name} -> ${expected} [4]",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_iam_policy.deny_guardrail",
+            "mode": "managed",
+            "type": "aws_iam_policy",
+            "name": "deny_guardrail",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "name": "deny_guardrail",
+                "policy": "{\"Statement\":[{\"Effect\":\"Deny\",\"Action\":\"*\",\"Resource\":\"*\",\"Condition\":{\"Bool\":{\"aws:SecureTransport\":\"false\"}}}]}"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_policy.deny_guardrail"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_policy.deny_guardrail",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.deny_guardrail",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Explicit actions on explicit resources"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_policy.deny_guardrail",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_policy"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "IAM (audit P3b, P4): ${name} -> ${expected} [5]",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_iam_policy.ecr_token",
+            "mode": "managed",
+            "type": "aws_iam_policy",
+            "name": "ecr_token",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "name": "ecr_token",
+                "policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"ecr:GetAuthorizationToken\",\"Resource\":\"*\"}]}"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_policy.ecr_token"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_policy.ecr_token",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.ecr_token",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Explicit actions on explicit resources"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_policy.ecr_token",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_policy"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "IAM (audit P3b, P4): ${name} -> ${expected} [6]",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_iam_policy.scoped",
+            "mode": "managed",
+            "type": "aws_iam_policy",
+            "name": "scoped",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "name": "scoped",
+                "policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"s3:PutObject\"],\"Resource\":\"arn:aws:s3:::exports/*\"}]}"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_policy.scoped"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_policy.scoped",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.scoped",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Explicit actions on explicit resources"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_policy.scoped",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_policy"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "IAM (audit P3b, P4): ${name} -> ${expected} [7]",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_iam_policy.secret_suffix",
+            "mode": "managed",
+            "type": "aws_iam_policy",
+            "name": "secret_suffix",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "name": "secret_suffix",
+                "policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"secretsmanager:GetSecretValue\",\"Resource\":\"arn:aws:secretsmanager:eu-central-1:1:secret:jev/api-key-??????\"}]}"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_policy.secret_suffix"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_policy.secret_suffix",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.secret_suffix",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Explicit actions on explicit resources"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_policy.secret_suffix",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_policy"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "IAM (audit P3b, P4): ${name} -> ${expected} [8]",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_iam_policy.secret_tenant_wildcard",
+            "mode": "managed",
+            "type": "aws_iam_policy",
+            "name": "secret_tenant_wildcard",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "name": "secret_tenant_wildcard",
+                "policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"secretsmanager:GetSecretValue\",\"Resource\":\"arn:aws:secretsmanager:eu-central-1:1:secret:provider/*/api-credentials-??????\"}]}"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_policy.secret_tenant_wildcard"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_policy.secret_tenant_wildcard",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.secret_tenant_wildcard",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "Resource \"arn:aws:secretsmanager:eu-central-1:1:secret:provider/*/api-credentials-??????\" uses a wildcard that spans multiple resources"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_policy.secret_tenant_wildcard",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_policy"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "IAM (audit P3b, P4): ${name} -> ${expected} [9]",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_iam_policy.passrole_star",
+            "mode": "managed",
+            "type": "aws_iam_policy",
+            "name": "passrole_star",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "name": "passrole_star",
+                "policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"iam:PassRole\",\"Resource\":\"*\"}]}"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_policy.passrole_star"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_policy.passrole_star",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.passrole_star",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Iam:PassRole on \"*\" can be used to escalate privileges; Resource \"*\" for iam:PassRole"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_policy.passrole_star",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_policy"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL iam.least-privilege: aws_iam_policy.passrole_star: Iam:PassRole on \"*\" can be used to escalate privileges; Resource \"*\" for iam:PassRole"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "IAM (audit P3b, P4): a policy document unknown at plan time is UNKNOWN, never PASS",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_iam_policy.p",
+            "mode": "managed",
+            "type": "aws_iam_policy",
+            "name": "p",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "name": "p"
+              },
+              "after_unknown": {
+                "policy": true
+              },
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_policy.p"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_policy.p",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.p",
+            "status": "UNKNOWN",
+            "preExisting": null,
+            "detailContains": "Policy document not available: known after apply"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_policy.p",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_policy"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "IAM (audit P3b, P4): an unknown policy is resolved through a referenced aws_iam_policy_document data source",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_iam_role_policy.p",
+            "mode": "managed",
+            "type": "aws_iam_role_policy",
+            "name": "p",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "name": "p"
+              },
+              "after_unknown": {
+                "policy": true
+              },
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": [
+              {
+                "address": "aws_iam_role_policy.p",
+                "mode": "managed",
+                "type": "aws_iam_role_policy",
+                "name": "p",
+                "expressions": {
+                  "policy": {
+                    "references": [
+                      "data.aws_iam_policy_document.d.json",
+                      "data.aws_iam_policy_document.d"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "prior_state": {
+          "values": {
+            "root_module": {
+              "resources": [
+                {
+                  "address": "data.aws_iam_policy_document.d",
+                  "mode": "data",
+                  "type": "aws_iam_policy_document",
+                  "name": "d",
+                  "values": {
+                    "json": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"*\",\"Resource\":\"*\"}]}"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_role_policy.p"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_role_policy.p",
+            "action": "create",
+            "confidence": "proven",
+            "references": {
+              "policy": [
+                "data.aws_iam_policy_document.d"
+              ]
+            }
+          },
+          {
+            "address": "data.aws_iam_policy_document.d",
+            "action": "no-op",
+            "confidence": "proven",
+            "mode": "data"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_role_policy.p",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Action \"*\" grants every AWS action (admin-equivalent)"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_role_policy.p",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_role_policy"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL iam.least-privilege: aws_iam_role_policy.p: Action \"*\" grants every AWS action (admin-equivalent)"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "IAM (audit P3b, P4): attaching AdministratorAccess fails",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_iam_role_policy_attachment.a",
+            "mode": "managed",
+            "type": "aws_iam_role_policy_attachment",
+            "name": "a",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "role": "r",
+                "policy_arn": "arn:aws:iam::aws:policy/AdministratorAccess"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_role_policy_attachment.a"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_role_policy_attachment.a",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.managed-policy",
+            "resource": "aws_iam_role_policy_attachment.a",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Attaches AWS managed AdministratorAccess, which is admin-equivalent"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_role_policy_attachment.a",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_role_policy_attachment"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL iam.managed-policy: aws_iam_role_policy_attachment.a: Attaches AWS managed AdministratorAccess, which is admin-equivalent"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "IAM (audit P3b, P4): a GitHub OIDC trust without a sub condition fails",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_iam_role.gha",
+            "mode": "managed",
+            "type": "aws_iam_role",
+            "name": "gha",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "name": "gha",
+                "assume_role_policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Federated\":\"arn:aws:iam::1:oidc-provider/token.actions.githubusercontent.com\"},\"Action\":\"sts:AssumeRoleWithWebIdentity\",\"Condition\":{\"StringEquals\":{\"token.actions.githubusercontent.com:aud\":\"sts.amazonaws.com\"}}}]}"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_role.gha"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_role.gha",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.trust",
+            "resource": "aws_iam_role.gha",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "GitHub OIDC trust has no token.actions.githubusercontent.com:sub condition, so any GitHub repository can assume it"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_role.gha",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_role"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL iam.trust: aws_iam_role.gha: GitHub OIDC trust has no token.actions.githubusercontent.com:sub condition, so any GitHub repository can assume it"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "IAM (audit P3b, P4): a GitHub OIDC trust pinned to one repo passes",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_iam_role.gha",
+            "mode": "managed",
+            "type": "aws_iam_role",
+            "name": "gha",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "name": "gha",
+                "assume_role_policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Federated\":\"arn:aws:iam::1:oidc-provider/token.actions.githubusercontent.com\"},\"Action\":\"sts:AssumeRoleWithWebIdentity\",\"Condition\":{\"StringEquals\":{\"token.actions.githubusercontent.com:aud\":\"sts.amazonaws.com\"},\"StringLike\":{\"token.actions.githubusercontent.com:sub\":\"repo:acme/api:ref:refs/heads/main\"}}}]}"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_role.gha"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_role.gha",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.trust",
+            "resource": "aws_iam_role.gha",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Trust limited to specific principals"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_role.gha",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_role"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "IAM (audit P3b, P4): inserting a statement does not make existing issues look new (a production commit)",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_iam_role_policy.p",
+            "mode": "managed",
+            "type": "aws_iam_role_policy",
+            "name": "p",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "update"
+              ],
+              "before": {
+                "policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"kms:Decrypt\",\"Resource\":\"*\"}]}"
+              },
+              "after": {
+                "policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\"],\"Resource\":\"arn:aws:s3:::b/*\"},{\"Effect\":\"Allow\",\"Action\":\"kms:Decrypt\",\"Resource\":\"*\"}]}"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_iam_role_policy.p"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_role_policy.p",
+            "action": "update",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_role_policy.p",
+            "status": "FAIL",
+            "preExisting": true,
+            "detailContains": "Resource \"*\" for kms:Decrypt"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_role_policy.p",
+            "action": "update",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Grants s3:GetObject on arn:aws:s3:::b/*"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "IAM (audit P3b, P4): a new issue next to old ones reports only the new one",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_iam_role_policy.p",
+            "mode": "managed",
+            "type": "aws_iam_role_policy",
+            "name": "p",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "update"
+              ],
+              "before": {
+                "policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"kms:Decrypt\",\"Resource\":\"*\"}]}"
+              },
+              "after": {
+                "policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"kms:Decrypt\",\"Resource\":\"*\"},{\"Effect\":\"Allow\",\"Action\":\"secretsmanager:GetSecretValue\",\"Resource\":\"arn:aws:secretsmanager:eu-central-1:1:secret:provider/*/creds-??????\"}]}"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_iam_role_policy.p"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_role_policy.p",
+            "action": "update",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_role_policy.p",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "Resource \"arn:aws:secretsmanager:eu-central-1:1:secret:provider/*/creds-??????\" uses a wildcard that spans multiple resources (1 issue already present before this change)"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_role_policy.p",
+            "action": "update",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Grants secretsmanager:GetSecretValue on arn:aws:secretsmanager:eu-central-1:1:secret:provider/*/creds-??????"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "IAM (audit P3b, P4): a finding already present before an update is marked pre-existing and does not gate",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_iam_policy.p",
+            "mode": "managed",
+            "type": "aws_iam_policy",
+            "name": "p",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "update"
+              ],
+              "before": {
+                "name": "p",
+                "policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"*\",\"Resource\":\"*\"}]}",
+                "tags": {}
+              },
+              "after": {
+                "name": "p",
+                "policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"*\",\"Resource\":\"*\"}]}",
+                "tags": {
+                  "a": "1"
+                }
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_iam_policy.p"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_policy.p",
+            "action": "update",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.p",
+            "status": "FAIL",
+            "preExisting": true,
+            "detailContains": "Action \"*\" grants every AWS action (admin-equivalent)"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_policy.p",
+            "action": "update",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "In-place update of tags"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "Blast radius (audit P5-P7): deleting a CloudWatch alarm does not block the merge",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_cloudwatch_metric_alarm.old",
+            "mode": "managed",
+            "type": "aws_cloudwatch_metric_alarm",
+            "name": "old",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "delete"
+              ],
+              "before": {
+                "alarm_name": "x"
+              },
+              "after": null,
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete aws_cloudwatch_metric_alarm.old"
+        ],
+        "changes": [
+          {
+            "address": "aws_cloudwatch_metric_alarm.old",
+            "action": "delete",
+            "confidence": "proven"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_cloudwatch_metric_alarm.old",
+            "action": "delete",
+            "severity": "LOW",
+            "dataLoss": false,
+            "reasonContains": "Deletes aws_cloudwatch_metric_alarm"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": -0.1,
+          "items": [
+            {
+              "resource": "aws_cloudwatch_metric_alarm.old",
+              "kind": "fixed",
+              "noteContains": "$0.10/month per standard alarm"
+            }
+          ]
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "Blast radius (audit P5-P7): replacing a Cognito user pool is critical",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_cognito_user_pool.users",
+            "mode": "managed",
+            "type": "aws_cognito_user_pool",
+            "name": "users",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "delete",
+                "create"
+              ],
+              "before": {
+                "name": "old"
+              },
+              "after": {
+                "name": "u"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_cognito_user_pool.users"
+        ],
+        "changes": [
+          {
+            "address": "aws_cognito_user_pool.users",
+            "action": "replace",
+            "confidence": "proven"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_cognito_user_pool.users",
+            "action": "replace",
+            "severity": "CRITICAL",
+            "dataLoss": true,
+            "reasonContains": "Replaces aws_cognito_user_pool: loses every user and their password (password hashes cannot be exported)"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "block",
+          "reasonsContain": [
+            "CRITICAL: aws_cognito_user_pool.users: Replaces aws_cognito_user_pool: loses every user and their password (password hashes cannot be exported)"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "Blast radius (audit P5-P7): an RDS replacement names the attribute that forced it",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_db_instance.prod",
+            "mode": "managed",
+            "type": "aws_db_instance",
+            "name": "prod",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "delete",
+                "create"
+              ],
+              "before": {
+                "identifier": "orders"
+              },
+              "after": {
+                "identifier": "orders-v2"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {},
+              "replace_paths": [
+                [
+                  "identifier"
+                ]
+              ]
+            },
+            "action_reason": "replace_because_cannot_update"
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_db_instance.prod"
+        ],
+        "changes": [
+          {
+            "address": "aws_db_instance.prod",
+            "action": "replace",
+            "confidence": "proven",
+            "actionReasonContains": "replace_because_cannot_update"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "rds.encryption",
+            "resource": "aws_db_instance.prod",
+            "status": "FAIL",
+            "preExisting": true,
+            "detailContains": "Storage not encrypted (encryption can only be enabled at creation)"
+          },
+          {
+            "ruleId": "rds.deletion-protection",
+            "resource": "aws_db_instance.prod",
+            "status": "WARN",
+            "preExisting": true,
+            "detailContains": "Deletion protection disabled"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_db_instance.prod",
+            "action": "replace",
+            "severity": "CRITICAL",
+            "dataLoss": true,
+            "reasonContains": "Replaces aws_db_instance (forced by changing identifier): loses the database"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "block",
+          "reasonsContain": [
+            "CRITICAL: aws_db_instance.prod: Replaces aws_db_instance (forced by changing identifier): loses the database"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "Blast radius (audit P5-P7): without replace_paths the forcing argument is inferred from the diff and the catalogue",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_db_instance.prod",
+            "mode": "managed",
+            "type": "aws_db_instance",
+            "name": "prod",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "delete",
+                "create"
+              ],
+              "before": {
+                "storage_encrypted": false,
+                "instance_class": "db.t4g.small"
+              },
+              "after": {
+                "storage_encrypted": true,
+                "instance_class": "db.t4g.small"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_db_instance.prod"
+        ],
+        "changes": [
+          {
+            "address": "aws_db_instance.prod",
+            "action": "replace",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "rds.encryption",
+            "resource": "aws_db_instance.prod",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Storage encrypted"
+          },
+          {
+            "ruleId": "rds.deletion-protection",
+            "resource": "aws_db_instance.prod",
+            "status": "WARN",
+            "preExisting": true,
+            "detailContains": "Deletion protection disabled"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_db_instance.prod",
+            "action": "replace",
+            "severity": "CRITICAL",
+            "dataLoss": true,
+            "reasonContains": "Replaces aws_db_instance (likely forced by changing storage_encrypted): loses the database"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "block",
+          "reasonsContain": [
+            "CRITICAL: aws_db_instance.prod: Replaces aws_db_instance (likely forced by changing storage_encrypted): loses the database"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "Blast radius (audit P5-P7): a bucket or key policy open to Principal { AWS = [\"*\"] } fails (list form)",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_s3_bucket_policy.p",
+            "mode": "managed",
+            "type": "aws_s3_bucket_policy",
+            "name": "p",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "bucket": "b",
+                "policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"AWS\":[\"*\"]},\"Action\":\"s3:GetObject\",\"Resource\":\"arn:aws:s3:::b/*\"}]}"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          },
+          {
+            "address": "aws_kms_key.k",
+            "mode": "managed",
+            "type": "aws_kms_key",
+            "name": "k",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "enable_key_rotation": true,
+                "policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"AWS\":[\"*\"]},\"Action\":\"s3:GetObject\",\"Resource\":\"arn:aws:s3:::b/*\"}]}"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_kms_key.k",
+          "create aws_s3_bucket_policy.p"
+        ],
+        "changes": [
+          {
+            "address": "aws_s3_bucket_policy.p",
+            "action": "create",
+            "confidence": "proven"
+          },
+          {
+            "address": "aws_kms_key.k",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "s3.bucket-policy",
+            "resource": "aws_s3_bucket_policy.p",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Bucket policy allows any principal without a condition"
+          },
+          {
+            "ruleId": "kms.rotation",
+            "resource": "aws_kms_key.k",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Automatic key rotation enabled"
+          },
+          {
+            "ruleId": "kms.key-policy",
+            "resource": "aws_kms_key.k",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Key policy allows any principal without a condition"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_s3_bucket_policy.p",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_s3_bucket_policy"
+          },
+          {
+            "resource": "aws_kms_key.k",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_kms_key"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 1,
+          "items": [
+            {
+              "resource": "aws_kms_key.k",
+              "kind": "fixed",
+              "noteContains": "$1/month per key + $0.03 per 10k requests"
+            }
+          ]
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL s3.bucket-policy: aws_s3_bucket_policy.p: Bucket policy allows any principal without a condition",
+            "FAIL kms.key-policy: aws_kms_key.k: Key policy allows any principal without a condition"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "Blast radius (audit P5-P7): an RDS delete with deletion_protection is high (apply will fail), not critical",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_db_instance.prod",
+            "mode": "managed",
+            "type": "aws_db_instance",
+            "name": "prod",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "delete"
+              ],
+              "before": {
+                "identifier": "orders",
+                "deletion_protection": true
+              },
+              "after": null,
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete aws_db_instance.prod"
+        ],
+        "changes": [
+          {
+            "address": "aws_db_instance.prod",
+            "action": "delete",
+            "confidence": "proven"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_db_instance.prod",
+            "action": "delete",
+            "severity": "HIGH",
+            "dataLoss": false,
+            "reasonContains": "Deletes aws_db_instance: loses the database. deletion_protection = true, so the apply will fail mid-way"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "HIGH: aws_db_instance.prod: Deletes aws_db_instance: loses the database. deletion_protection = true, so the apply will fail mid-way"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "Blast radius (audit P5-P7): an RDS instance class change applied immediately is flagged as a reboot risk",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_db_instance.prod",
+            "mode": "managed",
+            "type": "aws_db_instance",
+            "name": "prod",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "update"
+              ],
+              "before": {
+                "instance_class": "db.t4g.small",
+                "apply_immediately": true
+              },
+              "after": {
+                "instance_class": "db.r6g.4xlarge",
+                "apply_immediately": true
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_db_instance.prod"
+        ],
+        "changes": [
+          {
+            "address": "aws_db_instance.prod",
+            "action": "update",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "rds.encryption",
+            "resource": "aws_db_instance.prod",
+            "status": "FAIL",
+            "preExisting": true,
+            "detailContains": "Storage not encrypted (encryption can only be enabled at creation)"
+          },
+          {
+            "ruleId": "rds.deletion-protection",
+            "resource": "aws_db_instance.prod",
+            "status": "WARN",
+            "preExisting": true,
+            "detailContains": "Deletion protection disabled"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_db_instance.prod",
+            "action": "update",
+            "severity": "HIGH",
+            "dataLoss": false,
+            "reasonContains": "Changes instance_class: may reboot or fail over the database immediately (apply_immediately = true), not in the maintenance window. instance_class: db.t4g.small -> db.r6g.4xlarge"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 1232.24,
+          "items": [
+            {
+              "resource": "aws_db_instance.prod",
+              "kind": "scaling",
+              "noteContains": "db.t4g.small compute, storage extra -> db.r6g.4xlarge compute, storage extra"
+            }
+          ]
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "HIGH: aws_db_instance.prod: Changes instance_class: may reboot or fail over the database immediately (apply_immediately = true), not in the maintenance window. instance_class: db.t4g.small -> db.r6g.4xlarge"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "Blast radius (audit P5-P7): a policy update says which grants it adds instead of guessing (a production commit)",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_iam_role_policy.p",
+            "mode": "managed",
+            "type": "aws_iam_role_policy",
+            "name": "p",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "update"
+              ],
+              "before": {
+                "policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"sqs:SendMessage\",\"Resource\":\"arn:aws:sqs:eu-central-1:1:q\"}]}"
+              },
+              "after": {
+                "policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"sqs:SendMessage\",\"Resource\":\"arn:aws:sqs:eu-central-1:1:q\"},{\"Effect\":\"Allow\",\"Action\":\"secretsmanager:GetSecretValue\",\"Resource\":\"arn:aws:secretsmanager:eu-central-1:1:secret:x-??????\"}]}"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_iam_role_policy.p"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_role_policy.p",
+            "action": "update",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_role_policy.p",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Explicit actions on explicit resources"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_role_policy.p",
+            "action": "update",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Grants secretsmanager:GetSecretValue on arn:aws:secretsmanager:eu-central-1:1:secret:x-??????"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "Blast radius (audit P5-P7): a policy update that removes grants warns about AccessDenied",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_iam_role_policy.p",
+            "mode": "managed",
+            "type": "aws_iam_role_policy",
+            "name": "p",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "update"
+              ],
+              "before": {
+                "policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"sqs:SendMessage\",\"sqs:DeleteMessage\"],\"Resource\":\"arn:aws:sqs:eu-central-1:1:q\"}]}"
+              },
+              "after": {
+                "policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"sqs:SendMessage\"],\"Resource\":\"arn:aws:sqs:eu-central-1:1:q\"}]}"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_iam_role_policy.p"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_role_policy.p",
+            "action": "update",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_role_policy.p",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Explicit actions on explicit resources"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_role_policy.p",
+            "action": "update",
+            "severity": "LOW",
+            "dataLoss": false,
+            "reasonContains": "Revokes sqs:DeleteMessage on arn:aws:sqs:eu-central-1:1:q; callers that still need it get AccessDenied"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "Blast radius (audit P5-P7): a Lambda environment change names the variables it adds (a production commit)",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_lambda_function.f",
+            "mode": "managed",
+            "type": "aws_lambda_function",
+            "name": "f",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "update"
+              ],
+              "before": {
+                "environment": [
+                  {
+                    "variables": {
+                      "A": "1"
+                    }
+                  }
+                ]
+              },
+              "after": {
+                "environment": [
+                  {
+                    "variables": {
+                      "A": "1",
+                      "TOPIC_ARN": "arn:aws:sns:eu-central-1:1:t"
+                    }
+                  }
+                ]
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_lambda_function.f"
+        ],
+        "changes": [
+          {
+            "address": "aws_lambda_function.f",
+            "action": "update",
+            "confidence": "proven"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_lambda_function.f",
+            "action": "update",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Adds env TOPIC_ARN"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "Blast radius (audit P5-P7): a cron schedule change shows before and after (a production commit)",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_cloudwatch_event_rule.r",
+            "mode": "managed",
+            "type": "aws_cloudwatch_event_rule",
+            "name": "r",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "update"
+              ],
+              "before": {
+                "schedule_expression": "cron(0 8 * * ? *)"
+              },
+              "after": {
+                "schedule_expression": "cron(0 9 * * ? *)"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_cloudwatch_event_rule.r"
+        ],
+        "changes": [
+          {
+            "address": "aws_cloudwatch_event_rule.r",
+            "action": "update",
+            "confidence": "proven"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_cloudwatch_event_rule.r",
+            "action": "update",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Schedule_expression: cron(0 8 * * ? *) -> cron(0 9 * * ? *)"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "Cost (audit P8): tag-only updates cost nothing",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_db_instance.prod",
+            "mode": "managed",
+            "type": "aws_db_instance",
+            "name": "prod",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "update"
+              ],
+              "before": {
+                "instance_class": "db.t4g.small",
+                "tags": {}
+              },
+              "after": {
+                "instance_class": "db.t4g.small",
+                "tags": {
+                  "a": "b"
+                }
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          },
+          {
+            "address": "aws_nat_gateway.n",
+            "mode": "managed",
+            "type": "aws_nat_gateway",
+            "name": "n",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "update"
+              ],
+              "before": {
+                "tags": {}
+              },
+              "after": {
+                "tags": {
+                  "a": "b"
+                }
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_db_instance.prod",
+          "update aws_nat_gateway.n"
+        ],
+        "changes": [
+          {
+            "address": "aws_db_instance.prod",
+            "action": "update",
+            "confidence": "proven"
+          },
+          {
+            "address": "aws_nat_gateway.n",
+            "action": "update",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "rds.encryption",
+            "resource": "aws_db_instance.prod",
+            "status": "FAIL",
+            "preExisting": true,
+            "detailContains": "Storage not encrypted (encryption can only be enabled at creation)"
+          },
+          {
+            "ruleId": "rds.deletion-protection",
+            "resource": "aws_db_instance.prod",
+            "status": "WARN",
+            "preExisting": true,
+            "detailContains": "Deletion protection disabled"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_db_instance.prod",
+            "action": "update",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "In-place update of tags"
+          },
+          {
+            "resource": "aws_nat_gateway.n",
+            "action": "update",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "In-place update of tags"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "Cost (audit P8): a replacement with the same size costs nothing",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_db_instance.prod",
+            "mode": "managed",
+            "type": "aws_db_instance",
+            "name": "prod",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "delete",
+                "create"
+              ],
+              "before": {
+                "instance_class": "db.t4g.small"
+              },
+              "after": {
+                "instance_class": "db.t4g.small"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_db_instance.prod"
+        ],
+        "changes": [
+          {
+            "address": "aws_db_instance.prod",
+            "action": "replace",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "rds.encryption",
+            "resource": "aws_db_instance.prod",
+            "status": "FAIL",
+            "preExisting": true,
+            "detailContains": "Storage not encrypted (encryption can only be enabled at creation)"
+          },
+          {
+            "ruleId": "rds.deletion-protection",
+            "resource": "aws_db_instance.prod",
+            "status": "WARN",
+            "preExisting": true,
+            "detailContains": "Deletion protection disabled"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_db_instance.prod",
+            "action": "replace",
+            "severity": "CRITICAL",
+            "dataLoss": true,
+            "reasonContains": "Replaces aws_db_instance: loses the database"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "block",
+          "reasonsContain": [
+            "CRITICAL: aws_db_instance.prod: Replaces aws_db_instance: loses the database"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "Cost (audit P8): a new NAT gateway is a fixed monthly cost",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_nat_gateway.n",
+            "mode": "managed",
+            "type": "aws_nat_gateway",
+            "name": "n",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "connectivity_type": "public"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_nat_gateway.n"
+        ],
+        "changes": [
+          {
+            "address": "aws_nat_gateway.n",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_nat_gateway.n",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_nat_gateway"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 32.85,
+          "items": [
+            {
+              "resource": "aws_nat_gateway.n",
+              "kind": "fixed",
+              "noteContains": "$0.045/h + $0.045/GB processed"
+            }
+          ]
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "Cost (audit P8): a Lambda memory bump is reported as a compute multiplier (a production commit)",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_lambda_function.f",
+            "mode": "managed",
+            "type": "aws_lambda_function",
+            "name": "f",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "update"
+              ],
+              "before": {
+                "memory_size": 256
+              },
+              "after": {
+                "memory_size": 2048
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_lambda_function.f"
+        ],
+        "changes": [
+          {
+            "address": "aws_lambda_function.f",
+            "action": "update",
+            "confidence": "proven"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_lambda_function.f",
+            "action": "update",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Memory_size: 256 -> 2048"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0,
+          "items": [
+            {
+              "resource": "aws_lambda_function.f",
+              "kind": "scaling",
+              "noteContains": "memory_size 256 -> 2048 MB: compute cost per invocation-second 8x (shorter runtimes from the extra CPU offset part of it)"
+            }
+          ]
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "the bundled unsafe example: still blocks",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_sqs_queue.vibe_coded_queue",
+            "type": "aws_sqs_queue",
+            "name": "vibe_coded_queue",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "name": "orders-unencrypted-queue",
+                "kms_master_key_id": null,
+                "redrive_policy": null
+              }
+            }
+          },
+          {
+            "address": "aws_iam_policy.vibe_coded_admin_policy",
+            "type": "aws_iam_policy",
+            "name": "vibe_coded_admin_policy",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "name": "orders-wildcard-policy",
+                "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"*\",\"Resource\":\"*\"}]}"
+              }
+            }
+          },
+          {
+            "address": "aws_db_instance.production_postgres",
+            "type": "aws_db_instance",
+            "name": "production_postgres",
+            "change": {
+              "actions": [
+                "delete",
+                "create"
+              ],
+              "before": {
+                "identifier": "prod-orders-db",
+                "instance_class": "db.t4g.small",
+                "storage_encrypted": false,
+                "deletion_protection": false,
+                "skip_final_snapshot": true
+              },
+              "after": {
+                "identifier": "prod-orders-db",
+                "instance_class": "db.t4g.small",
+                "storage_encrypted": true,
+                "deletion_protection": false,
+                "skip_final_snapshot": true
+              },
+              "replace_paths": [
+                [
+                  "storage_encrypted"
+                ]
+              ]
+            },
+            "action_reason": "replace_because_cannot_update"
+          },
+          {
+            "address": "aws_nat_gateway.expensive_nat",
+            "type": "aws_nat_gateway",
+            "name": "expensive_nat",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "connectivity_type": "public"
+              }
+            }
+          }
+        ]
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_policy.vibe_coded_admin_policy",
+          "create aws_nat_gateway.expensive_nat",
+          "create aws_sqs_queue.vibe_coded_queue",
+          "replace aws_db_instance.production_postgres"
+        ],
+        "changes": [
+          {
+            "address": "aws_sqs_queue.vibe_coded_queue",
+            "action": "create",
+            "confidence": "proven"
+          },
+          {
+            "address": "aws_iam_policy.vibe_coded_admin_policy",
+            "action": "create",
+            "confidence": "proven"
+          },
+          {
+            "address": "aws_db_instance.production_postgres",
+            "action": "replace",
+            "confidence": "proven",
+            "actionReasonContains": "replace_because_cannot_update"
+          },
+          {
+            "address": "aws_nat_gateway.expensive_nat",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "sqs.encryption",
+            "resource": "aws_sqs_queue.vibe_coded_queue",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "SSE-SQS (SQS managed keys, the default for new queues)"
+          },
+          {
+            "ruleId": "sqs.dlq",
+            "resource": "aws_sqs_queue.vibe_coded_queue",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "No dead-letter queue: messages that keep failing are dropped after the retention period"
+          },
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.vibe_coded_admin_policy",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Action \"*\" grants every AWS action (admin-equivalent)"
+          },
+          {
+            "ruleId": "rds.encryption",
+            "resource": "aws_db_instance.production_postgres",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Storage encrypted"
+          },
+          {
+            "ruleId": "rds.deletion-protection",
+            "resource": "aws_db_instance.production_postgres",
+            "status": "WARN",
+            "preExisting": true,
+            "detailContains": "Deletion protection disabled"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_db_instance.production_postgres",
+            "action": "replace",
+            "severity": "CRITICAL",
+            "dataLoss": true,
+            "reasonContains": "Replaces aws_db_instance (forced by changing storage_encrypted): loses the database"
+          },
+          {
+            "resource": "aws_sqs_queue.vibe_coded_queue",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_sqs_queue"
+          },
+          {
+            "resource": "aws_iam_policy.vibe_coded_admin_policy",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_policy"
+          },
+          {
+            "resource": "aws_nat_gateway.expensive_nat",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_nat_gateway"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 32.85,
+          "items": [
+            {
+              "resource": "aws_sqs_queue.vibe_coded_queue",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            },
+            {
+              "resource": "aws_nat_gateway.expensive_nat",
+              "kind": "fixed",
+              "noteContains": "$0.045/h + $0.045/GB processed"
+            }
+          ]
+        },
+        "gate": {
+          "result": "block",
+          "reasonsContain": [
+            "CRITICAL: aws_db_instance.production_postgres: Replaces aws_db_instance (forced by changing storage_encrypted): loses the database"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "Exceptions: an accepted finding stays in the report but no longer fails the gate",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_vpc_security_group_ingress_rule.devices",
+            "mode": "managed",
+            "type": "aws_vpc_security_group_ingress_rule",
+            "name": "devices",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "cidr_ipv4": "0.0.0.0/0",
+                "from_port": 25004,
+                "to_port": 25004,
+                "ip_protocol": "tcp"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "policy": {
+        "exceptions": [
+          {
+            "rule": "network.open-ingress",
+            "resource": "aws_vpc_security_group_ingress_rule.devices",
+            "reason": "Devices connect from the internet over mutual TLS",
+            "owner": "platform",
+            "expires": "2099-01-01"
+          }
+        ]
+      },
+      "now": "2026-10-25",
+      "expect": {
+        "changedAddresses": [
+          "create aws_vpc_security_group_ingress_rule.devices"
+        ],
+        "changes": [
+          {
+            "address": "aws_vpc_security_group_ingress_rule.devices",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "network.open-ingress",
+            "resource": "aws_vpc_security_group_ingress_rule.devices",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Allows ports 25004 from 0.0.0.0/0",
+            "acceptedReasonContains": "Devices connect from the internet over mutual TLS"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_vpc_security_group_ingress_rule.devices",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_vpc_security_group_ingress_rule"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "Exceptions: an expired exception no longer applies and says so",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_vpc_security_group_ingress_rule.devices",
+            "mode": "managed",
+            "type": "aws_vpc_security_group_ingress_rule",
+            "name": "devices",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "cidr_ipv4": "0.0.0.0/0",
+                "from_port": 25004,
+                "to_port": 25004,
+                "ip_protocol": "tcp"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "policy": {
+        "exceptions": [
+          {
+            "rule": "network.open-ingress",
+            "resource": "aws_vpc_security_group_ingress_rule.devices",
+            "reason": "Devices connect from the internet over mutual TLS",
+            "owner": "platform",
+            "expires": "2026-01-01"
+          }
+        ]
+      },
+      "now": "2026-10-25",
+      "expect": {
+        "changedAddresses": [
+          "create aws_vpc_security_group_ingress_rule.devices"
+        ],
+        "changes": [
+          {
+            "address": "aws_vpc_security_group_ingress_rule.devices",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "network.open-ingress",
+            "resource": "aws_vpc_security_group_ingress_rule.devices",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Allows ports 25004 from 0.0.0.0/0"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_vpc_security_group_ingress_rule.devices",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_vpc_security_group_ingress_rule"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL network.open-ingress: aws_vpc_security_group_ingress_rule.devices: Allows ports 25004 from 0.0.0.0/0",
+            "Exception for network.open-ingress on aws_vpc_security_group_ingress_rule.devices expired 2026-01-01; it no longer applies"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "Exceptions: an exception with a malformed expiry or no resource never applies [1]",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_vpc_security_group_ingress_rule.devices",
+            "mode": "managed",
+            "type": "aws_vpc_security_group_ingress_rule",
+            "name": "devices",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "cidr_ipv4": "0.0.0.0/0",
+                "from_port": 25004,
+                "to_port": 25004,
+                "ip_protocol": "tcp"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "policy": {
+        "exceptions": [
+          {
+            "rule": "network.open-ingress",
+            "resource": "aws_vpc_security_group_ingress_rule.devices",
+            "reason": "Devices connect from the internet over mutual TLS",
+            "owner": "platform",
+            "expires": "never"
+          }
+        ]
+      },
+      "now": "2026-10-25",
+      "expect": {
+        "changedAddresses": [
+          "create aws_vpc_security_group_ingress_rule.devices"
+        ],
+        "changes": [
+          {
+            "address": "aws_vpc_security_group_ingress_rule.devices",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "network.open-ingress",
+            "resource": "aws_vpc_security_group_ingress_rule.devices",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Allows ports 25004 from 0.0.0.0/0"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_vpc_security_group_ingress_rule.devices",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_vpc_security_group_ingress_rule"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL network.open-ingress: aws_vpc_security_group_ingress_rule.devices: Allows ports 25004 from 0.0.0.0/0",
+            "Exception for network.open-ingress on aws_vpc_security_group_ingress_rule.devices is malformed: it needs a resource and an expires date as YYYY-MM-DD; it does not apply"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "Exceptions: an exception with a malformed expiry or no resource never applies [2]",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_vpc_security_group_ingress_rule.devices",
+            "mode": "managed",
+            "type": "aws_vpc_security_group_ingress_rule",
+            "name": "devices",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "cidr_ipv4": "0.0.0.0/0",
+                "from_port": 25004,
+                "to_port": 25004,
+                "ip_protocol": "tcp"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "policy": {
+        "exceptions": [
+          {
+            "rule": "network.open-ingress",
+            "resource": "aws_vpc_security_group_ingress_rule.devices",
+            "reason": "Devices connect from the internet over mutual TLS",
+            "owner": "platform",
+            "expires": "2099-9-1"
+          }
+        ]
+      },
+      "now": "2026-10-25",
+      "expect": {
+        "changedAddresses": [
+          "create aws_vpc_security_group_ingress_rule.devices"
+        ],
+        "changes": [
+          {
+            "address": "aws_vpc_security_group_ingress_rule.devices",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "network.open-ingress",
+            "resource": "aws_vpc_security_group_ingress_rule.devices",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Allows ports 25004 from 0.0.0.0/0"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_vpc_security_group_ingress_rule.devices",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_vpc_security_group_ingress_rule"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL network.open-ingress: aws_vpc_security_group_ingress_rule.devices: Allows ports 25004 from 0.0.0.0/0",
+            "Exception for network.open-ingress on aws_vpc_security_group_ingress_rule.devices is malformed: it needs a resource and an expires date as YYYY-MM-DD; it does not apply"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "Exceptions: an exception with a malformed expiry or no resource never applies [3]",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_vpc_security_group_ingress_rule.devices",
+            "mode": "managed",
+            "type": "aws_vpc_security_group_ingress_rule",
+            "name": "devices",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "cidr_ipv4": "0.0.0.0/0",
+                "from_port": 25004,
+                "to_port": 25004,
+                "ip_protocol": "tcp"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "policy": {
+        "exceptions": [
+          {
+            "rule": "network.open-ingress",
+            "reason": "Devices connect from the internet over mutual TLS",
+            "owner": "platform",
+            "expires": "2099-01-01"
+          }
+        ]
+      },
+      "now": "2026-10-25",
+      "expect": {
+        "changedAddresses": [
+          "create aws_vpc_security_group_ingress_rule.devices"
+        ],
+        "changes": [
+          {
+            "address": "aws_vpc_security_group_ingress_rule.devices",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "network.open-ingress",
+            "resource": "aws_vpc_security_group_ingress_rule.devices",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Allows ports 25004 from 0.0.0.0/0"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_vpc_security_group_ingress_rule.devices",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_vpc_security_group_ingress_rule"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL network.open-ingress: aws_vpc_security_group_ingress_rule.devices: Allows ports 25004 from 0.0.0.0/0"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "Exceptions: resource patterns match module instances",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "module.gw.aws_vpc_security_group_ingress_rule.devices[\"tls-devices\"]",
+            "module_address": "module.gw",
+            "mode": "managed",
+            "type": "aws_vpc_security_group_ingress_rule",
+            "name": "devices",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "cidr_ipv4": "0.0.0.0/0",
+                "from_port": 25004,
+                "to_port": 25004,
+                "ip_protocol": "tcp"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "policy": {
+        "exceptions": [
+          {
+            "rule": "network.open-ingress",
+            "resource": "module.gw.aws_vpc_security_group_ingress_rule.devices*",
+            "reason": "Devices connect from the internet over mutual TLS",
+            "owner": "platform",
+            "expires": "2099-01-01"
+          }
+        ]
+      },
+      "now": "2026-10-25",
+      "expect": {
+        "changedAddresses": [
+          "create module.gw.aws_vpc_security_group_ingress_rule.devices[\"tls-devices\"]"
+        ],
+        "changes": [
+          {
+            "address": "module.gw.aws_vpc_security_group_ingress_rule.devices[\"tls-devices\"]",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "network.open-ingress",
+            "resource": "module.gw.aws_vpc_security_group_ingress_rule.devices[\"tls-devices\"]",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Allows ports 25004 from 0.0.0.0/0",
+            "acceptedReasonContains": "Devices connect from the internet over mutual TLS"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "module.gw.aws_vpc_security_group_ingress_rule.devices[\"tls-devices\"]",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_vpc_security_group_ingress_rule"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "Robustness (review batch 1): unknown collections do not crash the review",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_iam_role.r",
+            "mode": "managed",
+            "type": "aws_iam_role",
+            "name": "r",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "name": "r",
+                "assume_role_policy": "{}"
+              },
+              "after_unknown": {
+                "managed_policy_arns": true
+              },
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          },
+          {
+            "address": "aws_security_group_rule.s",
+            "mode": "managed",
+            "type": "aws_security_group_rule",
+            "name": "s",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "type": "ingress",
+                "from_port": 22,
+                "to_port": 22,
+                "protocol": "tcp"
+              },
+              "after_unknown": {
+                "cidr_blocks": true
+              },
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          },
+          {
+            "address": "aws_security_group.g",
+            "mode": "managed",
+            "type": "aws_security_group",
+            "name": "g",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "name": "g"
+              },
+              "after_unknown": {
+                "ingress": true
+              },
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_role.r",
+          "create aws_security_group.g",
+          "create aws_security_group_rule.s"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_role.r",
+            "action": "create",
+            "confidence": "proven"
+          },
+          {
+            "address": "aws_security_group_rule.s",
+            "action": "create",
+            "confidence": "proven"
+          },
+          {
+            "address": "aws_security_group.g",
+            "action": "create",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.trust",
+            "resource": "aws_iam_role.r",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Trust limited to specific principals"
+          },
+          {
+            "ruleId": "iam.managed-policy",
+            "resource": "aws_iam_role.r",
+            "status": "UNKNOWN",
+            "preExisting": null,
+            "detailContains": "Managed policy attachments not known until apply"
+          },
+          {
+            "ruleId": "network.open-ingress",
+            "resource": "aws_security_group_rule.s",
+            "status": "UNKNOWN",
+            "preExisting": null,
+            "detailContains": "Ingress sources not known until apply"
+          },
+          {
+            "ruleId": "network.open-ingress",
+            "resource": "aws_security_group.g",
+            "status": "UNKNOWN",
+            "preExisting": null,
+            "detailContains": "Ingress sources not known until apply"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_role.r",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_role"
+          },
+          {
+            "resource": "aws_security_group_rule.s",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_security_group_rule"
+          },
+          {
+            "resource": "aws_security_group.g",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_security_group"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "Robustness (review batch 1): a CRITICAL change that policy does not block is still reviewed, never passed",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_dynamodb_table.t",
+            "mode": "managed",
+            "type": "aws_dynamodb_table",
+            "name": "t",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "delete"
+              ],
+              "before": {
+                "name": "t"
+              },
+              "after": null,
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "policy": {
+        "blockOn": []
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete aws_dynamodb_table.t"
+        ],
+        "changes": [
+          {
+            "address": "aws_dynamodb_table.t",
+            "action": "delete",
+            "confidence": "proven"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_dynamodb_table.t",
+            "action": "delete",
+            "severity": "CRITICAL",
+            "dataLoss": true,
+            "reasonContains": "Deletes aws_dynamodb_table: loses the items in the table"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "CRITICAL: aws_dynamodb_table.t: Deletes aws_dynamodb_table: loses the items in the table"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "Robustness (review batch 1): an imported resource is an import, not a create that costs money [2]",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_nat_gateway.n",
+            "mode": "managed",
+            "type": "aws_nat_gateway",
+            "name": "n",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "connectivity_type": "public"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {},
+              "importing": {
+                "id": "nat-123"
+              }
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "import aws_nat_gateway.n"
+        ],
+        "changes": [
+          {
+            "address": "aws_nat_gateway.n",
+            "action": "import",
+            "confidence": "proven"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_nat_gateway.n",
+            "action": "import",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Imports existing aws_nat_gateway into state"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,185 @@
+{
+  "suite": "analysis/round11",
+  "description": "Executable specification fixtures exported from src/analysis/round11.test.ts",
+  "cases": [
+    {
+      "kind": "reconcile",
+      "name": "round 11: a partial secret ARN in code (no suffix) is the secret, like its bare name",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"secretsmanager:GetSecretValue\", Resource = \"arn:aws:secretsmanager:*:*:secret:prod/db-*\" }] })\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "secretsmanager",
+          "actions": [
+            "secretsmanager:GetSecretValue"
+          ],
+          "resource": {
+            "kind": "literal",
+            "value": "arn:aws:secretsmanager:eu-west-1:111122223333:secret:prod/db"
+          }
+        }
+      ],
+      "options": {
+        "roleNames": [
+          "r"
+        ]
+      },
+      "expect": {
+        "exactStatuses": [
+          "GRANTED"
+        ],
+        "links": [
+          {
+            "status": "GRANTED",
+            "access": "secretsmanager:GetSecretValue on arn:aws:secretsmanager:eu-west-1:111122223333:secret:prod/db",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "role r allows it (aws_iam_role_policy.p, infra/prod/main.tf:8)"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "reconcile",
+      "name": "round 11: a key policy that delegates to another account root does not delegate to the role account",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"audit_account_id\" {}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_kms_key\" \"k\" {\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { AWS = aws_iam_role.r.arn }, Action = \"kms:Encrypt\", Resource = \"*\" }, { Effect = \"Allow\", Principal = { AWS = \"arn:aws:iam::${var.audit_account_id}:root\" }, Action = \"kms:*\", Resource = \"*\" }] })\n}\nresource \"aws_sqs_queue\" \"jobs\" {\n  name              = \"jobs\"\n  kms_master_key_id = aws_kms_key.k.arn\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = [\"sqs:SendMessage\", \"kms:GenerateDataKey\", \"kms:Decrypt\"], Resource = \"*\" }] })\n}\nresource \"aws_lambda_function\" \"f\" {\n  function_name = \"f\"\n  role          = aws_iam_role.r.arn\n  environment {\n    variables = { JOBS_QUEUE_URL = aws_sqs_queue.jobs.url }\n  }\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "sqs",
+          "actions": [
+            "sqs:SendMessage"
+          ],
+          "resource": {
+            "kind": "env",
+            "name": "JOBS_QUEUE_URL"
+          }
+        }
+      ],
+      "expect": {
+        "exactStatuses": [
+          "GRANTED",
+          "UNRESOLVED"
+        ],
+        "links": [
+          {
+            "status": "GRANTED",
+            "access": "sqs:SendMessage on $JOBS_QUEUE_URL (jobs)",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "role r allows it (aws_iam_role_policy.p, infra/prod/main.tf:16)"
+          },
+          {
+            "status": "UNRESOLVED",
+            "access": "kms:GenerateDataKey, kms:Decrypt on aws_kms_key.k, the customer managed key of jobs",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "Cannot tell whether role r may use aws_kms_key.k (conditional or unreadable grants)"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 11: a known change next to an unknown in a ForceNew block is a proven replacement",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_ssm_parameter\" \"a\" {\n  name = \"a\"\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  name     = \"orders\"\n  hash_key = \"id\"\n  local_secondary_index {\n    name            = data.aws_ssm_parameter.a.value\n    range_key       = \"sk\"\n    projection_type = \"ALL\"\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_ssm_parameter\" \"a\" {\n  name = \"a\"\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  name     = \"orders\"\n  hash_key = \"id\"\n  local_secondary_index {\n    name            = data.aws_ssm_parameter.a.value\n    range_key       = \"created\"\n    projection_type = \"ALL\"\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_dynamodb_table.t"
+        ],
+        "changes": [
+          {
+            "address": "aws_dynamodb_table.t",
+            "action": "replace",
+            "confidence": "proven",
+            "actionReasonContains": "replace_because_cannot_update",
+            "after": {
+              "name": "orders",
+              "hash_key": "id"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 11: a template branch keeps the access path of the unknown it reads",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_subnets\" \"s\" {}\nresource \"terraform_data\" \"t\" {\n  input = \"x\"\n}\nlocals {\n  subnet = data.aws_subnets.s.ids[0]\n}\nresource \"aws_ssm_parameter\" \"p\" {\n  name  = \"p\"\n  type  = \"String\"\n  value = \"%{ if terraform_data.t.output == \"x\" }${local.subnet}%{ endif }\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_subnets\" \"s\" {}\nresource \"terraform_data\" \"t\" {\n  input = \"x\"\n}\nlocals {\n  subnet = data.aws_subnets.s.ids[1]\n}\nresource \"aws_ssm_parameter\" \"p\" {\n  name  = \"p\"\n  type  = \"String\"\n  value = \"%{ if terraform_data.t.output == \"x\" }${local.subnet}%{ endif }\"\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_ssm_parameter.p"
+        ],
+        "changes": [
+          {
+            "address": "terraform_data.t",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "aws_ssm_parameter.p",
+            "action": "update",
+            "confidence": "likely",
+            "after": {
+              "name": "p",
+              "type": "String"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 11: a ForceNew argument going from unknown to known is a likely replacement, not a proven one (round 11 codex)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"name\" {}\nresource \"aws_dynamodb_table\" \"t\" {\n  name     = var.name\n  hash_key = \"id\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"name\" {}\nresource \"aws_dynamodb_table\" \"t\" {\n  name     = \"orders\"\n  hash_key = \"id\"\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_dynamodb_table.t"
+        ],
+        "changes": [
+          {
+            "address": "aws_dynamodb_table.t",
+            "action": "replace",
+            "confidence": "likely",
+            "actionReasonContains": "replace_because_cannot_update",
+            "after": {
+              "name": "orders",
+              "hash_key": "id"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,2555 @@
+{
+  "suite": "terraform/static",
+  "description": "Executable specification fixtures exported from src/terraform/static.test.ts",
+  "cases": [
+    {
+      "kind": "terraform",
+      "name": "static evaluation: discovers roots by backend block",
+      "head": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "expect": {
+        "roots": [
+          "infra/envs/prod/svc"
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static evaluation: an unchanged configuration produces no changes",
+      "root": "infra/envs/prod/svc",
+      "base": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "head": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "changes": [
+          {
+            "address": "module.svc.aws_dynamodb_table.ledger",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_db_instance.db",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_iam_role.task",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_iam_role_policy.inline",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_sqs_queue.unrelated",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.dlq",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.queue",
+            "action": "no-op",
+            "confidence": "proven"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): a ForceNew argument change is a replacement, and blocks (benchmark FM1, audit H1)",
+      "root": "infra/envs/prod/svc",
+      "base": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "head": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = false\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace module.svc.aws_db_instance.db"
+        ],
+        "changes": [
+          {
+            "address": "module.svc.aws_dynamodb_table.ledger",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_db_instance.db",
+            "action": "replace",
+            "confidence": "proven",
+            "actionReasonContains": "replace_because_cannot_update",
+            "after": {
+              "identifier": "orders",
+              "instance_class": "db.t4g.small",
+              "storage_encrypted": false,
+              "deletion_protection": false
+            }
+          },
+          {
+            "address": "module.svc.aws_iam_role.task",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_iam_role_policy.inline",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_sqs_queue.unrelated",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.dlq",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.queue",
+            "action": "no-op",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "rds.encryption",
+            "resource": "module.svc.aws_db_instance.db",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Storage not encrypted (encryption can only be enabled at creation)"
+          },
+          {
+            "ruleId": "rds.deletion-protection",
+            "resource": "module.svc.aws_db_instance.db",
+            "status": "WARN",
+            "preExisting": true,
+            "detailContains": "Deletion protection disabled"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "module.svc.aws_db_instance.db",
+            "action": "replace",
+            "severity": "CRITICAL",
+            "dataLoss": true,
+            "reasonContains": "Replaces aws_db_instance (forced by changing storage_encrypted): loses the database"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "block",
+          "reasonsContain": [
+            "CRITICAL: module.svc.aws_db_instance.db: Replaces aws_db_instance (forced by changing storage_encrypted): loses the database"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): renaming an RDS instance is an in-place update that changes its endpoint (provider source, not folklore)",
+      "root": "infra/envs/prod/svc",
+      "base": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "head": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders-v2\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update module.svc.aws_db_instance.db"
+        ],
+        "changes": [
+          {
+            "address": "module.svc.aws_dynamodb_table.ledger",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_db_instance.db",
+            "action": "update",
+            "confidence": "proven",
+            "after": {
+              "identifier": "orders-v2",
+              "instance_class": "db.t4g.small",
+              "storage_encrypted": true,
+              "deletion_protection": false
+            }
+          },
+          {
+            "address": "module.svc.aws_iam_role.task",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_iam_role_policy.inline",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_sqs_queue.unrelated",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.dlq",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.queue",
+            "action": "no-op",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "rds.encryption",
+            "resource": "module.svc.aws_db_instance.db",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Storage encrypted"
+          },
+          {
+            "ruleId": "rds.deletion-protection",
+            "resource": "module.svc.aws_db_instance.db",
+            "status": "WARN",
+            "preExisting": true,
+            "detailContains": "Deletion protection disabled"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "module.svc.aws_db_instance.db",
+            "action": "update",
+            "severity": "HIGH",
+            "dataLoss": false,
+            "reasonContains": "Changes identifier: renames the instance in place; its endpoint DNS name changes, so clients using the old endpoint fail until reconfigured"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "HIGH: module.svc.aws_db_instance.db: Changes identifier: renames the instance in place; its endpoint DNS name changes, so clients using the old endpoint fail until reconfigured"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): a change that only sometimes forces replacement is a possible replacement, reviewed but not blocked",
+      "root": "infra/envs/prod/svc",
+      "base": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"b\"\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "head": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"b\"\n  object_lock_enabled = true\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace module.svc.aws_s3_bucket.b"
+        ],
+        "changes": [
+          {
+            "address": "module.svc.aws_dynamodb_table.ledger",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_db_instance.db",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_iam_role.task",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_iam_role_policy.inline",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_sqs_queue.unrelated",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_s3_bucket.b",
+            "action": "replace",
+            "confidence": "likely",
+            "actionReasonContains": "changing object_lock_enabled can force replacement; the provider decides at plan time",
+            "after": {
+              "bucket": "b",
+              "object_lock_enabled": true
+            }
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.dlq",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.queue",
+            "action": "no-op",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "s3.encryption",
+            "resource": "module.svc.aws_s3_bucket.b",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "No bucket encryption configuration: S3 applies SSE-S3 (AES256) to all new objects by default since January 2023"
+          },
+          {
+            "ruleId": "s3.public-access",
+            "resource": "module.svc.aws_s3_bucket.b",
+            "status": "UNKNOWN",
+            "preExisting": true,
+            "detailContains": "No bucket-level public access block. New buckets block public access by default since April 2023 and an account-level block may apply, but neither is visible here"
+          },
+          {
+            "ruleId": "s3.versioning",
+            "resource": "module.svc.aws_s3_bucket.b",
+            "status": "WARN",
+            "preExisting": true,
+            "detailContains": "Object versioning not enabled"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "module.svc.aws_s3_bucket.b",
+            "action": "replace",
+            "severity": "HIGH",
+            "dataLoss": false,
+            "reasonContains": "Replaces aws_s3_bucket (forced by changing object_lock_enabled): loses the objects in the bucket. S3 refuses to delete a non-empty bucket without force_destroy, so the apply fails if it holds objects (changing object_lock_enabled can force replacement; the provider decides at plan time)"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "HIGH: module.svc.aws_s3_bucket.b: Replaces aws_s3_bucket (forced by changing object_lock_enabled): loses the objects in the bucket. S3 refuses to delete a non-empty bucket without force_destroy, so the apply fails if it holds objects (changing object_lock_enabled can force replacement; the provider decides at plan time)"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): deleting a file deletes its resources instead of hiding them (audit H1)",
+      "root": "infra/envs/prod/svc",
+      "base": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "head": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete module.svc.aws_dynamodb_table.ledger"
+        ],
+        "changes": [
+          {
+            "address": "module.svc.aws_db_instance.db",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_iam_role.task",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_iam_role_policy.inline",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_sqs_queue.unrelated",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.dlq",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.queue",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_dynamodb_table.ledger",
+            "action": "delete",
+            "confidence": "proven"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "module.svc.aws_dynamodb_table.ledger",
+            "action": "delete",
+            "severity": "CRITICAL",
+            "dataLoss": true,
+            "reasonContains": "Deletes aws_dynamodb_table: loses the items in the table"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "block",
+          "reasonsContain": [
+            "CRITICAL: module.svc.aws_dynamodb_table.ledger: Deletes aws_dynamodb_table: loses the items in the table"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): untouched siblings in a changed file are not reported, billed or failed (benchmark FM1)",
+      "root": "infra/envs/prod/svc",
+      "base": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "head": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.medium\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update module.svc.aws_db_instance.db"
+        ],
+        "changes": [
+          {
+            "address": "module.svc.aws_dynamodb_table.ledger",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_db_instance.db",
+            "action": "update",
+            "confidence": "proven",
+            "after": {
+              "identifier": "orders",
+              "instance_class": "db.t4g.medium",
+              "storage_encrypted": true,
+              "deletion_protection": false
+            }
+          },
+          {
+            "address": "module.svc.aws_iam_role.task",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_iam_role_policy.inline",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_sqs_queue.unrelated",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.dlq",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.queue",
+            "action": "no-op",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "rds.encryption",
+            "resource": "module.svc.aws_db_instance.db",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Storage encrypted"
+          },
+          {
+            "ruleId": "rds.deletion-protection",
+            "resource": "module.svc.aws_db_instance.db",
+            "status": "WARN",
+            "preExisting": true,
+            "detailContains": "Deletion protection disabled"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "module.svc.aws_db_instance.db",
+            "action": "update",
+            "severity": "MEDIUM",
+            "dataLoss": false,
+            "reasonContains": "Changes instance_class: may reboot or fail over the database. instance_class: db.t4g.small -> db.t4g.medium"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 24.09,
+          "items": [
+            {
+              "resource": "module.svc.aws_db_instance.db",
+              "kind": "scaling",
+              "noteContains": "db.t4g.small compute, storage extra -> db.t4g.medium compute, storage extra"
+            }
+          ]
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): a new module call creates the module's resources (benchmark FM3)",
+      "root": "infra/envs/prod/svc",
+      "base": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "head": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n\nmodule \"events_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"events\"\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create module.svc.module.events_queue.aws_sqs_queue.dlq",
+          "create module.svc.module.events_queue.aws_sqs_queue.queue"
+        ],
+        "changes": [
+          {
+            "address": "module.svc.aws_dynamodb_table.ledger",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_db_instance.db",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_iam_role.task",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_iam_role_policy.inline",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_sqs_queue.unrelated",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.dlq",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.queue",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.events_queue.aws_sqs_queue.dlq",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "events-dlq"
+            }
+          },
+          {
+            "address": "module.svc.module.events_queue.aws_sqs_queue.queue",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "events"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): module-created queues are recognised as queue + DLQ, not as queues missing a DLQ",
+      "root": "infra/envs/prod/svc",
+      "base": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "head": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n\nmodule \"events_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"events\"\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create module.svc.module.events_queue.aws_sqs_queue.dlq",
+          "create module.svc.module.events_queue.aws_sqs_queue.queue"
+        ],
+        "changes": [
+          {
+            "address": "module.svc.aws_dynamodb_table.ledger",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_db_instance.db",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_iam_role.task",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_iam_role_policy.inline",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_sqs_queue.unrelated",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.dlq",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.queue",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.events_queue.aws_sqs_queue.dlq",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "events-dlq"
+            }
+          },
+          {
+            "address": "module.svc.module.events_queue.aws_sqs_queue.queue",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "events"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "sqs.encryption",
+            "resource": "module.svc.module.events_queue.aws_sqs_queue.dlq",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "SSE-SQS (SQS managed keys, the default for new queues)"
+          },
+          {
+            "ruleId": "sqs.encryption",
+            "resource": "module.svc.module.events_queue.aws_sqs_queue.queue",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "SSE-SQS (SQS managed keys, the default for new queues)"
+          },
+          {
+            "ruleId": "sqs.dlq",
+            "resource": "module.svc.module.events_queue.aws_sqs_queue.queue",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Redrive policy routes failed messages to a dead-letter queue"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "module.svc.module.events_queue.aws_sqs_queue.dlq",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_sqs_queue"
+          },
+          {
+            "resource": "module.svc.module.events_queue.aws_sqs_queue.queue",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_sqs_queue"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0,
+          "items": [
+            {
+              "resource": "module.svc.module.events_queue.aws_sqs_queue.dlq",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            },
+            {
+              "resource": "module.svc.module.events_queue.aws_sqs_queue.queue",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            }
+          ]
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): a statement added to a policy document updates the role policy that uses it (benchmark FM4)",
+      "root": "infra/envs/prod/svc",
+      "base": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "head": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n  statement {\n    actions   = [\"secretsmanager:GetSecretValue\"]\n    resources = [\"arn:aws:secretsmanager:${local.region}:1:secret:provider/*/api-credentials-??????\"]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update module.svc.aws_iam_role_policy.inline"
+        ],
+        "changes": [
+          {
+            "address": "module.svc.aws_dynamodb_table.ledger",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_db_instance.db",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_iam_role.task",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_iam_role_policy.inline",
+            "action": "update",
+            "confidence": "likely",
+            "after": {
+              "role": "svc-task"
+            }
+          },
+          {
+            "address": "module.svc.aws_sqs_queue.unrelated",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.dlq",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.queue",
+            "action": "no-op",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "module.svc.aws_iam_role_policy.inline",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "Resource \"arn:aws:secretsmanager:…:1:secret:provider/*/api-credentials-??????\" uses a wildcard that spans multiple resources"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "module.svc.aws_iam_role_policy.inline",
+            "action": "update",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Grants secretsmanager:GetSecretValue on arn:aws:secretsmanager:…:1:secret:provider/*/api-credentials-??????"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): a moved block turns a rename into a move",
+      "root": "infra/envs/prod/svc",
+      "base": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "head": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"renamed\" {\n  name = \"unrelated\"\n}\n\nmoved {\n  from = aws_sqs_queue.unrelated\n  to   = aws_sqs_queue.renamed\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "move module.svc.aws_sqs_queue.renamed"
+        ],
+        "changes": [
+          {
+            "address": "module.svc.aws_sqs_queue.renamed",
+            "action": "move",
+            "confidence": "proven",
+            "previousAddress": "module.svc.aws_sqs_queue.unrelated",
+            "after": {
+              "name": "unrelated"
+            }
+          },
+          {
+            "address": "module.svc.aws_dynamodb_table.ledger",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_db_instance.db",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_iam_role.task",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_iam_role_policy.inline",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.dlq",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.queue",
+            "action": "no-op",
+            "confidence": "proven"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): a rename without a moved block is a delete and says how to fix it",
+      "root": "infra/envs/prod/svc",
+      "base": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "head": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"renamed\" {\n  name = \"unrelated\"\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create module.svc.aws_sqs_queue.renamed",
+          "delete module.svc.aws_sqs_queue.unrelated"
+        ],
+        "changes": [
+          {
+            "address": "module.svc.aws_dynamodb_table.ledger",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_db_instance.db",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_iam_role.task",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_iam_role_policy.inline",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_sqs_queue.renamed",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "unrelated"
+            }
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.dlq",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.queue",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_sqs_queue.unrelated",
+            "action": "delete",
+            "confidence": "proven",
+            "actionReasonContains": "looks like a rename to module.svc.aws_sqs_queue.renamed without a moved block; add moved { from = module.svc.aws_sqs_queue.unrelated, to = module.svc.aws_sqs_queue.renamed } to keep it"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "sqs.encryption",
+            "resource": "module.svc.aws_sqs_queue.renamed",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "SSE-SQS (SQS managed keys, the default for new queues)"
+          },
+          {
+            "ruleId": "sqs.dlq",
+            "resource": "module.svc.aws_sqs_queue.renamed",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "No dead-letter queue: messages that keep failing are dropped after the retention period"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "module.svc.aws_sqs_queue.unrelated",
+            "action": "delete",
+            "severity": "CRITICAL",
+            "dataLoss": true,
+            "reasonContains": "Deletes aws_sqs_queue: loses messages still in the queue (looks like a rename to module.svc.aws_sqs_queue.renamed without a moved block; add moved { from = module.svc.aws_sqs_queue.unrelated, to = module.svc.aws_sqs_queue.renamed } to keep it)"
+          },
+          {
+            "resource": "module.svc.aws_sqs_queue.renamed",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_sqs_queue"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0,
+          "items": [
+            {
+              "resource": "module.svc.aws_sqs_queue.renamed",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            }
+          ]
+        },
+        "gate": {
+          "result": "block",
+          "reasonsContain": [
+            "CRITICAL: module.svc.aws_sqs_queue.unrelated: Deletes aws_sqs_queue: loses messages still in the queue (looks like a rename to module.svc.aws_sqs_queue.renamed without a moved block; add moved { from = module.svc.aws_sqs_queue.unrelated, to = module.svc.aws_sqs_queue.renamed } to keep it)"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): a removed block with destroy = false forgets instead of deleting",
+      "root": "infra/envs/prod/svc",
+      "base": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "head": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n\nremoved {\n  from = aws_dynamodb_table.ledger\n  lifecycle {\n    destroy = false\n  }\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "forget module.svc.aws_dynamodb_table.ledger"
+        ],
+        "changes": [
+          {
+            "address": "module.svc.aws_db_instance.db",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_iam_role.task",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_iam_role_policy.inline",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_sqs_queue.unrelated",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.dlq",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.queue",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_dynamodb_table.ledger",
+            "action": "forget",
+            "confidence": "proven"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): for_each instances are addressed by key and removing a key deletes only that instance",
+      "root": "infra/envs/prod/svc",
+      "base": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n\nresource \"aws_sqs_queue\" \"per_tenant\" {\n  for_each = toset([\"a\", \"b\"])\n  name     = \"t-${each.key}\"\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "head": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n\nresource \"aws_sqs_queue\" \"per_tenant\" {\n  for_each = toset([\"a\"])\n  name     = \"t-${each.key}\"\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete module.svc.aws_sqs_queue.per_tenant[\"b\"]"
+        ],
+        "changes": [
+          {
+            "address": "module.svc.aws_dynamodb_table.ledger",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_db_instance.db",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_iam_role.task",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_iam_role_policy.inline",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_sqs_queue.unrelated",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_sqs_queue.per_tenant[\"a\"]",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.dlq",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.queue",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_sqs_queue.per_tenant[\"b\"]",
+            "action": "delete",
+            "confidence": "proven"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): removing a prevent_destroy resource from the config is a real destroy (Terraform only enforces it while the block exists)",
+      "root": "infra/envs/prod/svc",
+      "base": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n  lifecycle {\n    prevent_destroy = true\n  }\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "head": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete module.svc.aws_dynamodb_table.ledger"
+        ],
+        "changes": [
+          {
+            "address": "module.svc.aws_db_instance.db",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_iam_role.task",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_iam_role_policy.inline",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_sqs_queue.unrelated",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.dlq",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.queue",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_dynamodb_table.ledger",
+            "action": "delete",
+            "confidence": "proven"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "module.svc.aws_dynamodb_table.ledger",
+            "action": "delete",
+            "severity": "CRITICAL",
+            "dataLoss": true,
+            "reasonContains": "Deletes aws_dynamodb_table: loses the items in the table"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "block",
+          "reasonsContain": [
+            "CRITICAL: module.svc.aws_dynamodb_table.ledger: Deletes aws_dynamodb_table: loses the items in the table"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): a replacement of a resource that keeps prevent_destroy makes the plan fail instead",
+      "root": "infra/envs/prod/svc",
+      "base": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n  lifecycle {\n    prevent_destroy = true\n  }\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "head": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger-v2\"\n  hash_key = \"id\"\n  lifecycle {\n    prevent_destroy = true\n  }\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace module.svc.aws_dynamodb_table.ledger"
+        ],
+        "changes": [
+          {
+            "address": "module.svc.aws_dynamodb_table.ledger",
+            "action": "replace",
+            "confidence": "proven",
+            "preventDestroy": true,
+            "actionReasonContains": "replace_because_cannot_update",
+            "after": {
+              "name": "ledger-v2",
+              "hash_key": "id"
+            }
+          },
+          {
+            "address": "module.svc.aws_db_instance.db",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_iam_role.task",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_iam_role_policy.inline",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.aws_sqs_queue.unrelated",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.dlq",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.queue",
+            "action": "no-op",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "dynamodb.pitr",
+            "resource": "module.svc.aws_dynamodb_table.ledger",
+            "status": "FAIL",
+            "preExisting": true,
+            "detailContains": "Point-in-time recovery disabled"
+          },
+          {
+            "ruleId": "dynamodb.encryption",
+            "resource": "module.svc.aws_dynamodb_table.ledger",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Encrypted with an AWS owned key (DynamoDB default)"
+          },
+          {
+            "ruleId": "dynamodb.deletion-protection",
+            "resource": "module.svc.aws_dynamodb_table.ledger",
+            "status": "WARN",
+            "preExisting": true,
+            "detailContains": "Deletion protection disabled"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "module.svc.aws_dynamodb_table.ledger",
+            "action": "replace",
+            "severity": "HIGH",
+            "dataLoss": false,
+            "reasonContains": "Replaces aws_dynamodb_table (forced by changing name): loses the items in the table. lifecycle.prevent_destroy = true, so Terraform will refuse to plan this"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "HIGH: module.svc.aws_dynamodb_table.ledger: Replaces aws_dynamodb_table (forced by changing name): loses the items in the table. lifecycle.prevent_destroy = true, so Terraform will refuse to plan this"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): a policy loaded with file() is evaluated, so widening it is caught (review finding 2)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = file(\"${path.module}/policy.json\")\n}\n",
+        "r/policy.json": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"s3:GetObject\",\"Resource\":\"arn:aws:s3:::b/*\"}]}"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = file(\"${path.module}/policy.json\")\n}\n",
+        "r/policy.json": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"*\",\"Resource\":\"*\"}]}"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_iam_policy.p"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_policy.p",
+            "action": "update",
+            "confidence": "proven",
+            "after": {
+              "name": "p",
+              "policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"*\",\"Resource\":\"*\"}]}"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.p",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Action \"*\" grants every AWS action (admin-equivalent)"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_policy.p",
+            "action": "update",
+            "severity": "LOW",
+            "dataLoss": false,
+            "reasonContains": "Revokes s3:GetObject on arn:aws:s3:::b/*; callers that still need it get AccessDenied. Grants * on *"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL iam.least-privilege: aws_iam_policy.p: Action \"*\" grants every AWS action (admin-equivalent)"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): functions that cannot run offline still change identity when their arguments change",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { h = sha256(\"a\") }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { h = sha256(\"b\") }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_sqs_queue.q"
+        ],
+        "changes": [
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "update",
+            "confidence": "likely",
+            "after": {
+              "name": "q"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): changing the count of an external module is visible (review batch 4)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"db\" {\n  source = \"terraform-aws-modules/rds/aws\"\n  count  = 1\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"db\" {\n  source = \"terraform-aws-modules/rds/aws\"\n  count  = 0\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update module.db"
+        ],
+        "changes": [
+          {
+            "address": "module.db",
+            "action": "update",
+            "confidence": "unknown",
+            "actionReasonContains": "inputs of external module terraform-aws-modules/rds/aws changed: count",
+            "after": {
+              "source": "terraform-aws-modules/rds/aws",
+              "version": null,
+              "count": 0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): a count that becomes unknown does not turn into a proven delete (review batch 4)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  count    = 1\n  name     = \"t\"\n  hash_key = \"id\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  count    = length(data.aws_availability_zones.a.names)\n  name     = \"t\"\n  hash_key = \"id\"\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_dynamodb_table.t[0]"
+        ],
+        "changes": [
+          {
+            "address": "aws_dynamodb_table.t[0]",
+            "action": "update",
+            "confidence": "unknown",
+            "actionReasonContains": "count or for_each of aws_dynamodb_table.t is not known statically at head, so instances may be kept, added or removed",
+            "after": {
+              "name": "t",
+              "hash_key": "id"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "dynamodb.pitr",
+            "resource": "aws_dynamodb_table.t[0]",
+            "status": "FAIL",
+            "preExisting": true,
+            "detailContains": "Point-in-time recovery disabled"
+          },
+          {
+            "ruleId": "dynamodb.encryption",
+            "resource": "aws_dynamodb_table.t[0]",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Encrypted with an AWS owned key (DynamoDB default)"
+          },
+          {
+            "ruleId": "dynamodb.deletion-protection",
+            "resource": "aws_dynamodb_table.t[0]",
+            "status": "WARN",
+            "preExisting": true,
+            "detailContains": "Deletion protection disabled"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_dynamodb_table.t[0]",
+            "action": "update",
+            "severity": "HIGH",
+            "dataLoss": false,
+            "reasonContains": "May delete or recreate aws_dynamodb_table: count or for_each of aws_dynamodb_table.t is not known statically at head, so instances may be kept, added or removed"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "HIGH: aws_dynamodb_table.t[0]: May delete or recreate aws_dynamodb_table: count or for_each of aws_dynamodb_table.t is not known statically at head, so instances may be kept, added or removed"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): a GitHub OIDC trust without a sub condition fails in static replay too (review batch 4)",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_openid_connect_provider\" \"gh\" {\n  url            = \"https://token.actions.githubusercontent.com\"\n  client_id_list = [\"sts.amazonaws.com\"]\n}\nresource \"aws_iam_role\" \"deploy\" {\n  name = \"deploy\"\n  assume_role_policy = jsonencode({\n    Statement = [{\n      Effect    = \"Allow\"\n      Action    = \"sts:AssumeRoleWithWebIdentity\"\n      Principal = { Federated = aws_iam_openid_connect_provider.gh.arn }\n      Condition = { StringEquals = { \"token.actions.githubusercontent.com:aud\" = \"sts.amazonaws.com\" } }\n    }]\n  })\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_openid_connect_provider.gh",
+          "create aws_iam_role.deploy"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_openid_connect_provider.gh",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "url": "https://token.actions.githubusercontent.com",
+              "client_id_list": [
+                "sts.amazonaws.com"
+              ]
+            }
+          },
+          {
+            "address": "aws_iam_role.deploy",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "deploy"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.trust",
+            "resource": "aws_iam_role.deploy",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "GitHub OIDC trust has no token.actions.githubusercontent.com:sub condition, so any GitHub repository can assume it"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_openid_connect_provider.gh",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_openid_connect_provider"
+          },
+          {
+            "resource": "aws_iam_role.deploy",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_role"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL iam.trust: aws_iam_role.deploy: GitHub OIDC trust has no token.actions.githubusercontent.com:sub condition, so any GitHub repository can assume it"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): a removed instance of a block that keeps prevent_destroy makes the plan fail, not lose data (round 2)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  for_each = toset([\"a\", \"b\"])\n  name     = each.key\n  hash_key = \"id\"\n  lifecycle {\n    prevent_destroy = true\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  for_each = toset([\"a\"])\n  name     = each.key\n  hash_key = \"id\"\n  lifecycle {\n    prevent_destroy = true\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete aws_dynamodb_table.t[\"b\"]"
+        ],
+        "changes": [
+          {
+            "address": "aws_dynamodb_table.t[\"a\"]",
+            "action": "no-op",
+            "confidence": "proven",
+            "preventDestroy": true
+          },
+          {
+            "address": "aws_dynamodb_table.t[\"b\"]",
+            "action": "delete",
+            "confidence": "proven",
+            "preventDestroy": true
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_dynamodb_table.t[\"b\"]",
+            "action": "delete",
+            "severity": "HIGH",
+            "dataLoss": false,
+            "reasonContains": "Deletes aws_dynamodb_table: loses the items in the table. lifecycle.prevent_destroy = true, so Terraform will refuse to plan this"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "HIGH: aws_dynamodb_table.t[\"b\"]: Deletes aws_dynamodb_table: loses the items in the table. lifecycle.prevent_destroy = true, so Terraform will refuse to plan this"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): sensitive values are never written out, but their changes are still seen (round 2 codex)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"pw\" {\n  default   = \"hunter2\"\n  sensitive = true\n}\nresource \"aws_ssm_parameter\" \"p\" {\n  name  = \"p\"\n  type  = \"SecureString\"\n  value = var.pw\n}\nresource \"aws_ssm_parameter\" \"q\" {\n  name  = \"q\"\n  type  = \"SecureString\"\n  value = sensitive(\"hunter2-2\")\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"pw\" {\n  default   = \"changed\"\n  sensitive = true\n}\nresource \"aws_ssm_parameter\" \"p\" {\n  name  = \"p\"\n  type  = \"SecureString\"\n  value = var.pw\n}\nresource \"aws_ssm_parameter\" \"q\" {\n  name  = \"q\"\n  type  = \"SecureString\"\n  value = sensitive(\"changed-2\")\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_ssm_parameter.p",
+          "update aws_ssm_parameter.q"
+        ],
+        "changes": [
+          {
+            "address": "aws_ssm_parameter.p",
+            "action": "update",
+            "confidence": "likely",
+            "after": {
+              "name": "p",
+              "type": "SecureString"
+            }
+          },
+          {
+            "address": "aws_ssm_parameter.q",
+            "action": "update",
+            "confidence": "likely",
+            "after": {
+              "name": "q",
+              "type": "SecureString"
+            }
+          }
+        ],
+        "forbiddenSubstrings": [
+          "hunter2"
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): a sensitive policy or CIDR is still judged, and still not printed (round 3 P1)",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"open\" {\n  default   = [\"0.0.0.0/0\"]\n  sensitive = true\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = sensitive(jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"*\", Resource = \"*\" }] }))\n}\nresource \"aws_security_group_rule\" \"s\" {\n  type              = \"ingress\"\n  security_group_id = \"sg-1\"\n  from_port         = 22\n  to_port           = 22\n  protocol          = \"tcp\"\n  cidr_blocks       = var.open\n}\nresource \"aws_lambda_function\" \"f\" {\n  function_name = \"f\"\n  role          = \"r\"\n  environment {\n    variables = { DB_PASSWORD = sensitive(\"hunter2\") }\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_policy.p",
+          "create aws_lambda_function.f",
+          "create aws_security_group_rule.s"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_policy.p",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "p"
+            }
+          },
+          {
+            "address": "aws_security_group_rule.s",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "type": "ingress",
+              "security_group_id": "sg-1",
+              "from_port": 22,
+              "to_port": 22,
+              "protocol": "tcp"
+            }
+          },
+          {
+            "address": "aws_lambda_function.f",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "function_name": "f",
+              "role": "r"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.p",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Action \"*\" grants every AWS action (admin-equivalent)"
+          },
+          {
+            "ruleId": "network.open-ingress",
+            "resource": "aws_security_group_rule.s",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Allows ports 22 from (sensitive)"
+          },
+          {
+            "ruleId": "lambda.plaintext-secrets",
+            "resource": "aws_lambda_function.f",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "Plaintext value for DB_PASSWORD in the function environment"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_policy.p",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_policy"
+          },
+          {
+            "resource": "aws_security_group_rule.s",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_security_group_rule"
+          },
+          {
+            "resource": "aws_lambda_function.f",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_lambda_function"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0,
+          "items": [
+            {
+              "resource": "aws_lambda_function.f",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            }
+          ]
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL iam.least-privilege: aws_iam_policy.p: Action \"*\" grants every AWS action (admin-equivalent)",
+            "FAIL network.open-ingress: aws_security_group_rule.s: Allows ports 22 from (sensitive)"
+          ]
+        },
+        "forbiddenSubstrings": [
+          "hunter2"
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): a changed trigger replaces null_resource and terraform_data, as their providers do",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"null_resource\" \"n\" {\n  triggers = { v = \"1\" }\n}\nresource \"terraform_data\" \"d\" {\n  triggers_replace = [\"1\"]\n  input            = \"x\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"null_resource\" \"n\" {\n  triggers = { v = \"2\" }\n}\nresource \"terraform_data\" \"d\" {\n  triggers_replace = [\"2\"]\n  input            = \"x\"\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace null_resource.n",
+          "replace terraform_data.d"
+        ],
+        "changes": [
+          {
+            "address": "null_resource.n",
+            "action": "replace",
+            "confidence": "proven",
+            "actionReasonContains": "replace_because_cannot_update",
+            "after": {
+              "triggers": {
+                "v": "2"
+              }
+            }
+          },
+          {
+            "address": "terraform_data.d",
+            "action": "replace",
+            "confidence": "proven",
+            "actionReasonContains": "replace_because_cannot_update",
+            "after": {
+              "triggers_replace": [
+                "2"
+              ],
+              "input": "x"
+            }
+          }
+        ],
+        "blast": [
+          {
+            "resource": "null_resource.n",
+            "action": "replace",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Recreates null_resource (forced by changing triggers)"
+          },
+          {
+            "resource": "terraform_data.d",
+            "action": "replace",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Recreates terraform_data (forced by changing triggers_replace)"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): ignore_changes masks only the path it names (round 2 codex)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_security_group\" \"g\" {\n  name = \"g\"\n  ingress {\n    from_port   = 443\n    to_port     = 443\n    protocol    = \"tcp\"\n    cidr_blocks = [\"0.0.0.0/0\"]\n    description = \"x\"\n  }\n  lifecycle {\n    ignore_changes = [ingress[0].description]\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_security_group\" \"g\" {\n  name = \"g\"\n  ingress {\n    from_port   = 22\n    to_port     = 22\n    protocol    = \"tcp\"\n    cidr_blocks = [\"0.0.0.0/0\"]\n    description = \"x\"\n  }\n  lifecycle {\n    ignore_changes = [ingress[0].description]\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_security_group.g"
+        ],
+        "changes": [
+          {
+            "address": "aws_security_group.g",
+            "action": "update",
+            "confidence": "proven",
+            "after": {
+              "name": "g",
+              "ingress": [
+                {
+                  "from_port": 22,
+                  "to_port": 22,
+                  "protocol": "tcp",
+                  "cidr_blocks": [
+                    "0.0.0.0/0"
+                  ],
+                  "description": "x"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): ignored values keep their applied value in the reported after attributes (round 3 codex)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name                    = \"q\"\n  sqs_managed_sse_enabled = true\n  tags                    = { team = \"a\" }\n  lifecycle {\n    ignore_changes = [sqs_managed_sse_enabled]\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name                    = \"q\"\n  sqs_managed_sse_enabled = false\n  tags                    = { team = \"b\" }\n  lifecycle {\n    ignore_changes = [sqs_managed_sse_enabled]\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_sqs_queue.q"
+        ],
+        "changes": [
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "update",
+            "confidence": "proven",
+            "after": {
+              "name": "q",
+              "sqs_managed_sse_enabled": true,
+              "tags": {
+                "team": "b"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): chained moved blocks resolve to the final address (round 3 codex)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_dynamodb_table\" \"a\" {\n  name     = \"t\"\n  hash_key = \"id\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_dynamodb_table\" \"c\" {\n  name     = \"t\"\n  hash_key = \"id\"\n}\nmoved {\n  from = aws_dynamodb_table.a\n  to   = aws_dynamodb_table.b\n}\nmoved {\n  from = aws_dynamodb_table.b\n  to   = aws_dynamodb_table.c\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "move aws_dynamodb_table.c"
+        ],
+        "changes": [
+          {
+            "address": "aws_dynamodb_table.c",
+            "action": "move",
+            "confidence": "proven",
+            "previousAddress": "aws_dynamodb_table.a",
+            "after": {
+              "name": "t",
+              "hash_key": "id"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): prevent_destroy still applies when count or for_each drops to zero instances (round 3 codex) [1]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  count = 1\n  name     = \"t\"\n  hash_key = \"id\"\n  lifecycle {\n    prevent_destroy = true\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  count = 0\n  name     = \"t\"\n  hash_key = \"id\"\n  lifecycle {\n    prevent_destroy = true\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete aws_dynamodb_table.t[0]"
+        ],
+        "changes": [
+          {
+            "address": "aws_dynamodb_table.t[0]",
+            "action": "delete",
+            "confidence": "proven",
+            "preventDestroy": true
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_dynamodb_table.t[0]",
+            "action": "delete",
+            "severity": "HIGH",
+            "dataLoss": false,
+            "reasonContains": "Deletes aws_dynamodb_table: loses the items in the table. lifecycle.prevent_destroy = true, so Terraform will refuse to plan this"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "HIGH: aws_dynamodb_table.t[0]: Deletes aws_dynamodb_table: loses the items in the table. lifecycle.prevent_destroy = true, so Terraform will refuse to plan this"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): prevent_destroy still applies when count or for_each drops to zero instances (round 3 codex) [2]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  for_each = toset([\"a\"])\n  name     = \"t\"\n  hash_key = \"id\"\n  lifecycle {\n    prevent_destroy = true\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  for_each = toset([])\n  name     = \"t\"\n  hash_key = \"id\"\n  lifecycle {\n    prevent_destroy = true\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete aws_dynamodb_table.t[\"a\"]"
+        ],
+        "changes": [
+          {
+            "address": "aws_dynamodb_table.t[\"a\"]",
+            "action": "delete",
+            "confidence": "proven",
+            "preventDestroy": true
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_dynamodb_table.t[\"a\"]",
+            "action": "delete",
+            "severity": "HIGH",
+            "dataLoss": false,
+            "reasonContains": "Deletes aws_dynamodb_table: loses the items in the table. lifecycle.prevent_destroy = true, so Terraform will refuse to plan this"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "HIGH: aws_dynamodb_table.t[\"a\"]: Deletes aws_dynamodb_table: loses the items in the table. lifecycle.prevent_destroy = true, so Terraform will refuse to plan this"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): a policy document with an unknown dynamic statement is not certified as known (round 2 codex)",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_iam_policy_document\" \"d\" {\n  statement {\n    actions   = [\"s3:GetObject\"]\n    resources = [\"arn:aws:s3:::b/*\"]\n  }\n  dynamic \"statement\" {\n    for_each = data.aws_s3_objects.o.keys\n    content {\n      actions   = [\"*\"]\n      resources = [\"*\"]\n    }\n  }\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = data.aws_iam_policy_document.d.json\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_policy.p"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_policy.p",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "p"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.p",
+            "status": "UNKNOWN",
+            "preExisting": null,
+            "detailContains": "Some actions are not known until apply; 1 resource(s) not known until apply"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_policy.p",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_policy"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): several principals blocks of one type are merged, not overwritten (round 2 gemini)",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_iam_policy_document\" \"d\" {\n  statement {\n    actions = [\"sts:AssumeRole\"]\n    principals {\n      type        = \"AWS\"\n      identifiers = [\"*\"]\n    }\n    principals {\n      type        = \"AWS\"\n      identifiers = [\"arn:aws:iam::1:role/a\"]\n    }\n  }\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = data.aws_iam_policy_document.d.json\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_role.r"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_role.r",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "r",
+              "assume_role_policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"sts:AssumeRole\"],\"Principal\":{\"AWS\":[\"*\",\"arn:aws:iam::1:role/a\"]}}]}"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.trust",
+            "resource": "aws_iam_role.r",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Any AWS principal can assume this role"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_role.r",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_role"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL iam.trust: aws_iam_role.r: Any AWS principal can assume this role"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static evaluation: expands local modules across three levels with variables passed down",
+      "root": "infra/envs/prod/svc",
+      "head": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "expect": {
+        "diagnostics": [],
+        "instanceCount": 9,
+        "instances": [
+          {
+            "address": "module.svc.aws_dynamodb_table.ledger",
+            "attrs": {
+              "name": "ledger",
+              "hash_key": "id"
+            }
+          },
+          {
+            "address": "module.svc.aws_db_instance.db",
+            "attrs": {
+              "identifier": "orders",
+              "instance_class": "db.t4g.small",
+              "storage_encrypted": true,
+              "deletion_protection": false
+            }
+          },
+          {
+            "address": "module.svc.aws_iam_role.task",
+            "attrs": {
+              "name": "svc-task",
+              "assume_role_policy": "{\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"ecs-tasks.amazonaws.com\"}}]}"
+            }
+          },
+          {
+            "address": "module.svc.aws_iam_role_policy.inline",
+            "attrs": {
+              "role": "svc-task"
+            },
+            "references": {
+              "role": [
+                "module.svc.aws_iam_role.task"
+              ],
+              "policy": [
+                "module.svc.data.aws_iam_policy_document.inline"
+              ]
+            }
+          },
+          {
+            "address": "module.svc.aws_sqs_queue.unrelated",
+            "attrs": {
+              "name": "unrelated"
+            }
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.dlq",
+            "attrs": {
+              "name": "orders-prod-dlq"
+            }
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.queue",
+            "attrs": {
+              "name": "orders-prod"
+            },
+            "references": {
+              "redrive_policy": [
+                "module.svc.module.orders_queue.aws_sqs_queue.dlq"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static evaluation: references follow module outputs and data sources",
+      "root": "infra/envs/prod/svc",
+      "head": {
+        "infra/envs/prod/svc/backend.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc\"\n  }\n}\n",
+        "infra/envs/prod/svc/main.tf": "module \"svc\" {\n  source      = \"../../../components/svc\"\n  environment = \"prod\"\n}\n",
+        "infra/components/svc/variables.tf": "variable \"environment\" {\n  type = string\n}\n",
+        "infra/components/svc/main.tf": "\nlocals {\n  region = data.aws_region.current.region\n}\n\ndata \"aws_region\" \"current\" {}\n\nmodule \"orders_queue\" {\n  source = \"../../modules/sqs-queue\"\n  name   = \"orders-${var.environment}\"\n}\n\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"orders\"\n  instance_class      = \"db.t4g.small\"\n  storage_encrypted   = true\n  deletion_protection = false\n}\n\nresource \"aws_iam_role\" \"task\" {\n  name               = \"svc-task\"\n  assume_role_policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n\ndata \"aws_iam_policy_document\" \"inline\" {\n  statement {\n    actions   = [\"sqs:SendMessage\"]\n    effect    = \"Allow\"\n    resources = [module.orders_queue.queue_arn]\n  }\n}\n\nresource \"aws_iam_role_policy\" \"inline\" {\n  role   = aws_iam_role.task.name\n  policy = data.aws_iam_policy_document.inline.json\n}\n\nresource \"aws_sqs_queue\" \"unrelated\" {\n  name = \"unrelated\"\n}\n",
+        "infra/components/svc/legacy.tf": "resource \"aws_dynamodb_table\" \"ledger\" {\n  name     = \"ledger\"\n  hash_key = \"id\"\n}\n",
+        "infra/modules/sqs-queue/main.tf": "\nvariable \"name\" {\n  type = string\n}\n\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.name}-dlq\"\n}\n\nresource \"aws_sqs_queue\" \"queue\" {\n  name = var.name\n  redrive_policy = jsonencode({\n    deadLetterTargetArn = aws_sqs_queue.dlq.arn\n    maxReceiveCount     = 5\n  })\n}\n\noutput \"queue_arn\" {\n  value = aws_sqs_queue.queue.arn\n}\n"
+      },
+      "expect": {
+        "diagnostics": [],
+        "instanceCount": 9,
+        "instances": [
+          {
+            "address": "module.svc.aws_dynamodb_table.ledger",
+            "attrs": {
+              "name": "ledger",
+              "hash_key": "id"
+            }
+          },
+          {
+            "address": "module.svc.aws_db_instance.db",
+            "attrs": {
+              "identifier": "orders",
+              "instance_class": "db.t4g.small",
+              "storage_encrypted": true,
+              "deletion_protection": false
+            }
+          },
+          {
+            "address": "module.svc.aws_iam_role.task",
+            "attrs": {
+              "name": "svc-task",
+              "assume_role_policy": "{\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"ecs-tasks.amazonaws.com\"}}]}"
+            }
+          },
+          {
+            "address": "module.svc.aws_iam_role_policy.inline",
+            "attrs": {
+              "role": "svc-task"
+            },
+            "references": {
+              "role": [
+                "module.svc.aws_iam_role.task"
+              ],
+              "policy": [
+                "module.svc.data.aws_iam_policy_document.inline"
+              ]
+            }
+          },
+          {
+            "address": "module.svc.aws_sqs_queue.unrelated",
+            "attrs": {
+              "name": "unrelated"
+            }
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.dlq",
+            "attrs": {
+              "name": "orders-prod-dlq"
+            }
+          },
+          {
+            "address": "module.svc.module.orders_queue.aws_sqs_queue.queue",
+            "attrs": {
+              "name": "orders-prod"
+            },
+            "references": {
+              "redrive_policy": [
+                "module.svc.module.orders_queue.aws_sqs_queue.dlq"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): templatefile() renders the template with its variables",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = templatefile(\"${path.module}/policy.tpl\", { bucket = \"exports\" })\n}\n",
+        "r/policy.tpl": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"s3:PutObject\",\"Resource\":\"arn:aws:s3:::${bucket}/*\"}]}\n"
+      },
+      "expect": {
+        "diagnostics": [],
+        "instanceCount": 1,
+        "instances": [
+          {
+            "address": "aws_iam_policy.p",
+            "attrs": {
+              "name": "p",
+              "policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"s3:PutObject\",\"Resource\":\"arn:aws:s3:::exports/*\"}]}\n"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): override_policy_documents replace statements by Sid and are evaluated (review batch 4)",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_iam_policy_document\" \"base\" {\n  statement {\n    sid       = \"Read\"\n    actions   = [\"s3:GetObject\"]\n    resources = [\"arn:aws:s3:::b/*\"]\n  }\n}\ndata \"aws_iam_policy_document\" \"override\" {\n  statement {\n    sid       = \"Read\"\n    actions   = [\"*\"]\n    resources = [\"*\"]\n  }\n}\ndata \"aws_iam_policy_document\" \"merged\" {\n  source_policy_documents   = [data.aws_iam_policy_document.base.json]\n  override_policy_documents = [data.aws_iam_policy_document.override.json]\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = data.aws_iam_policy_document.merged.json\n}\n"
+      },
+      "expect": {
+        "diagnostics": [],
+        "instanceCount": 4,
+        "instances": [
+          {
+            "address": "aws_iam_policy.p",
+            "attrs": {
+              "name": "p",
+              "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Sid\":\"Read\",\"Action\":[\"*\"],\"Resource\":[\"*\"]}]}"
+            },
+            "references": {
+              "policy": [
+                "data.aws_iam_policy_document.merged"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): tfvars.json files are loaded",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"n\" {\n  type = string\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.n\n}\n",
+        "r/terraform.tfvars.json": "{\"n\":\"from-json\"}"
+      },
+      "expect": {
+        "diagnostics": [],
+        "instanceCount": 1,
+        "instances": [
+          {
+            "address": "aws_sqs_queue.q",
+            "attrs": {
+              "name": "from-json"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): values derived from a secret carry no digest in printable output (round 3)",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { h = sha256(sensitive(\"hunter2\")), t = \"x-${sensitive(\"hunter2\")}\" }\n}\n"
+      },
+      "expect": {
+        "diagnostics": [],
+        "instanceCount": 1,
+        "instances": [
+          {
+            "address": "aws_sqs_queue.q",
+            "attrs": {
+              "name": "q"
+            }
+          }
+        ],
+        "forbiddenSubstrings": [
+          "hunter2"
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): override files merge into the blocks they name, as in Terraform (round 3)",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"v\" {\n  default = \"x\"\n}\nlocals {\n  a = \"1\"\n  b = \"2\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name                       = \"q\"\n  visibility_timeout_seconds = 30\n  tags                       = { v = var.v, a = local.a, b = local.b }\n}\nresource \"aws_security_group\" \"g\" {\n  name = \"g\"\n  ingress {\n    from_port   = 22\n    to_port     = 22\n    protocol    = \"tcp\"\n    cidr_blocks = [\"10.0.0.0/8\"]\n  }\n}\n",
+        "r/override.tf": "variable \"v\" {\n  default = \"y\"\n}\nlocals {\n  b = \"3\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  visibility_timeout_seconds = 60\n}\n",
+        "r/sg_override.tf": "resource \"aws_security_group\" \"g\" {\n  ingress {\n    from_port   = 443\n    to_port     = 443\n    protocol    = \"tcp\"\n    cidr_blocks = [\"10.0.0.0/8\"]\n  }\n}\nresource \"aws_sqs_queue\" \"q\" {\n  visibility_timeout_seconds = 90\n}\n"
+      },
+      "expect": {
+        "diagnostics": [],
+        "instanceCount": 2,
+        "instances": [
+          {
+            "address": "aws_sqs_queue.q",
+            "attrs": {
+              "name": "q",
+              "tags": {
+                "v": "y",
+                "a": "1",
+                "b": "3"
+              },
+              "visibility_timeout_seconds": 90
+            }
+          },
+          {
+            "address": "aws_security_group.g",
+            "attrs": {
+              "name": "g",
+              "ingress": [
+                {
+                  "from_port": 443,
+                  "to_port": 443,
+                  "protocol": "tcp",
+                  "cidr_blocks": [
+                    "10.0.0.0/8"
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): an explicit null for a nullable variable stays null (round 2 codex)",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"m\" {\n  source = \"./m\"\n  n      = null\n}\n",
+        "r/m/main.tf": "variable \"n\" {\n  default = 2\n}\nresource \"aws_sqs_queue\" \"q\" {\n  count = var.n == null ? 0 : var.n\n  name  = \"q\"\n}\n"
+      },
+      "expect": {
+        "diagnostics": [],
+        "instanceCount": 0,
+        "instances": []
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): relative file() paths resolve from the root directory, like Terraform (round 2 codex)",
+      "root": "envs/prod",
+      "head": {
+        "policy.json": "{\"repo-level\":true}",
+        "envs/prod/policy.json": "{\"root-level\":true}",
+        "envs/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = file(\"policy.json\")\n}\n"
+      },
+      "expect": {
+        "diagnostics": [],
+        "instanceCount": 1,
+        "instances": [
+          {
+            "address": "aws_iam_policy.p",
+            "attrs": {
+              "name": "p",
+              "policy": "{\"root-level\":true}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static replay (benchmark failure modes): auto.tfvars override terraform.tfvars, as in Terraform",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"n\" {\n  type = string\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.n\n}\n",
+        "r/terraform.tfvars": "n = \"from-terraform-tfvars\"\n",
+        "r/a.auto.tfvars": "n = \"from-auto\"\n"
+      },
+      "expect": {
+        "diagnostics": [],
+        "instanceCount": 1,
+        "instances": [
+          {
+            "address": "aws_sqs_queue.q",
+            "attrs": {
+              "name": "from-auto"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

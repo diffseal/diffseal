@@ -1,0 +1,82 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "resource_changes": [
+    {
+      "address": "aws_sqs_queue.vibe_coded_queue",
+      "type": "aws_sqs_queue",
+      "name": "vibe_coded_queue",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "orders-unencrypted-queue",
+          "kms_master_key_id": null,
+          "redrive_policy": null
+        }
+      }
+    },
+    {
+      "address": "aws_iam_policy.vibe_coded_admin_policy",
+      "type": "aws_iam_policy",
+      "name": "vibe_coded_admin_policy",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "orders-wildcard-policy",
+          "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"*\",\"Resource\":\"*\"}]}"
+        }
+      }
+    },
+    {
+      "address": "aws_db_instance.production_postgres",
+      "type": "aws_db_instance",
+      "name": "production_postgres",
+      "change": {
+        "actions": [
+          "delete",
+          "create"
+        ],
+        "before": {
+          "identifier": "prod-orders-db",
+          "instance_class": "db.t4g.small",
+          "storage_encrypted": false,
+          "deletion_protection": false,
+          "skip_final_snapshot": true
+        },
+        "after": {
+          "identifier": "prod-orders-db",
+          "instance_class": "db.t4g.small",
+          "storage_encrypted": true,
+          "deletion_protection": false,
+          "skip_final_snapshot": true
+        },
+        "replace_paths": [
+          [
+            "storage_encrypted"
+          ]
+        ]
+      },
+      "action_reason": "replace_because_cannot_update"
+    },
+    {
+      "address": "aws_nat_gateway.expensive_nat",
+      "type": "aws_nat_gateway",
+      "name": "expensive_nat",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "connectivity_type": "public"
+        }
+      }
+    }
+  ]
+}

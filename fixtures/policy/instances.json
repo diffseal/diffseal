@@ -1,0 +1,137 @@
+{
+  "suite": "policy/instances",
+  "description": "Executable specification fixtures exported from src/policy/instances.test.ts",
+  "cases": [
+    {
+      "kind": "terraform",
+      "name": "instances: a helper written for one module instance does not cover the others (round 4)",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"bucket\" {\n  for_each = toset([\"a\", \"b\"])\n  source   = \"./bucket\"\n  name     = each.key\n}\nresource \"aws_s3_bucket_public_access_block\" \"a\" {\n  bucket                  = module.bucket[\"a\"].id\n  block_public_acls       = true\n  block_public_policy     = true\n  ignore_public_acls      = true\n  restrict_public_buckets = true\n}\n",
+        "r/bucket/main.tf": "variable \"name\" {}\nresource \"aws_s3_bucket\" \"this\" {\n  bucket = \"x-${var.name}\"\n}\noutput \"id\" {\n  value = aws_s3_bucket.this.id\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_s3_bucket_public_access_block.a",
+          "create module.bucket[\"a\"].aws_s3_bucket.this",
+          "create module.bucket[\"b\"].aws_s3_bucket.this"
+        ],
+        "changes": [
+          {
+            "address": "aws_s3_bucket_public_access_block.a",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "bucket": "x-a",
+              "block_public_acls": true,
+              "block_public_policy": true,
+              "ignore_public_acls": true,
+              "restrict_public_buckets": true
+            }
+          },
+          {
+            "address": "module.bucket[\"a\"].aws_s3_bucket.this",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "bucket": "x-a"
+            }
+          },
+          {
+            "address": "module.bucket[\"b\"].aws_s3_bucket.this",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "bucket": "x-b"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "s3.encryption",
+            "resource": "module.bucket[\"a\"].aws_s3_bucket.this",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "No bucket encryption configuration: S3 applies SSE-S3 (AES256) to all new objects by default since January 2023"
+          },
+          {
+            "ruleId": "s3.public-access",
+            "resource": "module.bucket[\"a\"].aws_s3_bucket.this",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "All four public access block flags enabled"
+          },
+          {
+            "ruleId": "s3.versioning",
+            "resource": "module.bucket[\"a\"].aws_s3_bucket.this",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "Object versioning not enabled"
+          },
+          {
+            "ruleId": "s3.encryption",
+            "resource": "module.bucket[\"b\"].aws_s3_bucket.this",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "No bucket encryption configuration: S3 applies SSE-S3 (AES256) to all new objects by default since January 2023"
+          },
+          {
+            "ruleId": "s3.public-access",
+            "resource": "module.bucket[\"b\"].aws_s3_bucket.this",
+            "status": "UNKNOWN",
+            "preExisting": null,
+            "detailContains": "No bucket-level public access block. New buckets block public access by default since April 2023 and an account-level block may apply, but neither is visible here"
+          },
+          {
+            "ruleId": "s3.versioning",
+            "resource": "module.bucket[\"b\"].aws_s3_bucket.this",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "Object versioning not enabled"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_s3_bucket_public_access_block.a",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_s3_bucket_public_access_block"
+          },
+          {
+            "resource": "module.bucket[\"a\"].aws_s3_bucket.this",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_s3_bucket"
+          },
+          {
+            "resource": "module.bucket[\"b\"].aws_s3_bucket.this",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_s3_bucket"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0,
+          "items": [
+            {
+              "resource": "module.bucket[\"a\"].aws_s3_bucket.this",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            },
+            {
+              "resource": "module.bucket[\"b\"].aws_s3_bucket.this",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            }
+          ]
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    }
+  ]
+}

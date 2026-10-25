@@ -1,0 +1,596 @@
+{
+  "suite": "analysis/round9core",
+  "description": "Executable specification fixtures exported from src/analysis/round9core.test.ts",
+  "cases": [
+    {
+      "kind": "terraform",
+      "name": "round 9 (Codex): evaluator, Terraform, policy, plan: a sensitive known count, or a numeric string, is a known count [1]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  count    = sensitive(1)\n  name     = \"orders\"\n  hash_key = \"id\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  count    = sensitive(0)\n  name     = \"orders\"\n  hash_key = \"id\"\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete aws_dynamodb_table.t[0]"
+        ],
+        "changes": [
+          {
+            "address": "aws_dynamodb_table.t[0]",
+            "action": "delete",
+            "confidence": "proven"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_dynamodb_table.t[0]",
+            "action": "delete",
+            "severity": "CRITICAL",
+            "dataLoss": true,
+            "reasonContains": "Deletes aws_dynamodb_table: loses the items in the table"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "block",
+          "reasonsContain": [
+            "CRITICAL: aws_dynamodb_table.t[0]: Deletes aws_dynamodb_table: loses the items in the table"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 9 (Codex): evaluator, Terraform, policy, plan: a sensitive known count, or a numeric string, is a known count [2]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  count    = \"1\"\n  name     = \"orders\"\n  hash_key = \"id\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  count    = \"0\"\n  name     = \"orders\"\n  hash_key = \"id\"\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete aws_dynamodb_table.t[0]"
+        ],
+        "changes": [
+          {
+            "address": "aws_dynamodb_table.t[0]",
+            "action": "delete",
+            "confidence": "proven"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_dynamodb_table.t[0]",
+            "action": "delete",
+            "severity": "CRITICAL",
+            "dataLoss": true,
+            "reasonContains": "Deletes aws_dynamodb_table: loses the items in the table"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "block",
+          "reasonsContain": [
+            "CRITICAL: aws_dynamodb_table.t[0]: Deletes aws_dynamodb_table: loses the items in the table"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 9 (Codex): evaluator, Terraform, policy, plan: a splat over a sensitive list is the list, judged and kept sensitive",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"cidrs\" {\n  type      = list(string)\n  sensitive = true\n  default   = [\"0.0.0.0/0\"]\n}\nresource \"aws_security_group_rule\" \"s\" {\n  type              = \"ingress\"\n  security_group_id = \"sg-1\"\n  from_port         = 22\n  to_port           = 22\n  protocol          = \"tcp\"\n  cidr_blocks       = var.cidrs[*]\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_security_group_rule.s"
+        ],
+        "changes": [
+          {
+            "address": "aws_security_group_rule.s",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "type": "ingress",
+              "security_group_id": "sg-1",
+              "from_port": 22,
+              "to_port": 22,
+              "protocol": "tcp"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "network.open-ingress",
+            "resource": "aws_security_group_rule.s",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Allows ports 22 from (sensitive)"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_security_group_rule.s",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_security_group_rule"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL network.open-ingress: aws_security_group_rule.s: Allows ports 22 from (sensitive)"
+          ]
+        },
+        "forbiddenSubstrings": [
+          "0.0.0.0/0"
+        ]
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "round 9 (Codex): evaluator, Terraform, policy, plan: prior-state data sources apply their sensitive_values mask",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        },
+        "prior_state": {
+          "values": {
+            "root_module": {
+              "resources": [
+                {
+                  "address": "data.aws_iam_policy_document.d",
+                  "mode": "data",
+                  "type": "aws_iam_policy_document",
+                  "name": "d",
+                  "values": {
+                    "json": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"s3:GetObject\",\"Resource\":\"arn:aws:s3:::secret-bucket-name/*\"}]}"
+                  },
+                  "sensitive_values": {
+                    "json": true
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [],
+        "changes": [
+          {
+            "address": "data.aws_iam_policy_document.d",
+            "action": "no-op",
+            "confidence": "proven",
+            "mode": "data"
+          }
+        ],
+        "forbiddenSubstrings": [
+          "secret-bucket-name"
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 9 (Codex): evaluator, Terraform, policy, plan: converting to an object type drops attributes the type does not declare",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"settings\" {\n  type    = object({ name = string })\n  default = { name = \"x\", cidr = \"10.0.0.0/8\" }\n}\nresource \"aws_security_group_rule\" \"s\" {\n  type              = \"ingress\"\n  security_group_id = \"sg-1\"\n  from_port         = 22\n  to_port           = 22\n  protocol          = \"tcp\"\n  cidr_blocks       = [lookup(var.settings, \"cidr\", \"0.0.0.0/0\")]\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_security_group_rule.s"
+        ],
+        "changes": [
+          {
+            "address": "aws_security_group_rule.s",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "type": "ingress",
+              "security_group_id": "sg-1",
+              "from_port": 22,
+              "to_port": 22,
+              "protocol": "tcp",
+              "cidr_blocks": [
+                "0.0.0.0/0"
+              ]
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "network.open-ingress",
+            "resource": "aws_security_group_rule.s",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Allows ports 22 from 0.0.0.0/0"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_security_group_rule.s",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_security_group_rule"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL network.open-ingress: aws_security_group_rule.s: Allows ports 22 from 0.0.0.0/0"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 9 (Codex): evaluator, Terraform, policy, plan: a map type keeps all its keys",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"tags\" {\n  type    = map(string)\n  default = { a = \"1\", b = \"2\" }\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = var.tags\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_sqs_queue.q"
+        ],
+        "changes": [
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "q",
+              "tags": {
+                "a": "1",
+                "b": "2"
+              }
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "sqs.encryption",
+            "resource": "aws_sqs_queue.q",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "SSE-SQS (SQS managed keys, the default for new queues)"
+          },
+          {
+            "ruleId": "sqs.dlq",
+            "resource": "aws_sqs_queue.q",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "No dead-letter queue: messages that keep failing are dropped after the retention period"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_sqs_queue.q",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_sqs_queue"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0,
+          "items": [
+            {
+              "resource": "aws_sqs_queue.q",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            }
+          ]
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 9 (Codex): evaluator, Terraform, policy, plan: suspending versioning through the helper resource alone is reviewed",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"b\"\n}\nresource \"aws_s3_bucket_versioning\" \"v\" {\n  bucket = aws_s3_bucket.b.id\n  versioning_configuration {\n    status = \"Enabled\"\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"b\"\n}\nresource \"aws_s3_bucket_versioning\" \"v\" {\n  bucket = aws_s3_bucket.b.id\n  versioning_configuration {\n    status = \"Suspended\"\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_s3_bucket_versioning.v"
+        ],
+        "changes": [
+          {
+            "address": "aws_s3_bucket.b",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "aws_s3_bucket_versioning.v",
+            "action": "update",
+            "confidence": "proven",
+            "after": {
+              "bucket": "b",
+              "versioning_configuration": [
+                {
+                  "status": "Suspended"
+                }
+              ]
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "s3.encryption",
+            "resource": "aws_s3_bucket.b",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "No bucket encryption configuration: S3 applies SSE-S3 (AES256) to all new objects by default since January 2023"
+          },
+          {
+            "ruleId": "s3.public-access",
+            "resource": "aws_s3_bucket.b",
+            "status": "UNKNOWN",
+            "preExisting": true,
+            "detailContains": "No bucket-level public access block. New buckets block public access by default since April 2023 and an account-level block may apply, but neither is visible here"
+          },
+          {
+            "ruleId": "s3.versioning",
+            "resource": "aws_s3_bucket.b",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "Object versioning suspended"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_s3_bucket_versioning.v",
+            "action": "update",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "In-place update of versioning_configuration"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 9 (Codex): evaluator, Terraform, policy, plan: a helper change does not make the bucket's older findings new",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"b\"\n}\nresource \"aws_s3_bucket_versioning\" \"v\" {\n  bucket = aws_s3_bucket.b.id\n  versioning_configuration {\n    status = \"Enabled\"\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"b\"\n}\nresource \"aws_s3_bucket_versioning\" \"v\" {\n  bucket = aws_s3_bucket.b.id\n  versioning_configuration {\n    status = \"Suspended\"\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_s3_bucket_versioning.v"
+        ],
+        "changes": [
+          {
+            "address": "aws_s3_bucket.b",
+            "action": "no-op",
+            "confidence": "proven"
+          },
+          {
+            "address": "aws_s3_bucket_versioning.v",
+            "action": "update",
+            "confidence": "proven",
+            "after": {
+              "bucket": "b",
+              "versioning_configuration": [
+                {
+                  "status": "Suspended"
+                }
+              ]
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "s3.encryption",
+            "resource": "aws_s3_bucket.b",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "No bucket encryption configuration: S3 applies SSE-S3 (AES256) to all new objects by default since January 2023"
+          },
+          {
+            "ruleId": "s3.public-access",
+            "resource": "aws_s3_bucket.b",
+            "status": "UNKNOWN",
+            "preExisting": true,
+            "detailContains": "No bucket-level public access block. New buckets block public access by default since April 2023 and an account-level block may apply, but neither is visible here"
+          },
+          {
+            "ruleId": "s3.versioning",
+            "resource": "aws_s3_bucket.b",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "Object versioning suspended"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_s3_bucket_versioning.v",
+            "action": "update",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "In-place update of versioning_configuration"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 9 (Codex): evaluator, Terraform, policy, plan: an unknown dynamic point_in_time_recovery block is UNKNOWN, not FAIL",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"pitr\" {}\nresource \"aws_dynamodb_table\" \"t\" {\n  name     = \"orders\"\n  hash_key = \"id\"\n  dynamic \"point_in_time_recovery\" {\n    for_each = var.pitr\n    content {\n      enabled = true\n    }\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_dynamodb_table.t"
+        ],
+        "changes": [
+          {
+            "address": "aws_dynamodb_table.t",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "orders",
+              "hash_key": "id"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "dynamodb.pitr",
+            "resource": "aws_dynamodb_table.t",
+            "status": "UNKNOWN",
+            "preExisting": null,
+            "detailContains": "PITR setting not known until apply"
+          },
+          {
+            "ruleId": "dynamodb.encryption",
+            "resource": "aws_dynamodb_table.t",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Encrypted with an AWS owned key (DynamoDB default)"
+          },
+          {
+            "ruleId": "dynamodb.deletion-protection",
+            "resource": "aws_dynamodb_table.t",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "Deletion protection disabled"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_dynamodb_table.t",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_dynamodb_table"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 9 (Codex): evaluator, Terraform, policy, plan: implicit SSE-S3 encryption warns when customer managed keys are required",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"b\"\n}\n"
+      },
+      "policy": {
+        "requireCustomerManagedKeys": true
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_s3_bucket.b"
+        ],
+        "changes": [
+          {
+            "address": "aws_s3_bucket.b",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "bucket": "b"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "s3.encryption",
+            "resource": "aws_s3_bucket.b",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "No bucket encryption configuration: S3 applies SSE-S3 (AES256) to all new objects by default since January 2023; policy requires a customer managed KMS key"
+          },
+          {
+            "ruleId": "s3.public-access",
+            "resource": "aws_s3_bucket.b",
+            "status": "UNKNOWN",
+            "preExisting": null,
+            "detailContains": "No bucket-level public access block. New buckets block public access by default since April 2023 and an account-level block may apply, but neither is visible here"
+          },
+          {
+            "ruleId": "s3.versioning",
+            "resource": "aws_s3_bucket.b",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "Object versioning not enabled"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_s3_bucket.b",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_s3_bucket"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0,
+          "items": [
+            {
+              "resource": "aws_s3_bucket.b",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            }
+          ]
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    }
+  ]
+}

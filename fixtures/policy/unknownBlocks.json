@@ -1,0 +1,201 @@
+{
+  "suite": "policy/unknownBlocks",
+  "description": "Executable specification fixtures exported from src/policy/unknownBlocks.test.ts",
+  "cases": [
+    {
+      "kind": "terraform",
+      "name": "dynamic blocks over a collection not known statically (round 3): security group ingress written by an unknown dynamic block is UNKNOWN, not silently absent",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"items\" {}\nresource \"aws_security_group\" \"s\" {\n  name = \"s\"\n  dynamic \"ingress\" {\n    for_each = var.items\n    content {\n      from_port   = 22\n      to_port     = 22\n      protocol    = \"tcp\"\n      cidr_blocks = [\"0.0.0.0/0\"]\n    }\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_security_group.s"
+        ],
+        "changes": [
+          {
+            "address": "aws_security_group.s",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "s"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "network.open-ingress",
+            "resource": "aws_security_group.s",
+            "status": "UNKNOWN",
+            "preExisting": null,
+            "detailContains": "Ingress sources not known until apply"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_security_group.s",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_security_group"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "dynamic blocks over a collection not known statically (round 3): a trust policy statement from an unknown dynamic block is not a pass",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"items\" {}\ndata \"aws_iam_policy_document\" \"d\" {\n  dynamic \"statement\" {\n    for_each = var.items\n    content {\n      actions = [\"sts:AssumeRole\"]\n      principals {\n        type        = \"AWS\"\n        identifiers = [\"*\"]\n      }\n    }\n  }\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = data.aws_iam_policy_document.d.json\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_role.r"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_role.r",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "r"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.trust",
+            "resource": "aws_iam_role.r",
+            "status": "UNKNOWN",
+            "preExisting": null,
+            "detailContains": "Who can assume this role is not known statically"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_role.r",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_role"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "dynamic blocks over a collection not known statically (round 3): unknown dynamic principals keep the statement unknown instead of a principal named \"undefined\" [1]",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"items\" {}\ndata \"aws_iam_policy_document\" \"d\" {\n  statement {\n    actions = [\"sts:AssumeRole\"]\n    dynamic \"principals\" {\n      for_each = var.items\n      content {\n        type        = \"AWS\"\n        identifiers = [\"*\"]\n      }\n    }\n  }\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = data.aws_iam_policy_document.d.json\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_role.r"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_role.r",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "r"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.trust",
+            "resource": "aws_iam_role.r",
+            "status": "UNKNOWN",
+            "preExisting": null,
+            "detailContains": "Who can assume this role is not known statically"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_role.r",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_role"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        },
+        "forbiddenSubstrings": [
+          "undefined"
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "dynamic blocks over a collection not known statically (round 3): a bucket policy whose principal is not known is UNKNOWN",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"items\" {}\ndata \"aws_iam_policy_document\" \"d\" {\n  dynamic \"statement\" {\n    for_each = var.items\n    content {\n      actions   = [\"s3:GetObject\"]\n      resources = [\"arn:aws:s3:::b/*\"]\n    }\n  }\n}\nresource \"aws_s3_bucket_policy\" \"p\" {\n  bucket = \"b\"\n  policy = data.aws_iam_policy_document.d.json\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_s3_bucket_policy.p"
+        ],
+        "changes": [
+          {
+            "address": "aws_s3_bucket_policy.p",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "bucket": "b"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "dynamic blocks over a collection not known statically (round 3): unknown dynamic principals keep the statement unknown instead of a principal named \"undefined\" [2]",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"items\" {}\ndata \"aws_iam_policy_document\" \"d\" {\n  statement {\n    actions = [\"sts:AssumeRole\"]\n    dynamic \"principals\" {\n      for_each = var.items\n      content {\n        type        = \"AWS\"\n        identifiers = [\"*\"]\n      }\n    }\n  }\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = data.aws_iam_policy_document.d.json\n}\n"
+      },
+      "expect": {
+        "diagnostics": [],
+        "instanceCount": 2,
+        "instances": [
+          {
+            "address": "aws_iam_role.r",
+            "attrs": {
+              "name": "r"
+            },
+            "references": {
+              "assume_role_policy": [
+                "data.aws_iam_policy_document.d"
+              ]
+            }
+          }
+        ],
+        "forbiddenSubstrings": [
+          "undefined"
+        ]
+      }
+    }
+  ]
+}

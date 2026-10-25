@@ -1,0 +1,514 @@
+{
+  "suite": "analysis/round13",
+  "description": "Executable specification fixtures exported from src/analysis/round13.test.ts",
+  "cases": [
+    {
+      "kind": "reconcile",
+      "name": "round 13: a full secret ARN whose base name Terraform declares is a full ARN",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_secretsmanager_secret\" \"db\" {\n  name = \"prod/db\"\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"secretsmanager:GetSecretValue\", Resource = \"arn:aws:secretsmanager:*:*:secret:prod/db-??????\" }] })\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "secretsmanager",
+          "actions": [
+            "secretsmanager:GetSecretValue"
+          ],
+          "resource": {
+            "kind": "literal",
+            "value": "arn:aws:secretsmanager:eu-west-1:111122223333:secret:prod/db-a1B2c3"
+          }
+        }
+      ],
+      "options": {
+        "roleNames": [
+          "r"
+        ]
+      },
+      "expect": {
+        "exactStatuses": [
+          "GRANTED"
+        ],
+        "links": [
+          {
+            "status": "GRANTED",
+            "access": "secretsmanager:GetSecretValue on arn:aws:secretsmanager:eu-west-1:111122223333:secret:prod/db-a1B2c3",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "role r allows it (aws_iam_role_policy.p, infra/prod/main.tf:11)"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "app",
+      "name": "round 13: an alternative before + is not dropped from the pattern [1]",
+      "files": {
+        "a.py": "import os\nimport boto3\nddb = boto3.client(\"dynamodb\")\nPREFIX = \"app\"\ntable = os.environ.get(\"TABLE_OVERRIDE\") or PREFIX + \"-orders\"\nddb.get_item(TableName=table, Key={})\n"
+      },
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "env",
+            "name": "TABLE_OVERRIDE"
+          }
+        ],
+        "facts": [
+          {
+            "service": "dynamodb",
+            "operation": "GetItem",
+            "actions": [
+              "dynamodb:GetItem"
+            ],
+            "resource": {
+              "kind": "env",
+              "name": "TABLE_OVERRIDE"
+            },
+            "file": "a.py"
+          }
+        ],
+        "envReads": [
+          {
+            "name": "TABLE_OVERRIDE"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "app",
+      "name": "round 13: an alternative before + is not dropped from the pattern [2]",
+      "files": {
+        "a.ts": "import { DynamoDBClient, GetItemCommand } from '@aws-sdk/client-dynamodb';\nconst c = new DynamoDBClient({});\nconst override = process.env.OVERRIDE;\nconst prefix = 'app';\nconst t = override ? override : prefix + '-orders';\nawait c.send(new GetItemCommand({ TableName: t, Key: {} }));\n"
+      },
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "unresolved",
+            "text": "override ? override : prefix + '-orders'"
+          }
+        ],
+        "facts": [
+          {
+            "service": "dynamodb",
+            "operation": "GetItem",
+            "actions": [
+              "dynamodb:GetItem"
+            ],
+            "resource": {
+              "kind": "unresolved",
+              "text": "override ? override : prefix + '-orders'"
+            },
+            "file": "a.ts"
+          }
+        ],
+        "envReads": [
+          {
+            "name": "OVERRIDE"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "app",
+      "name": "round 13: env reads with a default are still env reads [1]",
+      "files": {
+        "a.py": "import os\nimport boto3\nddb = boto3.client(\"dynamodb\")\nDEFAULT = \"orders\"\nddb.get_item(TableName=os.getenv(\"TABLE\") or \"orders\", Key={})\nddb.get_item(TableName=os.environ.get(\"TABLE2\") or DEFAULT, Key={})\n"
+      },
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "env",
+            "name": "TABLE",
+            "fallback": "orders"
+          },
+          {
+            "kind": "env",
+            "name": "TABLE2",
+            "fallback": "orders"
+          }
+        ],
+        "facts": [
+          {
+            "service": "dynamodb",
+            "operation": "GetItem",
+            "actions": [
+              "dynamodb:GetItem"
+            ],
+            "resource": {
+              "kind": "env",
+              "name": "TABLE",
+              "fallback": "orders"
+            },
+            "file": "a.py"
+          },
+          {
+            "service": "dynamodb",
+            "operation": "GetItem",
+            "actions": [
+              "dynamodb:GetItem"
+            ],
+            "resource": {
+              "kind": "env",
+              "name": "TABLE2",
+              "fallback": "orders"
+            },
+            "file": "a.py"
+          }
+        ],
+        "envReads": [
+          {
+            "name": "TABLE"
+          },
+          {
+            "name": "TABLE2"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "app",
+      "name": "round 13: env reads with a default are still env reads [2]",
+      "files": {
+        "cmd/x/main.go": "package main\n\nimport (\n\t\"context\"\n\t\"os\"\n\t\"github.com/aws/aws-sdk-go-v2/aws\"\n\t\"github.com/aws/aws-sdk-go-v2/service/dynamodb\"\n)\n\nfunc main() {\n\tvar c *dynamodb.Client\n\tc.GetItem(context.Background(), &dynamodb.GetItemInput{TableName: aws.String(getEnv(\"TABLE\", defaultTable))})\n\tc.GetItem(context.Background(), &dynamodb.GetItemInput{TableName: aws.String(os.Getenv(\"T2\") + \"-y\")})\n}\n"
+      },
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "env",
+            "name": "TABLE"
+          },
+          {
+            "kind": "pattern",
+            "glob": "*-y"
+          }
+        ],
+        "facts": [
+          {
+            "service": "dynamodb",
+            "operation": "GetItem",
+            "actions": [
+              "dynamodb:GetItem"
+            ],
+            "resource": {
+              "kind": "env",
+              "name": "TABLE"
+            },
+            "file": "cmd/x/main.go"
+          },
+          {
+            "service": "dynamodb",
+            "operation": "GetItem",
+            "actions": [
+              "dynamodb:GetItem"
+            ],
+            "resource": {
+              "kind": "pattern",
+              "glob": "*-y"
+            },
+            "file": "cmd/x/main.go"
+          }
+        ],
+        "envReads": [
+          {
+            "name": "T2"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 13: reordering set-typed ForceNew blocks is no change [1]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  name     = \"orders\"\n  hash_key = \"id\"\n  local_secondary_index {\n    name            = \"a\"\n    range_key       = \"x\"\n    projection_type = \"ALL\"\n  }\n  local_secondary_index {\n    name            = \"b\"\n    range_key       = \"y\"\n    projection_type = \"ALL\"\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  name     = \"orders\"\n  hash_key = \"id\"\n  local_secondary_index {\n    name            = \"b\"\n    range_key       = \"y\"\n    projection_type = \"ALL\"\n  }\n  local_secondary_index {\n    name            = \"a\"\n    range_key       = \"x\"\n    projection_type = \"ALL\"\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "changes": [
+          {
+            "address": "aws_dynamodb_table.t",
+            "action": "no-op",
+            "confidence": "proven"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 13: reordering set-typed ForceNew blocks is no change [2]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  name     = \"orders\"\n  hash_key = \"id\"\n  local_secondary_index {\n    name            = \"a\"\n    range_key       = \"x\"\n    projection_type = \"ALL\"\n  }\n  local_secondary_index {\n    name            = \"b\"\n    range_key       = \"y\"\n    projection_type = \"ALL\"\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  name     = \"orders\"\n  hash_key = \"id\"\n  local_secondary_index {\n    name            = \"b\"\n    range_key       = \"y\"\n    projection_type = \"ALL\"\n  }\n  local_secondary_index {\n    name            = \"a\"\n    range_key       = \"z\"\n    projection_type = \"ALL\"\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_dynamodb_table.t"
+        ],
+        "changes": [
+          {
+            "address": "aws_dynamodb_table.t",
+            "action": "replace",
+            "confidence": "proven",
+            "actionReasonContains": "replace_because_cannot_update",
+            "after": {
+              "name": "orders",
+              "hash_key": "id",
+              "local_secondary_index": [
+                {
+                  "name": "b",
+                  "range_key": "y",
+                  "projection_type": "ALL"
+                },
+                {
+                  "name": "a",
+                  "range_key": "z",
+                  "projection_type": "ALL"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 13: a ForceNew field inside a sub-block of a ForceNew block is recorded and proves replacement [1]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_msk_cluster\" \"m\" {\n  cluster_name           = \"m\"\n  kafka_version          = \"3.6.0\"\n  number_of_broker_nodes = 3\n  encryption_info {\n    encryption_in_transit {\n      client_broker = \"TLS\"\n      in_cluster    = true\n    }\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_msk_cluster\" \"m\" {\n  cluster_name           = \"m\"\n  kafka_version          = \"3.6.0\"\n  number_of_broker_nodes = 3\n  encryption_info {\n    encryption_in_transit {\n      client_broker = \"TLS\"\n      in_cluster    = false\n    }\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_msk_cluster.m"
+        ],
+        "changes": [
+          {
+            "address": "aws_msk_cluster.m",
+            "action": "replace",
+            "confidence": "proven",
+            "actionReasonContains": "replace_because_cannot_update",
+            "after": {
+              "cluster_name": "m",
+              "kafka_version": "3.6.0",
+              "number_of_broker_nodes": 3,
+              "encryption_info": [
+                {
+                  "encryption_in_transit": [
+                    {
+                      "client_broker": "TLS",
+                      "in_cluster": false
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 13: a ForceNew field inside a sub-block of a ForceNew block is recorded and proves replacement [2]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_msk_cluster\" \"m\" {\n  cluster_name           = \"m\"\n  kafka_version          = \"3.6.0\"\n  number_of_broker_nodes = 3\n  encryption_info {\n    encryption_in_transit {\n      client_broker = \"TLS\"\n      in_cluster    = true\n    }\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_msk_cluster\" \"m\" {\n  cluster_name           = \"m\"\n  kafka_version          = \"3.6.0\"\n  number_of_broker_nodes = 3\n  encryption_info {\n    encryption_in_transit {\n      client_broker = \"TLS_PLAINTEXT\"\n      in_cluster    = true\n    }\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_msk_cluster.m"
+        ],
+        "changes": [
+          {
+            "address": "aws_msk_cluster.m",
+            "action": "replace",
+            "confidence": "likely",
+            "actionReasonContains": "replace_because_cannot_update",
+            "after": {
+              "cluster_name": "m",
+              "kafka_version": "3.6.0",
+              "number_of_broker_nodes": 3,
+              "encryption_info": [
+                {
+                  "encryption_in_transit": [
+                    {
+                      "client_broker": "TLS_PLAINTEXT",
+                      "in_cluster": true
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 13: a data source lookup of a customer alias or key is a customer managed key [1]",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_kms_alias\" \"k\" {\n  name = \"alias/app-data\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name              = \"q\"\n  kms_master_key_id = data.aws_kms_alias.k.target_key_arn\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_sqs_queue.q"
+        ],
+        "changes": [
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "q"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "sqs.encryption",
+            "resource": "aws_sqs_queue.q",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "SSE-KMS with a customer managed key"
+          },
+          {
+            "ruleId": "sqs.dlq",
+            "resource": "aws_sqs_queue.q",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "No dead-letter queue: messages that keep failing are dropped after the retention period"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_sqs_queue.q",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_sqs_queue"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0,
+          "items": [
+            {
+              "resource": "aws_sqs_queue.q",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            }
+          ]
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 13: a data source lookup of a customer alias or key is a customer managed key [2]",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_kms_key\" \"main\" {}\ndata \"aws_kms_key\" \"k\" {\n  key_id = aws_kms_key.main.arn\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name              = \"q\"\n  kms_master_key_id = data.aws_kms_key.k.arn\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_kms_key.main",
+          "create aws_sqs_queue.q"
+        ],
+        "changes": [
+          {
+            "address": "aws_kms_key.main",
+            "action": "create",
+            "confidence": "proven"
+          },
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "q"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "kms.rotation",
+            "resource": "aws_kms_key.main",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Automatic key rotation disabled"
+          },
+          {
+            "ruleId": "sqs.encryption",
+            "resource": "aws_sqs_queue.q",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "SSE-KMS with a customer managed key"
+          },
+          {
+            "ruleId": "sqs.dlq",
+            "resource": "aws_sqs_queue.q",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "No dead-letter queue: messages that keep failing are dropped after the retention period"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_kms_key.main",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_kms_key"
+          },
+          {
+            "resource": "aws_sqs_queue.q",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_sqs_queue"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 1,
+          "items": [
+            {
+              "resource": "aws_kms_key.main",
+              "kind": "fixed",
+              "noteContains": "$1/month per key + $0.03 per 10k requests"
+            },
+            {
+              "resource": "aws_sqs_queue.q",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            }
+          ]
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL kms.rotation: aws_kms_key.main: Automatic key rotation disabled"
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,478 @@
+{
+  "suite": "reconcile/round9",
+  "description": "Executable specification fixtures exported from src/reconcile/round9.test.ts",
+  "cases": [
+    {
+      "kind": "reconcile",
+      "name": "Step Functions grants (round 9): a reference with a suffix is not the state machine itself: an execution grant built from it is not a definite no",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_sfn_state_machine\" \"sm\" {\n  name       = \"orders\"\n  role_arn   = \"x\"\n  definition = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"states:DescribeExecution\", Resource = \"${replace(aws_sfn_state_machine.sm.arn, \":stateMachine:\", \":execution:\")}:*\" }] })\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "sfn",
+          "actions": [
+            "states:DescribeExecution"
+          ],
+          "resource": {
+            "kind": "literal",
+            "value": "arn:aws:states:eu-west-1:111122223333:execution:orders:run-1"
+          }
+        }
+      ],
+      "options": {
+        "roleNames": [
+          "r"
+        ]
+      },
+      "expect": {
+        "exactStatuses": [
+          "UNRESOLVED"
+        ],
+        "links": [
+          {
+            "status": "UNRESOLVED",
+            "access": "states:DescribeExecution on arn:aws:states:eu-west-1:111122223333:execution:orders:run-1",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "Cannot tell whether role r allows states:DescribeExecution on arn:aws:states:eu-west-1:111122223333:execution:orders:run-1"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "reconcile",
+      "name": "Step Functions grants (round 9): a grant on the unqualified state machine does not cover a version or alias [1]",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_sfn_state_machine\" \"sm\" {\n  name       = \"orders\"\n  role_arn   = \"x\"\n  definition = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"states:StartExecution\", Resource = \"arn:aws:states:eu-west-1:111122223333:stateMachine:orders\" }] })\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "sfn",
+          "actions": [
+            "states:StartExecution"
+          ],
+          "resource": {
+            "kind": "literal",
+            "value": "arn:aws:states:eu-west-1:111122223333:stateMachine:orders:live"
+          }
+        }
+      ],
+      "options": {
+        "roleNames": [
+          "r"
+        ]
+      },
+      "expect": {
+        "exactStatuses": [
+          "NOT_GRANTED"
+        ],
+        "links": [
+          {
+            "status": "NOT_GRANTED",
+            "access": "states:StartExecution on arn:aws:states:eu-west-1:111122223333:stateMachine:orders:live",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "role r does not allow states:StartExecution on arn:aws:states:eu-west-1:111122223333:stateMachine:orders:live, so the call fails with AccessDenied when it runs under this role. Add a statement to aws_iam_role_policy.p (infra/prod/main.tf:13).",
+            "suggestion": {
+              "file": "infra/prod/main.tf",
+              "target": "aws_iam_role_policy.p",
+              "code": "{\n  Effect   = \"Allow\"\n  Action   = [\"states:StartExecution\"]\n  Resource = [aws_sfn_state_machine.sm.arn]\n}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "reconcile",
+      "name": "Step Functions grants (round 9): a grant on the unqualified state machine does not cover a version or alias [2]",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_sfn_state_machine\" \"sm\" {\n  name       = \"orders\"\n  role_arn   = \"x\"\n  definition = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"states:StartExecution\", Resource = \"arn:aws:states:eu-west-1:111122223333:stateMachine:orders\" }] })\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "sfn",
+          "actions": [
+            "states:StartExecution"
+          ],
+          "resource": {
+            "kind": "literal",
+            "value": "arn:aws:states:eu-west-1:111122223333:stateMachine:orders"
+          }
+        }
+      ],
+      "options": {
+        "roleNames": [
+          "r"
+        ]
+      },
+      "expect": {
+        "exactStatuses": [
+          "GRANTED"
+        ],
+        "links": [
+          {
+            "status": "GRANTED",
+            "access": "states:StartExecution on arn:aws:states:eu-west-1:111122223333:stateMachine:orders",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "role r allows it (aws_iam_role_policy.p, infra/prod/main.tf:13)"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "reconcile",
+      "name": "Step Functions grants (round 9): stateMachine:NAME:* covers versions and aliases, not the unqualified machine [1]",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_sfn_state_machine\" \"sm\" {\n  name       = \"orders\"\n  role_arn   = \"x\"\n  definition = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"states:StartExecution\", Resource = \"arn:aws:states:eu-west-1:111122223333:stateMachine:orders:*\" }] })\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "sfn",
+          "actions": [
+            "states:StartExecution"
+          ],
+          "resource": {
+            "kind": "literal",
+            "value": "arn:aws:states:eu-west-1:111122223333:stateMachine:orders:live"
+          }
+        }
+      ],
+      "options": {
+        "roleNames": [
+          "r"
+        ]
+      },
+      "expect": {
+        "exactStatuses": [
+          "GRANTED"
+        ],
+        "links": [
+          {
+            "status": "GRANTED",
+            "access": "states:StartExecution on arn:aws:states:eu-west-1:111122223333:stateMachine:orders:live",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "role r allows it (aws_iam_role_policy.p, infra/prod/main.tf:13)"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "reconcile",
+      "name": "Step Functions grants (round 9): stateMachine:NAME:* covers versions and aliases, not the unqualified machine [2]",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_sfn_state_machine\" \"sm\" {\n  name       = \"orders\"\n  role_arn   = \"x\"\n  definition = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"states:StartExecution\", Resource = \"arn:aws:states:eu-west-1:111122223333:stateMachine:orders:*\" }] })\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "sfn",
+          "actions": [
+            "states:StartExecution"
+          ],
+          "resource": {
+            "kind": "literal",
+            "value": "arn:aws:states:eu-west-1:111122223333:stateMachine:orders"
+          }
+        }
+      ],
+      "options": {
+        "roleNames": [
+          "r"
+        ]
+      },
+      "expect": {
+        "exactStatuses": [
+          "NOT_GRANTED"
+        ],
+        "links": [
+          {
+            "status": "NOT_GRANTED",
+            "access": "states:StartExecution on arn:aws:states:eu-west-1:111122223333:stateMachine:orders",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "role r does not allow states:StartExecution on arn:aws:states:eu-west-1:111122223333:stateMachine:orders, so the call fails with AccessDenied when it runs under this role. Add a statement to aws_iam_role_policy.p (infra/prod/main.tf:13).",
+            "suggestion": {
+              "file": "infra/prod/main.tf",
+              "target": "aws_iam_role_policy.p",
+              "code": "{\n  Effect   = \"Allow\"\n  Action   = [\"states:StartExecution\"]\n  Resource = [aws_sfn_state_machine.sm.arn]\n}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "reconcile",
+      "name": "Step Functions grants (round 9): a Terraform reference to the state machine does not cover an alias",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_sfn_state_machine\" \"sm\" {\n  name       = \"orders\"\n  role_arn   = \"x\"\n  definition = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"states:StartExecution\", Resource = aws_sfn_state_machine.sm.arn }] })\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "sfn",
+          "actions": [
+            "states:StartExecution"
+          ],
+          "resource": {
+            "kind": "literal",
+            "value": "arn:aws:states:eu-west-1:111122223333:stateMachine:orders:live"
+          }
+        }
+      ],
+      "options": {
+        "roleNames": [
+          "r"
+        ]
+      },
+      "expect": {
+        "exactStatuses": [
+          "NOT_GRANTED"
+        ],
+        "links": [
+          {
+            "status": "NOT_GRANTED",
+            "access": "states:StartExecution on arn:aws:states:eu-west-1:111122223333:stateMachine:orders:live",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "role r does not allow states:StartExecution on arn:aws:states:eu-west-1:111122223333:stateMachine:orders:live, so the call fails with AccessDenied when it runs under this role. Add a statement to aws_iam_role_policy.p (infra/prod/main.tf:13).",
+            "suggestion": {
+              "file": "infra/prod/main.tf",
+              "target": "aws_iam_role_policy.p",
+              "code": "{\n  Effect   = \"Allow\"\n  Action   = [\"states:StartExecution\"]\n  Resource = [aws_sfn_state_machine.sm.arn]\n}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "reconcile",
+      "name": "key policy NotPrincipal (round 9): an Allow with NotPrincipal listing a role with a boundary is never a certain allow",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nprovider \"aws\" {\n  allowed_account_ids = [\"111111111111\"]\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n  permissions_boundary = aws_iam_policy.b.arn\n}\nresource \"aws_sfn_state_machine\" \"sm\" {\n  name       = \"orders\"\n  role_arn   = \"x\"\n  definition = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = [\"sqs:SendMessage\"], Resource = \"*\" }] })\n}\nresource \"aws_kms_key\" \"k\" {\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", NotPrincipal = { AWS = [aws_iam_role.r.arn, \"arn:aws:iam::111111111111:root\"] }, Action = \"kms:*\", Resource = \"*\" }] })\n}\nresource \"aws_sqs_queue\" \"jobs\" {\n  name              = \"jobs\"\n  kms_master_key_id = aws_kms_key.k.arn\n}\nresource \"aws_lambda_function\" \"f\" {\n  function_name = \"f\"\n  role          = aws_iam_role.r.arn\n  environment {\n    variables = { JOBS_QUEUE_URL = aws_sqs_queue.jobs.url }\n  }\n}\nresource \"aws_iam_policy\" \"b\" {\n  name   = \"b\"\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"*\", Resource = \"*\" }] })\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "sqs",
+          "actions": [
+            "sqs:SendMessage"
+          ],
+          "resource": {
+            "kind": "env",
+            "name": "JOBS_QUEUE_URL"
+          }
+        }
+      ],
+      "expect": {
+        "exactStatuses": [
+          "GRANTED",
+          "UNRESOLVED"
+        ],
+        "links": [
+          {
+            "status": "GRANTED",
+            "access": "sqs:SendMessage on $JOBS_QUEUE_URL (jobs)",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "role r allows it (aws_iam_role_policy.p, infra/prod/main.tf:17)"
+          },
+          {
+            "status": "UNRESOLVED",
+            "access": "kms:GenerateDataKey, kms:Decrypt on aws_kms_key.k, the customer managed key of jobs",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "Cannot tell whether role r may use aws_kms_key.k (conditional or unreadable grants)"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "reconcile",
+      "name": "key policy NotPrincipal (round 9): a Deny NotPrincipal naming another account does not exempt the role when its account is not known",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_sfn_state_machine\" \"sm\" {\n  name       = \"orders\"\n  role_arn   = \"x\"\n  definition = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = [\"sqs:SendMessage\", \"kms:GenerateDataKey\", \"kms:Decrypt\"], Resource = \"*\" }] })\n}\nresource \"aws_kms_key\" \"k\" {\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { AWS = \"arn:aws:iam::111111111111:root\" }, Action = \"kms:*\", Resource = \"*\" }, { Effect = \"Deny\", NotPrincipal = { AWS = [aws_iam_role.r.arn, \"arn:aws:iam::999999999999:root\"] }, Action = \"kms:*\", Resource = \"*\" }] })\n}\nresource \"aws_sqs_queue\" \"jobs\" {\n  name              = \"jobs\"\n  kms_master_key_id = aws_kms_key.k.arn\n}\nresource \"aws_lambda_function\" \"f\" {\n  function_name = \"f\"\n  role          = aws_iam_role.r.arn\n  environment {\n    variables = { JOBS_QUEUE_URL = aws_sqs_queue.jobs.url }\n  }\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "sqs",
+          "actions": [
+            "sqs:SendMessage"
+          ],
+          "resource": {
+            "kind": "env",
+            "name": "JOBS_QUEUE_URL"
+          }
+        }
+      ],
+      "expect": {
+        "exactStatuses": [
+          "GRANTED",
+          "UNRESOLVED"
+        ],
+        "links": [
+          {
+            "status": "GRANTED",
+            "access": "sqs:SendMessage on $JOBS_QUEUE_URL (jobs)",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "role r allows it (aws_iam_role_policy.p, infra/prod/main.tf:13)"
+          },
+          {
+            "status": "UNRESOLVED",
+            "access": "kms:GenerateDataKey, kms:Decrypt on aws_kms_key.k, the customer managed key of jobs",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "Cannot tell whether role r may use aws_kms_key.k (conditional or unreadable grants)"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "reconcile",
+      "name": "key policy NotPrincipal (round 9): a Deny NotPrincipal naming the role and its known account exempts it",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nprovider \"aws\" {\n  allowed_account_ids = [\"111111111111\"]\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_sfn_state_machine\" \"sm\" {\n  name       = \"orders\"\n  role_arn   = \"x\"\n  definition = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = [\"sqs:SendMessage\", \"kms:GenerateDataKey\", \"kms:Decrypt\"], Resource = \"*\" }] })\n}\nresource \"aws_kms_key\" \"k\" {\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { AWS = \"arn:aws:iam::111111111111:root\" }, Action = \"kms:*\", Resource = \"*\" }, { Effect = \"Deny\", NotPrincipal = { AWS = [aws_iam_role.r.arn, \"arn:aws:iam::111111111111:root\"] }, Action = \"kms:*\", Resource = \"*\" }] })\n}\nresource \"aws_sqs_queue\" \"jobs\" {\n  name              = \"jobs\"\n  kms_master_key_id = aws_kms_key.k.arn\n}\nresource \"aws_lambda_function\" \"f\" {\n  function_name = \"f\"\n  role          = aws_iam_role.r.arn\n  environment {\n    variables = { JOBS_QUEUE_URL = aws_sqs_queue.jobs.url }\n  }\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "sqs",
+          "actions": [
+            "sqs:SendMessage"
+          ],
+          "resource": {
+            "kind": "env",
+            "name": "JOBS_QUEUE_URL"
+          }
+        }
+      ],
+      "expect": {
+        "exactStatuses": [
+          "GRANTED",
+          "GRANTED"
+        ],
+        "links": [
+          {
+            "status": "GRANTED",
+            "access": "sqs:SendMessage on $JOBS_QUEUE_URL (jobs)",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "role r allows it (aws_iam_role_policy.p, infra/prod/main.tf:16)"
+          },
+          {
+            "status": "GRANTED",
+            "access": "kms:GenerateDataKey, kms:Decrypt on aws_kms_key.k, the customer managed key of jobs",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "role r may use the key"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "reconcile",
+      "name": "key policy NotPrincipal (round 9): a Deny NotPrincipal naming the role and a different known account does not exempt it",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nprovider \"aws\" {\n  allowed_account_ids = [\"111111111111\"]\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_sfn_state_machine\" \"sm\" {\n  name       = \"orders\"\n  role_arn   = \"x\"\n  definition = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = [\"sqs:SendMessage\", \"kms:GenerateDataKey\", \"kms:Decrypt\"], Resource = \"*\" }] })\n}\nresource \"aws_kms_key\" \"k\" {\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { AWS = \"arn:aws:iam::111111111111:root\" }, Action = \"kms:*\", Resource = \"*\" }, { Effect = \"Deny\", NotPrincipal = { AWS = [aws_iam_role.r.arn, \"arn:aws:iam::999999999999:root\"] }, Action = \"kms:*\", Resource = \"*\" }] })\n}\nresource \"aws_sqs_queue\" \"jobs\" {\n  name              = \"jobs\"\n  kms_master_key_id = aws_kms_key.k.arn\n}\nresource \"aws_lambda_function\" \"f\" {\n  function_name = \"f\"\n  role          = aws_iam_role.r.arn\n  environment {\n    variables = { JOBS_QUEUE_URL = aws_sqs_queue.jobs.url }\n  }\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "sqs",
+          "actions": [
+            "sqs:SendMessage"
+          ],
+          "resource": {
+            "kind": "env",
+            "name": "JOBS_QUEUE_URL"
+          }
+        }
+      ],
+      "expect": {
+        "exactStatuses": [
+          "GRANTED",
+          "NOT_GRANTED"
+        ],
+        "links": [
+          {
+            "status": "GRANTED",
+            "access": "sqs:SendMessage on $JOBS_QUEUE_URL (jobs)",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "role r allows it (aws_iam_role_policy.p, infra/prod/main.tf:16)"
+          },
+          {
+            "status": "NOT_GRANTED",
+            "access": "kms:GenerateDataKey, kms:Decrypt on aws_kms_key.k, the customer managed key of jobs",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "jobs is encrypted with aws_kms_key.k, and role r may not use it, so sqs:SendMessage fails with AccessDenied.",
+            "suggestion": {
+              "file": "infra/prod/main.tf",
+              "target": "aws_iam_role_policy.p",
+              "code": "{\n  Effect   = \"Allow\"\n  Action   = [\"kms:GenerateDataKey\", \"kms:Decrypt\"]\n  Resource = [aws_kms_key.k.arn]\n}"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

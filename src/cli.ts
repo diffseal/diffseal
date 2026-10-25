@@ -1,0 +1,258 @@
+#!/usr/bin/env node
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { analyze } from './analysis/analyze.js';
+import type { AnalysisResult, PolicyConfig } from './core/model.js';
+import { protectedRoots, writeOutput } from './io/output.js';
+import { readPlan } from './plan/readPlan.js';
+import { renderMarkdown } from './report/markdown.js';
+import { CSV_HEADER, VERSION, csvRow, renderReplay, toCsv } from './replay/render.js';
+import { replayCommit, type ReplayResult } from './replay/replay.js';
+import { git } from './terraform/source.js';
+import { checkApp } from './app/checkApp.js';
+import { changeRecord, loadApprovals, manifest } from './evidence/changeRecord.js';
+import { REPLACE_CATALOG_SOURCE } from './terraform/replaceCatalog.js';
+import { renderAppCheck } from './report/appCheck.js';
+
+const HELP = `TerraTrust ${VERSION}: change review for Terraform on AWS
+
+Usage:
+  terratrust review    --plan <plan.json> [--out <report.md>] [--json <result.json>] [--policy <policy.json>] [--strict]
+  terratrust replay    --repo <path> (--commit <rev> | --range <a..b> | --since <date>) [--limit <n>]
+                       [--base <rev>] [--roots-under <dir>] [--out-dir <dir>] [--policy <policy.json>] [--approvals <file.json>]
+  terratrust check-app --app <path> [--rev <rev> | --worktree] [--base <rev>] [--infra <path>] [--infra-rev <rev>]
+                       [--roots-under <dir>] [--role <name,...>] [--entry <dir,...>] [--out <report.md>] [--json <file>] [--strict]
+  terratrust demo
+
+Commands:
+  review     Review the output of \`terraform show -json <planfile>\`: blast radius, policy checks, fixed-cost changes.
+  replay     Replay commits of a local clone without credentials or terraform. Reads git objects only, and never
+             checks out, writes to, or sends anything from the repository. Reports go to --out-dir (default ./dry-runs):
+             one Markdown report per commit, a change record per commit in records/ (ISO 27001 A.8.32 evidence),
+             summary.csv (the change population) and MANIFEST.sha256. --approvals adds who approved each change.
+  check-app  Check the AWS calls in an application against the IAM roles that run it. The application repository
+             needs no Terraform: point --infra at the repository that has it, or add .terratrust.json.
+             With --base, only calls added since that commit are checked.
+  demo       Run review and check-app on the bundled examples.
+
+Exit codes: 0 pass, 1 error, 2 gate failed (BLOCK, or REVIEW with --strict).
+`;
+
+interface Args {
+  _: string[];
+  flags: Map<string, string | true>;
+}
+
+const BOOLEAN_FLAGS = new Set(['--strict', '--help', '-h', '--worktree']);
+
+function parseArgs(argv: string[]): Args {
+  const out: Args = { _: [], flags: new Map() };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (!a.startsWith('-')) {
+      out._.push(a);
+      continue;
+    }
+    if (BOOLEAN_FLAGS.has(a)) {
+      out.flags.set(a, true);
+      continue;
+    }
+    const v = argv[i + 1];
+    if (v === undefined || v.startsWith('--')) throw new Error(`${a} needs a value`);
+    out.flags.set(a, v);
+    i++;
+  }
+  return out;
+}
+
+const str = (args: Args, flag: string) => {
+  const v = args.flags.get(flag);
+  return typeof v === 'string' ? v : undefined;
+};
+
+function loadPolicy(args: Args): PolicyConfig {
+  const p = str(args, '--policy');
+  return p ? (JSON.parse(fs.readFileSync(p, 'utf8')) as PolicyConfig) : {};
+}
+
+function json(value: unknown): string {
+  return JSON.stringify(value, null, 2) + '\n';
+}
+
+function runReview(args: Args): number {
+  const planFile = str(args, '--plan');
+  if (!planFile) throw new Error('review needs --plan <tfplan.json> (the output of `terraform show -json <planfile>`)');
+  const result = analyze(readPlan(JSON.parse(fs.readFileSync(planFile, 'utf8'))), { policy: loadPolicy(args) });
+  const md = renderMarkdown(result, { title: `Plan review of ${path.basename(planFile)}`, version: VERSION });
+  const out = str(args, '--out');
+  if (out) {
+    writeOutput(out, md);
+    console.error(`Wrote ${out}`);
+  } else {
+    process.stdout.write(md);
+  }
+  const jsonOut = str(args, '--json');
+  if (jsonOut) writeOutput(jsonOut, json(result));
+  console.error(`Gate: ${result.gate.result}`);
+  if (args.flags.has('--strict') && result.gate.result !== 'pass') return 2;
+  return result.gate.result === 'block' ? 2 : 0;
+}
+
+function commitsToReplay(args: Args, repo: string): string[] {
+  const commit = str(args, '--commit');
+  if (commit) return [commit];
+  const limit = str(args, '--limit');
+  const range = str(args, '--range');
+  const since = str(args, '--since');
+  if (!range && !since) throw new Error('replay needs --commit, --range or --since');
+  const revArgs = ['rev-list', '--first-parent', '--reverse', ...(since ? [`--since=${since}`] : []), range ?? 'HEAD', '--'];
+  const shas = git(repo, revArgs).split('\n').filter(Boolean);
+  return limit ? shas.slice(-Number(limit)) : shas;
+}
+
+function runReplay(args: Args): number {
+  const repo = str(args, '--repo');
+  if (!repo) throw new Error('replay needs --repo <path to a local clone>');
+  const outDir = str(args, '--out-dir') ?? 'dry-runs';
+  const protect = protectedRoots([repo]);
+  const commits = commitsToReplay(args, repo);
+  const policy = loadPolicy(args);
+  const approvalsFile = str(args, '--approvals');
+  const approvals = approvalsFile ? loadApprovals(fs.readFileSync(approvalsFile, 'utf8')) : new Map();
+  const written: Record<string, string> = {};
+  const emit = (name: string, content: string) => {
+    writeOutput(path.join(outDir, name), content, protect);
+    written[name] = content;
+  };
+  const rows: string[][] = [CSV_HEADER];
+  const summary: string[] = [];
+  let blocked = 0;
+  const failed: string[] = [];
+
+  for (const sha of commits) {
+    let r: ReplayResult;
+    try {
+      r = replayCommit({ repo, head: sha, base: str(args, '--base'), policy, rootsUnder: str(args, '--roots-under') });
+    } catch (e) {
+      console.error(`${sha.slice(0, 9)}: ${(e as Error).message}`);
+      failed.push(sha);
+      rows.push([sha, '', '', '', 'error', '', '', '', '', '', '', '', '', (e as Error).message]);
+      summary.push(`| ${sha.slice(0, 9)} | error | | ${(e as Error).message.replace(/\|/g, '\\|')} |`);
+      continue;
+    }
+    // Commits with nothing to report are left out of a range; anything with a gate reason stays in the evidence.
+    if (!r.roots.length && !r.appLinks.length && !r.combined.gate.reasons.length && commits.length > 1) continue;
+    const name = r.commit.sha.slice(0, 9);
+    emit(`${name}.md`, renderReplay(r));
+    emit(`${name}.json`, json(serializable(r)));
+    const record = changeRecord({
+      commit: r.commit,
+      base: r.base,
+      roots: r.roots.map((x) => x.root),
+      result: r.combined,
+      appLinks: r.appLinks,
+      approvals: approvals.get(r.commit.sha) ?? approvals.get(name),
+      engine: { version: VERSION, replaceCatalog: REPLACE_CATALOG_SOURCE },
+      diagnostics: r.roots.flatMap((x) => x.diagnostics),
+    });
+    emit(`records/${r.commit.sha}.json`, json(record));
+    rows.push(csvRow(r));
+    summary.push(summaryLine(r.commit.sha, r.commit.subject, r.combined));
+    if (r.combined.gate.result === 'block') blocked++;
+    console.error(`${name} ${r.combined.gate.result.padEnd(6)} ${r.combined.changes.length} change(s)  ${r.commit.subject}`);
+  }
+
+  if (commits.length > 1) {
+    emit('summary.csv', toCsv(rows));
+    emit('summary.md', `# Replay summary\n\n| Commit | Gate | Changes | Subject |\n| :-- | :-- | :-- | :-- |\n${summary.join('\n')}\n`);
+  }
+  // A manifest of everything this run wrote, so the evidence can be checked with `shasum -a 256 -c`.
+  writeOutput(path.join(outDir, 'MANIFEST.sha256'), manifest(written), protect);
+  console.error(`Reports in ${path.resolve(outDir)}`);
+  if (failed.length) {
+    console.error(`${failed.length} commit(s) could not be replayed; they are listed as errors in the summary.`);
+    return 1;
+  }
+  return blocked ? 2 : 0;
+}
+
+function runCheckApp(args: Args): number {
+  const app = str(args, '--app');
+  if (!app) throw new Error('check-app needs --app <path to the application repository>');
+  const r = checkApp({
+    app,
+    rev: str(args, '--rev'),
+    base: str(args, '--base'),
+    worktree: args.flags.has('--worktree'),
+    infra: str(args, '--infra'),
+    infraRev: str(args, '--infra-rev'),
+    rootsUnder: str(args, '--roots-under'),
+    roles: str(args, '--role')?.split(',').map((x) => x.trim()).filter(Boolean),
+    entries: str(args, '--entry')?.split(',').map((x) => x.trim()).filter(Boolean),
+  });
+  const md = renderAppCheck(r);
+  const out = str(args, '--out');
+  const protect = protectedRoots([app, ...(r.infraPath ? [r.infraPath] : [])]);
+  if (out) writeOutput(out, md, protect);
+  else process.stdout.write(md);
+  const jsonOut = str(args, '--json');
+  if (jsonOut) writeOutput(jsonOut, json(r), protect);
+  console.error(`Gate: ${r.gate.result}`);
+  return args.flags.has('--strict') && r.gate.result !== 'pass' ? 2 : 0;
+}
+
+function runDemo(): number {
+  const root = path.resolve(import.meta.dirname, '..');
+  const plan = path.join(root, 'examples', 'unsafe-tfplan.json');
+  const result = analyze(readPlan(JSON.parse(fs.readFileSync(plan, 'utf8'))));
+  process.stdout.write(renderMarkdown(result, { title: 'Plan review of examples/unsafe-tfplan.json', version: VERSION }));
+  process.stdout.write('\n');
+  const app = checkApp({ app: path.join(root, 'examples', 'orders-service'), infra: path.join(root, 'examples', 'demo-infra'), worktree: true });
+  process.stdout.write(renderAppCheck(app));
+  return 0;
+}
+
+function summaryLine(sha: string, subject: string, r: AnalysisResult): string {
+  return `| [${sha.slice(0, 9)}](${sha.slice(0, 9)}.md) | ${r.gate.result} | ${r.changes.length} | ${subject.replace(/\|/g, '\\|')} |`;
+}
+
+/** Drop the git sources (not serializable) from a replay result. */
+function serializable(r: ReplayResult) {
+  const { headSource, baseSource, ...rest } = r;
+  void headSource;
+  void baseSource;
+  return { version: VERSION, ...rest, roots: rest.roots.map(({ root, result, diagnostics }) => ({ root, result, diagnostics })) };
+}
+
+export function main(argv: string[]): number {
+  let args: Args;
+  try {
+    args = parseArgs(argv);
+  } catch (e) {
+    console.error((e as Error).message);
+    return 1;
+  }
+  const cmd = args._[0];
+  if (args.flags.has('--help') || args.flags.has('-h')) {
+    process.stdout.write(HELP);
+    return 0;
+  }
+  if (!cmd) {
+    process.stdout.write(HELP);
+    return 1;
+  }
+  try {
+    if (cmd === 'review') return runReview(args);
+    if (cmd === 'replay') return runReplay(args);
+    if (cmd === 'check-app') return runCheckApp(args);
+    if (cmd === 'demo') return runDemo();
+    console.error(`Unknown command "${cmd}".\n`);
+    process.stdout.write(HELP);
+    return 1;
+  } catch (e) {
+    console.error(`Error: ${(e as Error).message}`);
+    return 1;
+  }
+}
+
+if (import.meta.main) process.exit(main(process.argv.slice(2)));

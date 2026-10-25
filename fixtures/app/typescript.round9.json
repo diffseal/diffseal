@@ -1,0 +1,168 @@
+{
+  "suite": "app/typescript.round9",
+  "description": "Executable specification fixtures exported from src/app/typescript.round9.test.ts",
+  "cases": [
+    {
+      "kind": "app",
+      "name": "TypeScript bindings (round 9): a later plain reassignment is the value",
+      "files": {
+        "a.ts": "import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';\nconst s3 = new S3Client({});\nlet bucket = 'public-assets';\nbucket = process.env.UPLOAD_BUCKET!;\nawait s3.send(new PutObjectCommand({ Bucket: bucket, Key: 'k' }));\n"
+      },
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "env",
+            "name": "UPLOAD_BUCKET"
+          }
+        ],
+        "facts": [
+          {
+            "service": "s3",
+            "operation": "PutObject",
+            "actions": [
+              "s3:PutObject"
+            ],
+            "resource": {
+              "kind": "env",
+              "name": "UPLOAD_BUCKET"
+            },
+            "file": "a.ts"
+          }
+        ],
+        "envReads": [
+          {
+            "name": "UPLOAD_BUCKET"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "app",
+      "name": "TypeScript bindings (round 9): a reassignment inside an if makes the value unresolved",
+      "files": {
+        "a.ts": "import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';\nconst s3 = new S3Client({});\nlet bucket = 'public-assets';\nif (process.env.X) {\n  bucket = 'other';\n}\nawait s3.send(new PutObjectCommand({ Bucket: bucket, Key: 'k' }));\n"
+      },
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "unresolved",
+            "text": "bucket"
+          }
+        ],
+        "facts": [
+          {
+            "service": "s3",
+            "operation": "PutObject",
+            "actions": [
+              "s3:PutObject"
+            ],
+            "resource": {
+              "kind": "unresolved",
+              "text": "bucket"
+            },
+            "file": "a.ts"
+          }
+        ],
+        "envReads": [
+          {
+            "name": "X"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "app",
+      "name": "TypeScript bindings (round 9): a comparison is not an assignment",
+      "files": {
+        "a.ts": "import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';\nconst s3 = new S3Client({});\nconst bucket = 'assets';\nif (bucket === 'x' || bucket == 'y') throw new Error('no');\nawait s3.send(new PutObjectCommand({ Bucket: bucket, Key: 'k' }));\n"
+      },
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "literal",
+            "value": "assets"
+          }
+        ],
+        "facts": [
+          {
+            "service": "s3",
+            "operation": "PutObject",
+            "actions": [
+              "s3:PutObject"
+            ],
+            "resource": {
+              "kind": "literal",
+              "value": "assets"
+            },
+            "file": "a.ts"
+          }
+        ],
+        "envReads": []
+      }
+    },
+    {
+      "kind": "app",
+      "name": "TypeScript bindings (round 9): a commented-out reassignment does not count",
+      "files": {
+        "a.ts": "import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';\nconst s3 = new S3Client({});\nlet bucket = 'assets';\n// bucket = 'other';\nawait s3.send(new PutObjectCommand({ Bucket: bucket, Key: 'k' }));\n"
+      },
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "literal",
+            "value": "assets"
+          }
+        ],
+        "facts": [
+          {
+            "service": "s3",
+            "operation": "PutObject",
+            "actions": [
+              "s3:PutObject"
+            ],
+            "resource": {
+              "kind": "literal",
+              "value": "assets"
+            },
+            "file": "a.ts"
+          }
+        ],
+        "envReads": []
+      }
+    },
+    {
+      "kind": "app",
+      "name": "TypeScript bindings (round 9): a declaration of the same name in a nested block shadows, it does not reassign",
+      "files": {
+        "a.ts": "import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';\nconst s3 = new S3Client({});\nconst bucket = 'assets';\nif (process.env.X) {\n  const bucket = 'other';\n  console.log(bucket);\n}\nawait s3.send(new PutObjectCommand({ Bucket: bucket, Key: 'k' }));\n"
+      },
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "literal",
+            "value": "assets"
+          }
+        ],
+        "facts": [
+          {
+            "service": "s3",
+            "operation": "PutObject",
+            "actions": [
+              "s3:PutObject"
+            ],
+            "resource": {
+              "kind": "literal",
+              "value": "assets"
+            },
+            "file": "a.ts"
+          }
+        ],
+        "envReads": [
+          {
+            "name": "X"
+          }
+        ]
+      }
+    }
+  ]
+}

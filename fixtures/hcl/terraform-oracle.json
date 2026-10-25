@@ -1,0 +1,1072 @@
+{
+  "suite": "hcl/terraform-oracle",
+  "description": "Real Terraform 1.15.8 regression values. Each case also checks unchanged configuration is a no-op.",
+  "cases": [
+    {
+      "kind": "terraform",
+      "name": "oracle json 01: fixtures/terraform/expressions-and-iam.json / partially known resources in IAM identity policies (src/policy/iam.test.ts) / head / aws_iam_policy.ecs_exec.policy",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Action = [\"ssmmessages:CreateControlChannel\", \"ssmmessages:CreateDataChannel\", \"ssmmessages:OpenControlChannel\", \"ssmmessages:OpenDataChannel\"], Resource = \"*\" }] })\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Action = [\"ssmmessages:CreateControlChannel\", \"ssmmessages:CreateDataChannel\", \"ssmmessages:OpenControlChannel\", \"ssmmessages:OpenDataChannel\"], Resource = \"*\" }] })\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "jsonencode({ Statement = [{ Effect = \"Allow\", Action = [\"ssmmessages:CreateControlChannel\", \"ssmmessages:CreateDataChannel\", \"ssmmessages:OpenControlChannel\", \"ssmmessages:OpenDataChannel\"], Resource = \"*\" }] })"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "{\"Statement\":[{\"Action\":[\"ssmmessages:CreateControlChannel\",\"ssmmessages:CreateDataChannel\",\"ssmmessages:OpenControlChannel\",\"ssmmessages:OpenDataChannel\"],\"Effect\":\"Allow\",\"Resource\":\"*\"}]}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle json 02: fixtures/terraform/expressions-and-iam.json / trust policy conditions and resource policy narrowing operators (unknownBlocks, round6, round6codex, round7) / head / aws_iam_role.org_not_eq.assume_role_policy",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"sts:AssumeRoleWithWebIdentity\", Principal = \"*\", Condition = { StringNotEquals = { \"aws:PrincipalOrgID\" = \"o-123\" } } }] })\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"sts:AssumeRoleWithWebIdentity\", Principal = \"*\", Condition = { StringNotEquals = { \"aws:PrincipalOrgID\" = \"o-123\" } } }] })\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"sts:AssumeRoleWithWebIdentity\", Principal = \"*\", Condition = { StringNotEquals = { \"aws:PrincipalOrgID\" = \"o-123\" } } }] })"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "{\"Statement\":[{\"Action\":\"sts:AssumeRoleWithWebIdentity\",\"Condition\":{\"StringNotEquals\":{\"aws:PrincipalOrgID\":\"o-123\"}},\"Effect\":\"Allow\",\"Principal\":\"*\"}]}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle json 03: fixtures/terraform/expressions-and-iam.json / trust policy conditions and resource policy narrowing operators (unknownBlocks, round6, round6codex, round7) / head / aws_iam_role.org_eq.assume_role_policy",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"sts:AssumeRoleWithWebIdentity\", Principal = \"*\", Condition = { StringEquals = { \"aws:PrincipalOrgID\" = \"o-123\" } } }] })\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"sts:AssumeRoleWithWebIdentity\", Principal = \"*\", Condition = { StringEquals = { \"aws:PrincipalOrgID\" = \"o-123\" } } }] })\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"sts:AssumeRoleWithWebIdentity\", Principal = \"*\", Condition = { StringEquals = { \"aws:PrincipalOrgID\" = \"o-123\" } } }] })"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "{\"Statement\":[{\"Action\":\"sts:AssumeRoleWithWebIdentity\",\"Condition\":{\"StringEquals\":{\"aws:PrincipalOrgID\":\"o-123\"}},\"Effect\":\"Allow\",\"Principal\":\"*\"}]}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle json 04: fixtures/terraform/expressions-and-iam.json / trust policy conditions and resource policy narrowing operators (unknownBlocks, round6, round6codex, round7) / head / aws_iam_role.gh_not_like.assume_role_policy",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"sts:AssumeRoleWithWebIdentity\", Principal = { Federated = \"arn:aws:iam::1:oidc-provider/token.actions.githubusercontent.com\" }, Condition = { StringEquals = { \"token.actions.githubusercontent.com:aud\" = \"sts.amazonaws.com\" }, StringNotLike = { \"token.actions.githubusercontent.com:sub\" = \"repo:evil/*\" } } }] })\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"sts:AssumeRoleWithWebIdentity\", Principal = { Federated = \"arn:aws:iam::1:oidc-provider/token.actions.githubusercontent.com\" }, Condition = { StringEquals = { \"token.actions.githubusercontent.com:aud\" = \"sts.amazonaws.com\" }, StringNotLike = { \"token.actions.githubusercontent.com:sub\" = \"repo:evil/*\" } } }] })\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"sts:AssumeRoleWithWebIdentity\", Principal = { Federated = \"arn:aws:iam::1:oidc-provider/token.actions.githubusercontent.com\" }, Condition = { StringEquals = { \"token.actions.githubusercontent.com:aud\" = \"sts.amazonaws.com\" }, StringNotLike = { \"token.actions.githubusercontent.com:sub\" = \"repo:evil/*\" } } }] })"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "{\"Statement\":[{\"Action\":\"sts:AssumeRoleWithWebIdentity\",\"Condition\":{\"StringEquals\":{\"token.actions.githubusercontent.com:aud\":\"sts.amazonaws.com\"},\"StringNotLike\":{\"token.actions.githubusercontent.com:sub\":\"repo:evil/*\"}},\"Effect\":\"Allow\",\"Principal\":{\"Federated\":\"arn:aws:iam::1:oidc-provider/token.actions.githubusercontent.com\"}}]}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle json 05: fixtures/terraform/expressions-and-iam.json / trust policy conditions and resource policy narrowing operators (unknownBlocks, round6, round6codex, round7) / head / aws_iam_role.org_wildcard.assume_role_policy",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"sts:AssumeRoleWithWebIdentity\", Principal = \"*\", Condition = { StringLike = { \"aws:PrincipalOrgID\" = \"*\" } } }] })\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"sts:AssumeRoleWithWebIdentity\", Principal = \"*\", Condition = { StringLike = { \"aws:PrincipalOrgID\" = \"*\" } } }] })\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"sts:AssumeRoleWithWebIdentity\", Principal = \"*\", Condition = { StringLike = { \"aws:PrincipalOrgID\" = \"*\" } } }] })"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "{\"Statement\":[{\"Action\":\"sts:AssumeRoleWithWebIdentity\",\"Condition\":{\"StringLike\":{\"aws:PrincipalOrgID\":\"*\"}},\"Effect\":\"Allow\",\"Principal\":\"*\"}]}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle json 06: fixtures/terraform/expressions-and-iam.json / trust policy conditions and resource policy narrowing operators (unknownBlocks, round6, round6codex, round7) / head / aws_iam_role.org_if_exists.assume_role_policy",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"sts:AssumeRoleWithWebIdentity\", Principal = \"*\", Condition = { StringEqualsIfExists = { \"aws:PrincipalOrgID\" = \"o-123\" } } }] })\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"sts:AssumeRoleWithWebIdentity\", Principal = \"*\", Condition = { StringEqualsIfExists = { \"aws:PrincipalOrgID\" = \"o-123\" } } }] })\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"sts:AssumeRoleWithWebIdentity\", Principal = \"*\", Condition = { StringEqualsIfExists = { \"aws:PrincipalOrgID\" = \"o-123\" } } }] })"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "{\"Statement\":[{\"Action\":\"sts:AssumeRoleWithWebIdentity\",\"Condition\":{\"StringEqualsIfExists\":{\"aws:PrincipalOrgID\":\"o-123\"}},\"Effect\":\"Allow\",\"Principal\":\"*\"}]}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle json 07: fixtures/terraform/expressions-and-iam.json / trust policy conditions and resource policy narrowing operators (unknownBlocks, round6, round6codex, round7) / head / aws_iam_role.not_principal.assume_role_policy",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"sts:AssumeRole\", NotPrincipal = { AWS = \"arn:aws:iam::111122223333:role/x\" } }] })\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"sts:AssumeRole\", NotPrincipal = { AWS = \"arn:aws:iam::111122223333:role/x\" } }] })\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"sts:AssumeRole\", NotPrincipal = { AWS = \"arn:aws:iam::111122223333:role/x\" } }] })"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "{\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Effect\":\"Allow\",\"NotPrincipal\":{\"AWS\":\"arn:aws:iam::111122223333:role/x\"}}]}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle json 08: fixtures/terraform/expressions-and-iam.json / trust policy conditions and resource policy narrowing operators (unknownBlocks, round6, round6codex, round7) / head / aws_s3_bucket_policy.secure_transport_only.policy",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b1/*\", Condition = { Bool = { \"aws:SecureTransport\" = \"true\" } } }] })\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b1/*\", Condition = { Bool = { \"aws:SecureTransport\" = \"true\" } } }] })\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b1/*\", Condition = { Bool = { \"aws:SecureTransport\" = \"true\" } } }] })"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "{\"Statement\":[{\"Action\":\"s3:GetObject\",\"Condition\":{\"Bool\":{\"aws:SecureTransport\":\"true\"}},\"Effect\":\"Allow\",\"Principal\":\"*\",\"Resource\":\"arn:aws:s3:::b1/*\"}]}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle json 09: fixtures/terraform/expressions-and-iam.json / trust policy conditions and resource policy narrowing operators (unknownBlocks, round6, round6codex, round7) / head / aws_s3_bucket_policy.vpce_scoped.policy",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b2/*\", Condition = { StringEquals = { \"aws:SourceVpce\" = \"vpce-1\" } } }] })\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b2/*\", Condition = { StringEquals = { \"aws:SourceVpce\" = \"vpce-1\" } } }] })\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b2/*\", Condition = { StringEquals = { \"aws:SourceVpce\" = \"vpce-1\" } } }] })"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "{\"Statement\":[{\"Action\":\"s3:GetObject\",\"Condition\":{\"StringEquals\":{\"aws:SourceVpce\":\"vpce-1\"}},\"Effect\":\"Allow\",\"Principal\":\"*\",\"Resource\":\"arn:aws:s3:::b2/*\"}]}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle json 10: fixtures/terraform/expressions-and-iam.json / trust policy conditions and resource policy narrowing operators (unknownBlocks, round6, round6codex, round7) / head / aws_s3_bucket_policy.wide_cidrs.policy",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b4/*\", Condition = { IpAddress = { \"aws:SourceIp\" = [\"0.0.0.0/1\", \"128.0.0.0/1\"] } } }] })\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b4/*\", Condition = { IpAddress = { \"aws:SourceIp\" = [\"0.0.0.0/1\", \"128.0.0.0/1\"] } } }] })\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b4/*\", Condition = { IpAddress = { \"aws:SourceIp\" = [\"0.0.0.0/1\", \"128.0.0.0/1\"] } } }] })"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "{\"Statement\":[{\"Action\":\"s3:GetObject\",\"Condition\":{\"IpAddress\":{\"aws:SourceIp\":[\"0.0.0.0/1\",\"128.0.0.0/1\"]}},\"Effect\":\"Allow\",\"Principal\":\"*\",\"Resource\":\"arn:aws:s3:::b4/*\"}]}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle json 11: fixtures/terraform/expressions-and-iam.json / trust policy conditions and resource policy narrowing operators (unknownBlocks, round6, round6codex, round7) / head / aws_s3_bucket_policy.narrow_cidr.policy",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b5/*\", Condition = { IpAddress = { \"aws:SourceIp\" = \"203.0.113.0/24\" } } }] })\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b5/*\", Condition = { IpAddress = { \"aws:SourceIp\" = \"203.0.113.0/24\" } } }] })\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b5/*\", Condition = { IpAddress = { \"aws:SourceIp\" = \"203.0.113.0/24\" } } }] })"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "{\"Statement\":[{\"Action\":\"s3:GetObject\",\"Condition\":{\"IpAddress\":{\"aws:SourceIp\":\"203.0.113.0/24\"}},\"Effect\":\"Allow\",\"Principal\":\"*\",\"Resource\":\"arn:aws:s3:::b5/*\"}]}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle json 12: fixtures/terraform/expressions-and-iam.json / trust policy conditions and resource policy narrowing operators (unknownBlocks, round6, round6codex, round7) / head / aws_s3_bucket_policy.arn_equals_wildcard.policy",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b6/*\", Condition = { ArnEquals = { \"aws:PrincipalArn\" = \"arn:aws:iam::*:*\" } } }] })\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b6/*\", Condition = { ArnEquals = { \"aws:PrincipalArn\" = \"arn:aws:iam::*:*\" } } }] })\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b6/*\", Condition = { ArnEquals = { \"aws:PrincipalArn\" = \"arn:aws:iam::*:*\" } } }] })"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "{\"Statement\":[{\"Action\":\"s3:GetObject\",\"Condition\":{\"ArnEquals\":{\"aws:PrincipalArn\":\"arn:aws:iam::*:*\"}},\"Effect\":\"Allow\",\"Principal\":\"*\",\"Resource\":\"arn:aws:s3:::b6/*\"}]}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle json 13: fixtures/terraform/expressions-and-iam.json / trust policy conditions and resource policy narrowing operators (unknownBlocks, round6, round6codex, round7) / head / aws_s3_bucket_policy.arn_equals_exact.policy",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b7/*\", Condition = { ArnEquals = { \"aws:PrincipalArn\" = \"arn:aws:iam::111122223333:role/x\" } } }] })\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b7/*\", Condition = { ArnEquals = { \"aws:PrincipalArn\" = \"arn:aws:iam::111122223333:role/x\" } } }] })\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b7/*\", Condition = { ArnEquals = { \"aws:PrincipalArn\" = \"arn:aws:iam::111122223333:role/x\" } } }] })"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "{\"Statement\":[{\"Action\":\"s3:GetObject\",\"Condition\":{\"ArnEquals\":{\"aws:PrincipalArn\":\"arn:aws:iam::111122223333:role/x\"}},\"Effect\":\"Allow\",\"Principal\":\"*\",\"Resource\":\"arn:aws:s3:::b7/*\"}]}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle json 14: fixtures/terraform/expressions-and-iam.json / trust policy conditions and resource policy narrowing operators (unknownBlocks, round6, round6codex, round7) / head / aws_s3_bucket_policy.org_prefix_wildcard.policy",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b8/*\", Condition = { StringLike = { \"aws:PrincipalOrgID\" = \"o-*\" } } }] })\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b8/*\", Condition = { StringLike = { \"aws:PrincipalOrgID\" = \"o-*\" } } }] })\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b8/*\", Condition = { StringLike = { \"aws:PrincipalOrgID\" = \"o-*\" } } }] })"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "{\"Statement\":[{\"Action\":\"s3:GetObject\",\"Condition\":{\"StringLike\":{\"aws:PrincipalOrgID\":\"o-*\"}},\"Effect\":\"Allow\",\"Principal\":\"*\",\"Resource\":\"arn:aws:s3:::b8/*\"}]}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle json 15: fixtures/terraform/expressions-and-iam.json / trust policy conditions and resource policy narrowing operators (unknownBlocks, round6, round6codex, round7) / head / aws_s3_bucket_policy.anded_operators.policy",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b9/*\", Condition = { StringEquals = { \"aws:SourceAccount\" = \"111122223333\" }, StringLike = { \"aws:SourceAccount\" = \"*\" } } }] })\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b9/*\", Condition = { StringEquals = { \"aws:SourceAccount\" = \"111122223333\" }, StringLike = { \"aws:SourceAccount\" = \"*\" } } }] })\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b9/*\", Condition = { StringEquals = { \"aws:SourceAccount\" = \"111122223333\" }, StringLike = { \"aws:SourceAccount\" = \"*\" } } }] })"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "{\"Statement\":[{\"Action\":\"s3:GetObject\",\"Condition\":{\"StringEquals\":{\"aws:SourceAccount\":\"111122223333\"},\"StringLike\":{\"aws:SourceAccount\":\"*\"}},\"Effect\":\"Allow\",\"Principal\":\"*\",\"Resource\":\"arn:aws:s3:::b9/*\"}]}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle json 16: fixtures/terraform/round7.json / round 7 (Terraform and policy): a standalone aws_kms_key_policy is checked like a key policy argument / head / aws_kms_key_policy.p.policy",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"kms:*\", Resource = \"*\" }] })\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"kms:*\", Resource = \"*\" }] })\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"kms:*\", Resource = \"*\" }] })"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "{\"Statement\":[{\"Action\":\"kms:*\",\"Effect\":\"Allow\",\"Principal\":\"*\",\"Resource\":\"*\"}]}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle json 17: fixtures/terraform/static.json / static replay (benchmark failure modes): a sensitive policy or CIDR is still judged, and still not printed (round 3 P1) / head / aws_iam_policy.p.policy",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = sensitive(jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"*\", Resource = \"*\" }] }))\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = sensitive(jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"*\", Resource = \"*\" }] }))\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "sensitive(jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"*\", Resource = \"*\" }] }))"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "{\"Statement\":[{\"Action\":\"*\",\"Effect\":\"Allow\",\"Resource\":\"*\"}]}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle json 18: generated / json key order",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ z = 1, a = { y = 2, b = 3 } })\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ z = 1, a = { y = 2, b = 3 } })\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "jsonencode({ z = 1, a = { y = 2, b = 3 } })"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "{\"a\":{\"b\":3,\"y\":2},\"z\":1}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle json 19: generated / json escapes",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ value = \"<>&\\u2028\\u2029\" })\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ value = \"<>&\\u2028\\u2029\" })\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "jsonencode({ value = \"<>&\\u2028\\u2029\" })"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "{\"value\":\"\\u003c\\u003e\\u0026\\u2028\\u2029\"}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle json 20: generated / json integer keys",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ \"2\" = 2, \"10\" = 10, \"1\" = 1 })\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ \"2\" = 2, \"10\" = 10, \"1\" = 1 })\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "jsonencode({ \"2\" = 2, \"10\" = 10, \"1\" = 1 })"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "{\"1\":1,\"10\":10,\"2\":2}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle range 21: fixtures/terraform/expressions-and-iam.json / format() follows Go fmt (round 12 codex) and chunklist / range / set / regexall / formatlist semantics / head / terraform_data.out.input / object member",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = try((range(1, 4, -1)), \"__oracle_expected_error__\")\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = try((range(1, 4, -1)), \"__oracle_expected_error__\")\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "range(1, 4, -1)"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "__oracle_expected_error__"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle range 22: generated / range wrong sign",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = try(range(1, 4, -1), \"error\")\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = try(range(1, 4, -1), \"error\")\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "try(range(1, 4, -1), \"error\")"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "error"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle regex 23: generated / regex unicode",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = regex(\"[[:alpha:]]+\", \"åabc\")\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = regex(\"[[:alpha:]]+\", \"åabc\")\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "regex(\"[[:alpha:]]+\", \"åabc\")"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "abc"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle regex 24: generated / regex captures",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = regex(\"(a)(b)?\", \"a\")\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = regex(\"(a)(b)?\", \"a\")\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "regex(\"(a)(b)?\", \"a\")"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": [
+                "a",
+                null
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle regex 25: generated / regexall optional captures",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = regexall(\"(?P<a>a)(?P<b>b)?\", \"a ab\")\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = regexall(\"(?P<a>a)(?P<b>b)?\", \"a ab\")\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "regexall(\"(?P<a>a)(?P<b>b)?\", \"a ab\")"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": [
+                {
+                  "a": "a",
+                  "b": null
+                },
+                {
+                  "a": "a",
+                  "b": "b"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle regex 26: generated / regex unsupported lookahead",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = try(regex(\"a(?=b)\", \"ab\"), \"error\")\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = try(regex(\"a(?=b)\", \"ab\"), \"error\")\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "try(regex(\"a(?=b)\", \"ab\"), \"error\")"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "error"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle cidr 27: generated / cidr host bits",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = cidrsubnet(\"10.0.1.9/16\", 8, 2)\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = cidrsubnet(\"10.0.1.9/16\", 8, 2)\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "cidrsubnet(\"10.0.1.9/16\", 8, 2)"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "10.0.2.0/24"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle cidr 28: generated / cidr netnum overflow",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = try(cidrsubnet(\"10.0.0.0/16\", 8, 256), \"error\")\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = try(cidrsubnet(\"10.0.0.0/16\", 8, 256), \"error\")\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "try(cidrsubnet(\"10.0.0.0/16\", 8, 256), \"error\")"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "error"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle cidr 29: generated / cidr ipv6",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = cidrsubnet(\"2001:db8::/32\", 8, 2)\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = cidrsubnet(\"2001:db8::/32\", 8, 2)\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "cidrsubnet(\"2001:db8::/32\", 8, 2)"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "2001:db8:200::/40"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle collections 30: generated / setunion mixed",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = setunion([1], [\"1\", \"2\"])\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = setunion([1], [\"1\", \"2\"])\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "setunion([1], [\"1\", \"2\"])"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": [
+                "1",
+                "2"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle collections 31: generated / tolist mixed",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = tolist([1, \"2\"])\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = tolist([1, \"2\"])\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "tolist([1, \"2\"])"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": [
+                "1",
+                "2"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle collections 32: generated / tomap mixed",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = tomap({ a = 1, b = \"2\" })\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = tomap({ a = 1, b = \"2\" })\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "tomap({ a = 1, b = \"2\" })"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": {
+                "a": "1",
+                "b": "2"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle collections 33: generated / toset mixed",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = toset([1, \"1\"])\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = toset([1, \"1\"])\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "toset([1, \"1\"])"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": [
+                "1"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle collections 34: generated / distinct mixed",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = distinct([1, \"1\", 2])\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = distinct([1, \"1\", 2])\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "distinct([1, \"1\", 2])"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": [
+                "1",
+                "2"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle validation 35: generated / tonumber whitespace",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = try(tonumber(\" 2 \"), \"error\")\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = try(tonumber(\" 2 \"), \"error\")\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "try(tonumber(\" 2 \"), \"error\")"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "error"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle validation 36: generated / element fractional",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = try(element([\"a\", \"b\"], 1.5), \"error\")\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = try(element([\"a\", \"b\"], 1.5), \"error\")\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "try(element([\"a\", \"b\"], 1.5), \"error\")"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "error"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle float 37: generated / format float",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = format(\"%.2f\", -1.235)\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = format(\"%.2f\", -1.235)\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "format(\"%.2f\", -1.235)"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "-1.23"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle expanded 38: fixtures/hcl/terraform-oracle.json / oracle range 21: fixtures/terraform/expressions-and-iam.json / format() follows Go fmt (round 12 codex) and chunklist / range / set / regexall / formatlist semantics / head / terraform_data.out.input / object member / base / terraform_data.oracle.input",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = try((range(1, 4, -1)), \"__oracle_expected_error__\")\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = try((range(1, 4, -1)), \"__oracle_expected_error__\")\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "try((range(1, 4, -1)), \"__oracle_expected_error__\")"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "__oracle_expected_error__"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle expanded 39: fixtures/terraform/expressions-and-iam.json / format() follows Go fmt (round 12 codex) and chunklist / range / set / regexall / formatlist semantics / head / terraform_data.out.input / object member",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = try(range(1, 4, -1), \"err\")\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = try(range(1, 4, -1), \"err\")\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "try(range(1, 4, -1), \"err\")"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "err"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "oracle expanded 40: fixtures/terraform/static.json / static evaluation: discovers roots by backend block / head / aws_iam_role.task.assume_role_policy",
+      "root": "r",
+      "base": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n"
+      },
+      "head": {
+        "r/main.tf": "\nresource \"terraform_data\" \"oracle\" {\n input = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })\n}\n"
+      },
+      "oracle": {
+        "terraform": "1.15.8",
+        "expression": "jsonencode({ Statement = [{ Effect = \"Allow\", Principal = { Service = \"ecs-tasks.amazonaws.com\" }, Action = \"sts:AssumeRole\" }] })"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "instances": [
+          {
+            "address": "terraform_data.oracle",
+            "revealedAttrs": {
+              "input": "{\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"ecs-tasks.amazonaws.com\"}}]}"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

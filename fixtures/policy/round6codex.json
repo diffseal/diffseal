@@ -1,0 +1,160 @@
+{
+  "suite": "policy/round6codex",
+  "description": "Executable specification fixtures exported from src/policy/round6codex.test.ts",
+  "cases": [
+    {
+      "kind": "terraform",
+      "name": "round 6 codex: evaluation: a dynamic block over a sensitive collection expands its values, and does not print them",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_iam_policy_document\" \"d\" {\n  dynamic \"statement\" {\n    for_each = sensitive([\"*\"])\n    content {\n      actions   = [\"s3:GetObject\"]\n      resources = [statement.value]\n    }\n  }\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = data.aws_iam_policy_document.d.json\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_policy.p"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_policy.p",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "name": "p"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.p",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Resource \"*\" for s3:GetObject"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_policy.p",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_policy"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL iam.least-privilege: aws_iam_policy.p: Resource \"*\" for s3:GetObject"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 6 codex: evaluation: optional attribute defaults of an object variable are applied, so changing them is a change",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"cfg\" {\n  type = object({\n    actions = optional(list(string), [\"s3:GetObject\"])\n    nested  = optional(object({ flag = optional(bool, true) }), {})\n  })\n  default = {}\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = var.cfg.actions, Resource = \"*\" }] })\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { flag = tostring(var.cfg.nested.flag) }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"cfg\" {\n  type = object({\n    actions = optional(list(string), [\"*\"])\n    nested  = optional(object({ flag = optional(bool, true) }), {})\n  })\n  default = {}\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = var.cfg.actions, Resource = \"*\" }] })\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { flag = tostring(var.cfg.nested.flag) }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_iam_policy.p"
+        ],
+        "changes": [
+          {
+            "address": "aws_iam_policy.p",
+            "action": "update",
+            "confidence": "proven",
+            "after": {
+              "name": "p",
+              "policy": "{\"Statement\":[{\"Action\":[\"*\"],\"Effect\":\"Allow\",\"Resource\":\"*\"}]}"
+            }
+          },
+          {
+            "address": "aws_sqs_queue.q",
+            "action": "no-op",
+            "confidence": "proven"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 6 codex: policies: a condition value that is not known does not narrow, and makes an open policy UNKNOWN",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"arn\" {}\nresource \"aws_s3_bucket_policy\" \"p\" {\n  bucket = \"b\"\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Principal = \"*\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b/*\", Condition = { StringLike = { \"aws:SourceArn\" = var.arn } } }] })\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_s3_bucket_policy.p"
+        ],
+        "changes": [
+          {
+            "address": "aws_s3_bucket_policy.p",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "bucket": "b"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "s3.bucket-policy",
+            "resource": "aws_s3_bucket_policy.p",
+            "status": "UNKNOWN",
+            "preExisting": null,
+            "detailContains": "Who the bucket policy admits depends on principals or conditions not known statically"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_s3_bucket_policy.p",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_s3_bucket_policy"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 6 codex: evaluation: an unknown dynamic statement may be a Deny: its effect is not known",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"items\" {}\ndata \"aws_iam_policy_document\" \"d\" {\n  dynamic \"statement\" {\n    for_each = var.items\n    content {\n      effect    = \"Deny\"\n      actions   = [\"s3:GetObject\"]\n      resources = [\"*\"]\n    }\n  }\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = data.aws_iam_policy_document.d.json\n}\n"
+      },
+      "expect": {
+        "diagnostics": [],
+        "instanceCount": 2,
+        "instances": [
+          {
+            "address": "aws_iam_policy.p",
+            "attrs": {
+              "name": "p"
+            },
+            "references": {
+              "policy": [
+                "data.aws_iam_policy_document.d"
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

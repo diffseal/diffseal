@@ -1,0 +1,39 @@
+{
+  "name": "terratrust",
+  "version": "0.2.0-beta",
+  "description": "Change review for Terraform on AWS: blast radius, policy evidence, and the IAM that application code needs",
+  "type": "module",
+  "bin": {
+    "terratrust": "./dist/cli.js",
+    "terratrust-mcp": "./dist/mcp.js"
+  },
+  "scripts": {
+    "build": "bun build src/cli.ts --target=node --minify-syntax --minify-whitespace --outdir dist && bun build src/mcp.ts --target=node --minify-syntax --minify-whitespace --outdir dist && bun build src/action.ts --target=node --minify-syntax --minify-whitespace --outdir dist",
+    "dev": "bun run src/cli.ts",
+    "demo": "bun run src/cli.ts demo",
+    "typecheck": "tsc --noEmit -p .",
+    "mcp": "bun run src/mcp.ts",
+    "test": "bun test"
+  },
+  "keywords": [
+    "terraform",
+    "opentofu",
+    "iac",
+    "iso27001",
+    "infracost",
+    "blast-radius",
+    "claude-code",
+    "mcp",
+    "github-action"
+  ],
+  "license": "FSL-1.1-MIT",
+  "devDependencies": {
+    "@types/bun": "1.3.1",
+    "@types/node": "22",
+    "typescript": "5.9.3"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "zod": "4.6.5"
+  }
+}

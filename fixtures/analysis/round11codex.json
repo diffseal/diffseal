@@ -1,0 +1,522 @@
+{
+  "suite": "analysis/round11codex",
+  "description": "Executable specification fixtures exported from src/analysis/round11codex.test.ts",
+  "cases": [
+    {
+      "kind": "terraform",
+      "name": "round 11 codex: changing a data source argument changes the computed attributes dependents read [1]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_ami\" \"image\" {\n  most_recent = true\n  filter {\n    name   = \"name\"\n    values = [\"amzn2-ami-*\"]\n  }\n}\nresource \"aws_instance\" \"web\" {\n  ami           = data.aws_ami.image.id\n  instance_type = \"t3.micro\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_ami\" \"image\" {\n  most_recent = true\n  filter {\n    name   = \"name\"\n    values = [\"al2023-ami-*\"]\n  }\n}\nresource \"aws_instance\" \"web\" {\n  ami           = data.aws_ami.image.id\n  instance_type = \"t3.micro\"\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_instance.web"
+        ],
+        "changes": [
+          {
+            "address": "aws_instance.web",
+            "action": "replace",
+            "confidence": "likely",
+            "actionReasonContains": "replace_because_cannot_update",
+            "after": {
+              "instance_type": "t3.micro"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 11 codex: changing a data source argument changes the computed attributes dependents read [2]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_ami\" \"image\" {\n  most_recent = true\n  filter {\n    name   = \"name\"\n    values = [\"amzn2-ami-*\"]\n  }\n}\nresource \"aws_instance\" \"web\" {\n  ami           = data.aws_ami.image.id\n  instance_type = \"t3.micro\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_ami\" \"image\" {\n  most_recent = true\n  filter {\n    name   = \"name\"\n    values = [\"amzn2-ami-*\"]\n  }\n}\nresource \"aws_instance\" \"web\" {\n  ami           = data.aws_ami.image.id\n  instance_type = \"t3.micro\"\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "changes": [
+          {
+            "address": "aws_instance.web",
+            "action": "no-op",
+            "confidence": "proven"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 11 codex: a string \"true\" force_destroy is true: deleting the bucket loses its objects",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket        = \"data\"\n  force_destroy = \"true\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete aws_s3_bucket.b"
+        ],
+        "changes": [
+          {
+            "address": "aws_s3_bucket.b",
+            "action": "delete",
+            "confidence": "proven"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_s3_bucket.b",
+            "action": "delete",
+            "severity": "CRITICAL",
+            "dataLoss": true,
+            "reasonContains": "Deletes aws_s3_bucket: loses the objects in the bucket"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "block",
+          "reasonsContain": [
+            "CRITICAL: aws_s3_bucket.b: Deletes aws_s3_bucket: loses the objects in the bucket"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 11 codex: string booleans and numbers count in policy rules too",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_db_instance\" \"db\" {\n  identifier          = \"db\"\n  publicly_accessible = \"true\"\n  storage_encrypted   = \"true\"\n  deletion_protection = \"true\"\n}\nresource \"aws_security_group_rule\" \"s\" {\n  type              = \"ingress\"\n  security_group_id = \"sg-1\"\n  from_port         = \"443\"\n  to_port           = \"443\"\n  protocol          = \"tcp\"\n  cidr_blocks       = [\"0.0.0.0/0\"]\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_db_instance.db",
+          "create aws_security_group_rule.s"
+        ],
+        "changes": [
+          {
+            "address": "aws_db_instance.db",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "identifier": "db",
+              "publicly_accessible": "true",
+              "storage_encrypted": "true",
+              "deletion_protection": "true"
+            }
+          },
+          {
+            "address": "aws_security_group_rule.s",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "type": "ingress",
+              "security_group_id": "sg-1",
+              "from_port": "443",
+              "to_port": "443",
+              "protocol": "tcp",
+              "cidr_blocks": [
+                "0.0.0.0/0"
+              ]
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "rds.encryption",
+            "resource": "aws_db_instance.db",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "Storage encrypted"
+          },
+          {
+            "ruleId": "rds.public",
+            "resource": "aws_db_instance.db",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Database is publicly accessible"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_db_instance.db",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_db_instance"
+          },
+          {
+            "resource": "aws_security_group_rule.s",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_security_group_rule"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0,
+          "items": [
+            {
+              "resource": "aws_db_instance.db",
+              "kind": "fixed",
+              "noteContains": "Fixed charge, size not known statically"
+            }
+          ]
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL rds.public: aws_db_instance.db: Database is publicly accessible"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 11 codex: an unresolved count becoming 0 is not a proven delete",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"enabled\" {}\nresource \"aws_dynamodb_table\" \"t\" {\n  count    = var.enabled ? 1 : 0\n  name     = \"t\"\n  hash_key = \"id\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"enabled\" {}\nresource \"aws_dynamodb_table\" \"t\" {\n  count    = 0\n  name     = \"t\"\n  hash_key = \"id\"\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete aws_dynamodb_table.t[*]"
+        ],
+        "changes": [
+          {
+            "address": "aws_dynamodb_table.t[*]",
+            "action": "delete",
+            "confidence": "likely",
+            "actionReasonContains": "count or for_each of aws_dynamodb_table.t was not known statically at base, so instances may already have been absent"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_dynamodb_table.t[*]",
+            "action": "delete",
+            "severity": "HIGH",
+            "dataLoss": true,
+            "reasonContains": "Possibly deletes aws_dynamodb_table: loses the items in the table (count or for_each of aws_dynamodb_table.t was not known statically at base, so instances may already have been absent)"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "HIGH: aws_dynamodb_table.t[*]: Possibly deletes aws_dynamodb_table: loses the items in the table (count or for_each of aws_dynamodb_table.t was not known statically at base, so instances may already have been absent)"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 11 codex: editing the content of a dynamic block over an unresolved collection is a change [1]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"ports\" {}\nresource \"aws_security_group\" \"s\" {\n  name = \"s\"\n  dynamic \"ingress\" {\n    for_each = var.ports\n    content {\n      from_port   = ingress.value\n      to_port     = ingress.value\n      protocol    = \"tcp\"\n      cidr_blocks = [\"10.0.0.0/8\"]\n    }\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"ports\" {}\nresource \"aws_security_group\" \"s\" {\n  name = \"s\"\n  dynamic \"ingress\" {\n    for_each = var.ports\n    content {\n      from_port   = ingress.value\n      to_port     = ingress.value\n      protocol    = \"tcp\"\n      cidr_blocks = [\"0.0.0.0/0\"]\n    }\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "update aws_security_group.s"
+        ],
+        "changes": [
+          {
+            "address": "aws_security_group.s",
+            "action": "update",
+            "confidence": "likely",
+            "after": {
+              "name": "s"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 11 codex: editing the content of a dynamic block over an unresolved collection is a change [2]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"ports\" {}\nresource \"aws_security_group\" \"s\" {\n  name = \"s\"\n  dynamic \"ingress\" {\n    for_each = var.ports\n    content {\n      from_port   = ingress.value\n      to_port     = ingress.value\n      protocol    = \"tcp\"\n      cidr_blocks = [\"10.0.0.0/8\"]\n    }\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"ports\" {}\nresource \"aws_security_group\" \"s\" {\n  name = \"s\"\n  dynamic \"ingress\" {\n    for_each = var.ports\n    content {\n      from_port   = ingress.value\n      to_port     = ingress.value\n      protocol    = \"tcp\"\n      cidr_blocks = [\"10.0.0.0/8\"]\n    }\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "changes": [
+          {
+            "address": "aws_security_group.s",
+            "action": "no-op",
+            "confidence": "proven"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 11 codex: a splat over an unknown collection keeps the projected attribute in its identity [1]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"rules\" {}\nresource \"aws_security_group_rule\" \"s\" {\n  type              = \"ingress\"\n  security_group_id = \"sg-1\"\n  from_port         = 22\n  to_port           = 22\n  protocol          = \"tcp\"\n  cidr_blocks       = var.rules[*].private_cidr\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"rules\" {}\nresource \"aws_security_group_rule\" \"s\" {\n  type              = \"ingress\"\n  security_group_id = \"sg-1\"\n  from_port         = 22\n  to_port           = 22\n  protocol          = \"tcp\"\n  cidr_blocks       = var.rules[*].public_cidr\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_security_group_rule.s"
+        ],
+        "changes": [
+          {
+            "address": "aws_security_group_rule.s",
+            "action": "replace",
+            "confidence": "likely",
+            "actionReasonContains": "replace_because_cannot_update",
+            "after": {
+              "type": "ingress",
+              "security_group_id": "sg-1",
+              "from_port": 22,
+              "to_port": 22,
+              "protocol": "tcp"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 11 codex: a splat over an unknown collection keeps the projected attribute in its identity [2]",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"rules\" {}\nresource \"aws_security_group_rule\" \"s\" {\n  type              = \"ingress\"\n  security_group_id = \"sg-1\"\n  from_port         = 22\n  to_port           = 22\n  protocol          = \"tcp\"\n  cidr_blocks       = var.rules[*].private_cidr\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"rules\" {}\nresource \"aws_security_group_rule\" \"s\" {\n  type              = \"ingress\"\n  security_group_id = \"sg-1\"\n  from_port         = 22\n  to_port           = 22\n  protocol          = \"tcp\"\n  cidr_blocks       = var.rules[*].private_cidr\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [],
+        "changes": [
+          {
+            "address": "aws_security_group_rule.s",
+            "action": "no-op",
+            "confidence": "proven"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "plan",
+      "name": "round 11 codex: in a plan, a policy that references one of several policy documents is not judged by another",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "data.aws_iam_policy_document.d[0]",
+            "mode": "data",
+            "type": "aws_iam_policy_document",
+            "name": "d",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "read"
+              ],
+              "before": {},
+              "after": {
+                "json": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"s3:GetObject\",\"Resource\":\"arn:aws:s3:::b/*\"}]}"
+              },
+              "after_unknown": {},
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          },
+          {
+            "address": "data.aws_iam_policy_document.d[1]",
+            "mode": "data",
+            "type": "aws_iam_policy_document",
+            "name": "d",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "read"
+              ],
+              "before": {},
+              "after": {},
+              "after_unknown": {
+                "json": true
+              },
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          },
+          {
+            "address": "aws_iam_policy.p",
+            "mode": "managed",
+            "type": "aws_iam_policy",
+            "name": "p",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+              "actions": [
+                "create"
+              ],
+              "before": null,
+              "after": {
+                "name": "p"
+              },
+              "after_unknown": {
+                "policy": true
+              },
+              "before_sensitive": false,
+              "after_sensitive": {}
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": [
+              {
+                "address": "aws_iam_policy.p",
+                "mode": "managed",
+                "type": "aws_iam_policy",
+                "name": "p",
+                "expressions": {
+                  "policy": {
+                    "references": [
+                      "data.aws_iam_policy_document.d"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_iam_policy.p"
+        ],
+        "changes": [
+          {
+            "address": "data.aws_iam_policy_document.d[0]",
+            "action": "read",
+            "confidence": "proven",
+            "mode": "data"
+          },
+          {
+            "address": "data.aws_iam_policy_document.d[1]",
+            "action": "read",
+            "confidence": "proven",
+            "mode": "data"
+          },
+          {
+            "address": "aws_iam_policy.p",
+            "action": "create",
+            "confidence": "proven",
+            "references": {
+              "policy": [
+                "data.aws_iam_policy_document.d"
+              ]
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "iam.least-privilege",
+            "resource": "aws_iam_policy.p",
+            "status": "UNKNOWN",
+            "preExisting": null,
+            "detailContains": "Policy document not available: known after apply"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_iam_policy.p",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_iam_policy"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 11 codex: optional defaults apply inside a sensitive object input",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"m\" {\n  source   = \"./m\"\n  settings = sensitive({ host = \"h\" })\n}\n",
+        "r/m/main.tf": "variable \"settings\" {\n  type = object({\n    host  = string\n    cidrs = optional(list(string), [\"0.0.0.0/0\"])\n  })\n}\nresource \"aws_security_group_rule\" \"s\" {\n  type              = \"ingress\"\n  security_group_id = \"sg-1\"\n  from_port         = 22\n  to_port           = 22\n  protocol          = \"tcp\"\n  cidr_blocks       = try(var.settings.cidrs, [])\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create module.m.aws_security_group_rule.s"
+        ],
+        "changes": [
+          {
+            "address": "module.m.aws_security_group_rule.s",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "type": "ingress",
+              "security_group_id": "sg-1",
+              "from_port": 22,
+              "to_port": 22,
+              "protocol": "tcp"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "network.open-ingress",
+            "resource": "module.m.aws_security_group_rule.s",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Allows ports 22 from (sensitive)"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "module.m.aws_security_group_rule.s",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_security_group_rule"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 0
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL network.open-ingress: module.m.aws_security_group_rule.s: Allows ports 22 from (sensitive)"
+          ]
+        }
+      }
+    }
+  ]
+}

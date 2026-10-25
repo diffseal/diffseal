@@ -1,0 +1,63 @@
+{
+  "suite": "reconcile/round12codex",
+  "description": "Executable specification fixtures exported from src/reconcile/round12codex.test.ts",
+  "cases": [
+    {
+      "kind": "reconcile",
+      "name": "round12codex: a for_each bucket is checked against its own encryption helper, not the first one (round 12 codex)",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  names = toset([\"a\", \"b\"])\n}\nresource \"aws_kms_key\" \"k\" {\n  for_each = local.names\n}\nresource \"aws_s3_bucket\" \"b\" {\n  for_each = local.names\n  bucket   = \"data-${each.key}\"\n}\nresource \"aws_s3_bucket_server_side_encryption_configuration\" \"e\" {\n  for_each = local.names\n  bucket   = aws_s3_bucket.b[each.key].bucket\n  rule {\n    apply_server_side_encryption_by_default {\n      sse_algorithm     = \"aws:kms\"\n      kms_master_key_id = aws_kms_key.k[each.key].arn\n    }\n  }\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::data-b/*\" }, { Effect = \"Allow\", Action = \"kms:Decrypt\", Resource = aws_kms_key.k[\"a\"].arn }] })\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "s3",
+          "actions": [
+            "s3:GetObject"
+          ],
+          "resource": {
+            "kind": "literal",
+            "value": "data-b"
+          }
+        }
+      ],
+      "options": {
+        "roleNames": [
+          "r"
+        ]
+      },
+      "expect": {
+        "exactStatuses": [
+          "GRANTED",
+          "NOT_GRANTED"
+        ],
+        "links": [
+          {
+            "status": "GRANTED",
+            "access": "s3:GetObject on data-b",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "role r allows it (aws_iam_role_policy.p, infra/prod/main.tf:28)"
+          },
+          {
+            "status": "NOT_GRANTED",
+            "access": "kms:Decrypt on aws_kms_key.k[\"b\"], the customer managed key of data-b",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "data-b is encrypted with aws_kms_key.k[\"b\"], and role r may not use it, so s3:GetObject fails with AccessDenied.",
+            "suggestion": {
+              "file": "infra/prod/main.tf",
+              "target": "aws_iam_role_policy.p",
+              "code": "{\n  Effect   = \"Allow\"\n  Action   = [\"kms:Decrypt\"]\n  Resource = [aws_kms_key.k[\"b\"].arn]\n}"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

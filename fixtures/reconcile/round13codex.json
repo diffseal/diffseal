@@ -1,0 +1,359 @@
+{
+  "suite": "reconcile/round13codex",
+  "description": "Executable specification fixtures exported from src/reconcile/round13codex.test.ts",
+  "cases": [
+    {
+      "kind": "reconcile",
+      "name": "round 13 codex and gemini (reconcile, app, policy): an S3 pattern without a path matches object ARNs: a Deny on arn:aws:s3:::* denies GetObject [1]",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::exports-prod/*\" }, { Effect = \"Deny\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::*\" }] })\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "s3",
+          "actions": [
+            "s3:GetObject"
+          ],
+          "resource": {
+            "kind": "literal",
+            "value": "arn:aws:s3:::exports-prod/report.csv"
+          }
+        }
+      ],
+      "options": {
+        "roleNames": [
+          "r"
+        ]
+      },
+      "expect": {
+        "exactStatuses": [
+          "NOT_GRANTED"
+        ],
+        "links": [
+          {
+            "status": "NOT_GRANTED",
+            "access": "s3:GetObject on arn:aws:s3:::exports-prod/report.csv",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "role r explicitly denies s3:GetObject on arn:aws:s3:::exports-prod/report.csv (aws_iam_role_policy.p)"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "reconcile",
+      "name": "round 13 codex and gemini (reconcile, app, policy): an S3 pattern without a path matches object ARNs: a Deny on arn:aws:s3:::* denies GetObject [2]",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::exports-*\" }] })\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "s3",
+          "actions": [
+            "s3:GetObject"
+          ],
+          "resource": {
+            "kind": "literal",
+            "value": "arn:aws:s3:::exports-prod/report.csv"
+          }
+        }
+      ],
+      "options": {
+        "roleNames": [
+          "r"
+        ]
+      },
+      "expect": {
+        "exactStatuses": [
+          "GRANTED"
+        ],
+        "links": [
+          {
+            "status": "GRANTED",
+            "access": "s3:GetObject on arn:aws:s3:::exports-prod/report.csv",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "role r allows it (aws_iam_role_policy.p, infra/prod/main.tf:8)"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "reconcile",
+      "name": "round 13 codex and gemini (reconcile, app, policy): an S3 pattern without a path matches object ARNs: a Deny on arn:aws:s3:::* denies GetObject [3]",
+      "infra": {
+        "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"r\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  role   = aws_iam_role.r.name\n  policy = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::*-prod\" }] })\n}\n"
+      },
+      "roots": [
+        "infra/prod"
+      ],
+      "facts": [
+        {
+          "operation": "Op",
+          "file": "app.go",
+          "line": 1,
+          "service": "s3",
+          "actions": [
+            "s3:GetObject"
+          ],
+          "resource": {
+            "kind": "literal",
+            "value": "arn:aws:s3:::exports-prod/report.csv"
+          }
+        }
+      ],
+      "options": {
+        "roleNames": [
+          "r"
+        ]
+      },
+      "expect": {
+        "exactStatuses": [
+          "NOT_GRANTED"
+        ],
+        "links": [
+          {
+            "status": "NOT_GRANTED",
+            "access": "s3:GetObject on arn:aws:s3:::exports-prod/report.csv",
+            "role": "aws_iam_role.r",
+            "root": "infra/prod",
+            "detailContains": "role r does not allow s3:GetObject on arn:aws:s3:::exports-prod/report.csv, so the call fails with AccessDenied when it runs under this role. Add a statement to aws_iam_role_policy.p (infra/prod/main.tf:8).",
+            "suggestion": {
+              "file": "infra/prod/main.tf",
+              "target": "aws_iam_role_policy.p",
+              "code": "{\n  Effect   = \"Allow\"\n  Action   = [\"s3:GetObject\"]\n  Resource = [\"arn:aws:s3:::exports-prod/report.csv\"]\n}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "app",
+      "name": "round 13 codex and gemini (reconcile, app, policy): a Python reassignment inside an if makes the value conditional",
+      "files": {
+        "h.py": "import boto3\ns3 = boto3.client(\"s3\")\n\ndef handler(flag):\n    bucket = \"primary\"\n    if flag:\n        bucket = \"secondary\"\n    s3.get_object(Bucket=bucket, Key=\"k\")\n"
+      },
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "unresolved",
+            "text": "bucket"
+          }
+        ],
+        "facts": [
+          {
+            "service": "s3",
+            "operation": "GetObject",
+            "actions": [
+              "s3:GetObject"
+            ],
+            "resource": {
+              "kind": "unresolved",
+              "text": "bucket"
+            },
+            "file": "h.py"
+          }
+        ],
+        "envReads": []
+      }
+    },
+    {
+      "kind": "app",
+      "name": "round 13 codex and gemini (reconcile, app, policy): boto3 transfer helpers map to the S3 actions they use",
+      "files": {
+        "h.py": "import boto3\ns3 = boto3.client(\"s3\")\ns3.upload_file(Filename=\"a\", Bucket=\"up\", Key=\"k\")\ns3.download_file(Bucket=\"down\", Key=\"k\", Filename=\"a\")\ns3.copy(CopySource={\"Bucket\": \"src\", \"Key\": \"k\"}, Bucket=\"dst\", Key=\"k\")\n"
+      },
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "literal",
+            "value": "up"
+          },
+          {
+            "kind": "literal",
+            "value": "down"
+          },
+          {
+            "kind": "literal",
+            "value": "dst"
+          },
+          {
+            "kind": "literal",
+            "value": "src"
+          }
+        ],
+        "facts": [
+          {
+            "service": "s3",
+            "operation": "PutObject",
+            "actions": [
+              "s3:PutObject"
+            ],
+            "resource": {
+              "kind": "literal",
+              "value": "up"
+            },
+            "file": "h.py"
+          },
+          {
+            "service": "s3",
+            "operation": "GetObject",
+            "actions": [
+              "s3:GetObject"
+            ],
+            "resource": {
+              "kind": "literal",
+              "value": "down"
+            },
+            "file": "h.py"
+          },
+          {
+            "service": "s3",
+            "operation": "Copy",
+            "actions": [
+              "s3:PutObject"
+            ],
+            "resource": {
+              "kind": "literal",
+              "value": "dst"
+            },
+            "file": "h.py"
+          },
+          {
+            "service": "s3",
+            "operation": "GetObject",
+            "actions": [
+              "s3:GetObject"
+            ],
+            "resource": {
+              "kind": "literal",
+              "value": "src"
+            },
+            "file": "h.py"
+          }
+        ],
+        "envReads": []
+      }
+    },
+    {
+      "kind": "app",
+      "name": "round 13 codex and gemini (reconcile, app, policy): a boto3 method with no known IAM action is not invented",
+      "files": {
+        "h.py": "import boto3\ns3 = boto3.client(\"s3\")\ns3.generate_presigned_url(\"get_object\", Params={\"Bucket\": \"b\"})\n"
+      },
+      "expect": {
+        "exactResources": [],
+        "facts": [],
+        "envReads": []
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 13 codex and gemini (reconcile, app, policy): inline bucket encryption with a referenced customer key is PASS, not UNKNOWN",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_kms_key\" \"k\" {}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"b\"\n  server_side_encryption_configuration {\n    rule {\n      apply_server_side_encryption_by_default {\n        sse_algorithm     = \"aws:kms\"\n        kms_master_key_id = aws_kms_key.k.arn\n      }\n    }\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_kms_key.k",
+          "create aws_s3_bucket.b"
+        ],
+        "changes": [
+          {
+            "address": "aws_kms_key.k",
+            "action": "create",
+            "confidence": "proven"
+          },
+          {
+            "address": "aws_s3_bucket.b",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "bucket": "b"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "kms.rotation",
+            "resource": "aws_kms_key.k",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Automatic key rotation disabled"
+          },
+          {
+            "ruleId": "s3.encryption",
+            "resource": "aws_s3_bucket.b",
+            "status": "PASS",
+            "preExisting": null,
+            "detailContains": "SSE-KMS with a customer managed KMS key"
+          },
+          {
+            "ruleId": "s3.public-access",
+            "resource": "aws_s3_bucket.b",
+            "status": "UNKNOWN",
+            "preExisting": null,
+            "detailContains": "No bucket-level public access block. New buckets block public access by default since April 2023 and an account-level block may apply, but neither is visible here"
+          },
+          {
+            "ruleId": "s3.versioning",
+            "resource": "aws_s3_bucket.b",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "Object versioning not enabled"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_kms_key.k",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_kms_key"
+          },
+          {
+            "resource": "aws_s3_bucket.b",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_s3_bucket"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 1,
+          "items": [
+            {
+              "resource": "aws_kms_key.k",
+              "kind": "fixed",
+              "noteContains": "$1/month per key + $0.03 per 10k requests"
+            },
+            {
+              "resource": "aws_s3_bucket.b",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            }
+          ]
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL kms.rotation: aws_kms_key.k: Automatic key rotation disabled"
+          ]
+        }
+      }
+    }
+  ]
+}
