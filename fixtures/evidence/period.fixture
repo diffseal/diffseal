@@ -1,0 +1,33 @@
+{
+  "commits": [
+    {
+      "date": "2026-09-30T12:00:00Z",
+      "subject": "Baseline",
+      "files": {
+        "infra/prod/main.tf": "terraform {\n backend \"s3\" {}\n}\nresource \"aws_db_instance\" \"db\" {\n identifier=\"orders\"\n instance_class=\"db.t3.micro\"\n storage_encrypted=true\n}\nresource \"aws_security_group\" \"web\" {\n name=\"web\"\n ingress {\n  from_port=22\n  to_port=22\n  protocol=\"tcp\"\n  cidr_blocks=[\"10.0.0.0/8\"]\n }\n}\n",
+        ".terratrust.json": "{\"exceptions\": [{\"rule\": \"network.open-ingress\", \"resource\": \"aws_security_group.web\", \"reason\": \"Approved public endpoint\", \"owner\": \"Platform\", \"expires\": \"2026-11-01\"}]}"
+      }
+    },
+    {
+      "date": "2026-10-01T12:00:00Z",
+      "subject": "Change encryption and public ingress",
+      "files": {
+        "infra/prod/main.tf": "terraform {\n backend \"s3\" {}\n}\nresource \"aws_db_instance\" \"db\" {\n identifier=\"orders\"\n instance_class=\"db.t3.micro\"\n storage_encrypted=false\n}\nresource \"aws_security_group\" \"web\" {\n name=\"web\"\n ingress {\n  from_port=22\n  to_port=22\n  protocol=\"tcp\"\n  cidr_blocks=[\"0.0.0.0/0\"]\n }\n}\n"
+      }
+    },
+    {
+      "date": "2026-10-02T12:00:00Z",
+      "subject": "Document service",
+      "files": {
+        "README.md": "Synthetic evidence fixture\n"
+      }
+    },
+    {
+      "date": "2026-10-03T00:00:00Z",
+      "subject": "Outside the exclusive period",
+      "files": {
+        "README.md": "Outside period\n"
+      }
+    }
+  ]
+}
