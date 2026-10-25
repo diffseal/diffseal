@@ -1,0 +1,42 @@
+name: Bug report
+description: Report a crash, parser error or unexpected result.
+body:
+  - type: markdown
+    attributes:
+      value: Remove credentials, secrets and private source before posting. Follow SECURITY.md for vulnerabilities.
+  - type: input
+    id: version
+    attributes:
+      label: TerraTrust version
+      description: Include the version, Action commit or source commit you used.
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command or Action configuration
+      description: Include the arguments and relevant inputs.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: snippet
+    attributes:
+      label: Minimal reproduction
+      description: Include a small synthetic Terraform or application snippet and any required configuration.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+      description: Include the error or report text.
+    validations:
+      required: true

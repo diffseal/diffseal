@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/TerraTrust/terratrust/blob/main/SECURITY.md
+    about: Follow the private reporting instructions in SECURITY.md. Do not disclose vulnerabilities in a public issue.
