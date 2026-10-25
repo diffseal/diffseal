@@ -9,3 +9,4 @@ examples/output/*dry-runs*/
 !dist/
 dist/*
 !dist/action.js
+!dist/*.wasm

@@ -1,0 +1,216 @@
+{
+  "suite": "app/tree-sitter",
+  "cases": [
+    {
+      "kind": "app",
+      "name": "tree-sitter: a command receives a bound object",
+      "files": {
+        "a.ts": "import { PutObjectCommand } from \"@aws-sdk/client-s3\";\nconst input = {\n Bucket: \"uploads\",\n Key: \"k\",\n};\nnew PutObjectCommand(input);\n"
+      },
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "literal",
+            "value": "uploads"
+          }
+        ],
+        "facts": [
+          {
+            "service": "s3",
+            "operation": "PutObject",
+            "actions": [
+              "s3:PutObject"
+            ],
+            "file": "a.ts"
+          }
+        ],
+        "envReads": []
+      }
+    },
+    {
+      "kind": "app",
+      "name": "tree-sitter: Go source-looking strings are not SDK calls",
+      "files": {
+        "main.go": "package main\nimport \"github.com/aws/aws-sdk-go-v2/service/s3\"\nfunc f() {\n _ = `s3.GetObjectInput{Bucket: aws.String(\"fake\")}`\n _ = &s3.PutObjectInput{Bucket: aws.String(\n  \"uploads\",\n )}\n}\n"
+      },
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "literal",
+            "value": "uploads"
+          }
+        ],
+        "facts": [
+          {
+            "service": "s3",
+            "operation": "PutObject",
+            "actions": [
+              "s3:PutObject"
+            ]
+          }
+        ],
+        "envReads": []
+      }
+    },
+    {
+      "kind": "app",
+      "name": "tree-sitter: transaction items have separate permissions and tables",
+      "files": {
+        "a.ts": "import { TransactWriteItemsCommand } from \"@aws-sdk/client-dynamodb\";\nnew TransactWriteItemsCommand({TransactItems: [\n {Put: {TableName: \"orders\", Item: {}}},\n {Delete: {TableName: \"old-orders\", Key: {}}},\n]});\n"
+      },
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "literal",
+            "value": "orders"
+          },
+          {
+            "kind": "literal",
+            "value": "old-orders"
+          }
+        ],
+        "facts": [
+          {
+            "service": "dynamodb",
+            "operation": "PutItem",
+            "actions": [
+              "dynamodb:PutItem"
+            ]
+          },
+          {
+            "service": "dynamodb",
+            "operation": "DeleteItem",
+            "actions": [
+              "dynamodb:DeleteItem"
+            ]
+          }
+        ],
+        "envReads": []
+      }
+    },
+    {
+      "kind": "app",
+      "name": "tree-sitter: transaction items have separate permissions and tables (go)",
+      "files": {
+        "a.go": "package p\nimport \"github.com/aws/aws-sdk-go-v2/service/dynamodb\"\nfunc f(){ _ = &dynamodb.TransactWriteItemsInput{TransactItems: []types.TransactWriteItem{\n {Put: &types.Put{TableName: aws.String(\"orders\")}},\n {Delete: &types.Delete{TableName: aws.String(\"old-orders\")}},\n}} }\n"
+      },
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "literal",
+            "value": "orders"
+          },
+          {
+            "kind": "literal",
+            "value": "old-orders"
+          }
+        ],
+        "facts": [
+          {
+            "service": "dynamodb",
+            "operation": "PutItem",
+            "actions": [
+              "dynamodb:PutItem"
+            ]
+          },
+          {
+            "service": "dynamodb",
+            "operation": "DeleteItem",
+            "actions": [
+              "dynamodb:DeleteItem"
+            ]
+          }
+        ],
+        "envReads": []
+      }
+    },
+    {
+      "kind": "app",
+      "name": "tree-sitter: transaction items have separate permissions and tables (py)",
+      "files": {
+        "a.py": "import boto3\nc = boto3.client(\n \"dynamodb\",\n)\nc.transact_write_items(TransactItems=[\n {\"Put\": {\"TableName\": \"orders\", \"Item\": {}}},\n {\"Delete\": {\"TableName\": \"old-orders\", \"Key\": {}}},\n])\n"
+      },
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "literal",
+            "value": "orders"
+          },
+          {
+            "kind": "literal",
+            "value": "old-orders"
+          }
+        ],
+        "facts": [
+          {
+            "service": "dynamodb",
+            "operation": "PutItem",
+            "actions": [
+              "dynamodb:PutItem"
+            ]
+          },
+          {
+            "service": "dynamodb",
+            "operation": "DeleteItem",
+            "actions": [
+              "dynamodb:DeleteItem"
+            ]
+          }
+        ],
+        "envReads": []
+      }
+    },
+    {
+      "kind": "app",
+      "name": "tree-sitter: an opaque transaction helper cannot guess a table from its caller",
+      "goModule": "example.com/app",
+      "entryFiles": [
+        "cmd/main.go"
+      ],
+      "files": {
+        "lib/write.go": "package lib\nimport \"github.com/aws/aws-sdk-go-v2/service/dynamodb\"\nfunc Write(owner string){ _ = &dynamodb.TransactWriteItemsInput{TransactItems: items} }\n",
+        "cmd/main.go": "package main\nimport \"example.com/app/lib\"\nfunc main(){lib.Write(\"orders\")}\n"
+      },
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "unresolved",
+            "text": "arguments of lib.Write"
+          }
+        ],
+        "facts": [
+          {
+            "service": "dynamodb",
+            "operation": "TransactWriteItems"
+          }
+        ],
+        "envReads": []
+      }
+    },
+    {
+      "kind": "app",
+      "name": "tree-sitter: a transaction condition check uses its IAM-only action",
+      "files": {
+        "a.ts": "import { TransactWriteItemsCommand } from \"@aws-sdk/client-dynamodb\";\nnew TransactWriteItemsCommand({TransactItems:[{ConditionCheck:{TableName:\"orders\",Key:{}}}]});\n"
+      },
+      "expect": {
+        "exactResources": [
+          {
+            "kind": "literal",
+            "value": "orders"
+          }
+        ],
+        "facts": [
+          {
+            "service": "dynamodb",
+            "operation": "ConditionCheckItem",
+            "actions": [
+              "dynamodb:ConditionCheckItem"
+            ]
+          }
+        ],
+        "envReads": []
+      }
+    }
+  ]
+}

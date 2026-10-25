@@ -1,13 +1,30 @@
+import { transactionFacts } from './transactions.js';
 import * as path from 'node:path';
-import { COPY_OPERATIONS, RESOURCE_FIELDS, actionsFor, copySourceBucket, formatToGlob, serviceHint } from './actions.js';
+import {
+  COPY_OPERATIONS,
+  RESOURCE_FIELDS,
+  actionsFor,
+  conservativeFact,
+  copySourceBucket,
+  serviceHint,
+} from './actions.js';
 import type { AccessFact, AddedLines, AppScan, EnvRead, ResourceRef } from './facts.js';
-import { visibleInBlocks } from './scope.js';
+import {
+  syntax,
+  clearSyntax,
+  children,
+  field as nodeField,
+  args as callArgs,
+  callable,
+  member,
+  literal,
+  unwrapped,
+  expressionRef,
+  isCall,
+  type Node,
+} from './syntax.js';
 
-/*
- * Go extraction for the AWS SDK (v2, and v1 package paths). It is lexical, not type-checked: it finds
- * `&svc.OperationInput{...}` literals, reads the resource field, and follows simple local data flow
- * (literals, fmt.Sprintf, env reads, local assignments). Anything else is reported as unresolved.
- */
+/** AWS input literals and same-repository helper summaries, read from Go syntax trees. */
 
 export interface SourceFile {
   path: string;
@@ -18,153 +35,23 @@ const SDK_PACKAGE = /^github\.com\/aws\/aws-sdk-go(?:-v2)?\/service\/([a-z0-9]+)
 
 export function parseImports(src: string): Map<string, string> {
   const out = new Map<string, string>();
-  const add = (alias: string | undefined, p: string) => {
-    if (alias === '_' || alias === '.') return;
-    const segs = p.split('/');
-    let name = segs[segs.length - 1];
-    if (/^v\d+$/.test(name) && segs.length > 1) name = segs[segs.length - 2];
+  for (const n of syntax('go', src).nodes) {
+    if (n.type !== 'import_spec') continue;
+    const p = literal(nodeField(n, 'path')),
+      alias = nodeField(n, 'name')?.text;
+    if (!p || alias === '_' || alias === '.') continue;
+    const segments = p.split('/');
+    let name = segments.at(-1)!;
+    if (/^v\d+$/.test(name)) name = segments.at(-2)!;
     out.set(alias ?? name.replace(/[^A-Za-z0-9_]/g, ''), p);
-  };
-  for (const m of src.matchAll(/^import\s+(?:([A-Za-z_.]\w*)\s+)?"([^"]+)"/gm)) add(m[1], m[2]);
-  for (const block of src.matchAll(/^import\s*\(([\s\S]*?)^\)/gm)) {
-    for (const m of block[1].matchAll(/^\s*(?:([A-Za-z_.]\w*)\s+)?"([^"]+)"/gm)) add(m[1], m[2]);
-  }
-  return out;
-}
-
-/** Index of the matching closing brace, skipping strings, runes and comments. */
-export function matchBrace(src: string, open: number): number {
-  let depth = 0;
-  for (let i = open; i < src.length; i++) {
-    const c = src[i];
-    if (c === '"' || c === "'") {
-      for (i++; i < src.length && src[i] !== c; i++) if (src[i] === '\\') i++;
-    } else if (c === '`') {
-      i = src.indexOf('`', i + 1);
-      if (i < 0) return src.length - 1;
-    } else if (c === '/' && src[i + 1] === '/') {
-      i = src.indexOf('\n', i);
-      if (i < 0) return src.length - 1;
-    } else if (c === '/' && src[i + 1] === '*') {
-      i = src.indexOf('*/', i + 2) + 1;
-      if (i <= 0) return src.length - 1;
-    } else if (c === '{') depth++;
-    else if (c === '}' && --depth === 0) return i;
-  }
-  return src.length - 1;
-}
-
-/** Split at top-level commas (outside (), [], {}, strings). */
-export function splitTopLevel(s: string, sep = ','): string[] {
-  const parts: string[] = [];
-  let depth = 0;
-  let start = 0;
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (c === '"' || c === "'") {
-      for (i++; i < s.length && s[i] !== c; i++) if (s[i] === '\\') i++;
-    } else if (c === '`') {
-      const j = s.indexOf('`', i + 1);
-      i = j < 0 ? s.length : j;
-    } else if ('([{'.includes(c)) depth++;
-    else if (')]}'.includes(c)) depth--;
-    else if (c === sep && depth === 0) {
-      parts.push(s.slice(start, i));
-      start = i + 1;
-    }
-  }
-  parts.push(s.slice(start));
-  return parts.map((p) => p.trim()).filter(Boolean);
-}
-
-/** The expression with string contents and everything inside brackets blanked, offsets kept: its top level. */
-export function topLevelOnly(s: string): string {
-  let out = '';
-  let depth = 0;
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (c === '"' || c === "'" || c === '`') {
-      let j = i + 1;
-      while (j < s.length && s[j] !== c) j += s[j] === '\\' ? 2 : 1;
-      out += ' '.repeat(Math.min(j, s.length - 1) - i + 1);
-      i = j;
-    } else if ('([{'.includes(c)) {
-      depth++;
-      out += ' ';
-    } else if (')]}'.includes(c)) {
-      depth--;
-      out += ' ';
-    } else out += depth > 0 ? ' ' : c;
   }
   return out;
 }
 
 const lineAt = (src: string, offset: number) => src.slice(0, offset).split('\n').length;
 
-function unquote(lit: string): string | undefined {
-  if (/^"(?:[^"\\]|\\.)*"$/.test(lit)) {
-    try {
-      return JSON.parse(lit);
-    } catch {
-      return lit.slice(1, -1);
-    }
-  }
-  if (/^`[^`]*`$/.test(lit)) return lit.slice(1, -1);
-  return undefined;
-}
-
-// The whole expression: `os.Getenv("X") + "-y"` is not the env value.
-// A default that is not a literal (`getEnv("TABLE", defaultTable)`, `envOr("B", cfg.Bucket)`) is not a
-// known value, but the call is still the env read.
-const ENV_CALL = /^(?:os\.Getenv|os\.LookupEnv|[\w.]*[Ee]nv[\w.]*)\(\s*(?:ctx\s*,\s*)?"([A-Za-z_][A-Za-z0-9_]*)"(?:\s*,\s*(?:"((?:[^"\\]|\\.)*)"|[\w.]+))?\s*\)$/;
-
-/** Follow an expression to a literal, pattern or env var, looking backwards for local assignments. */
-export function classifyGoExpr(expr: string, src: string, offset: number, depth = 0): ResourceRef {
-  let e = expr.trim();
-  for (let changed = true; changed; ) {
-    changed = false;
-    const m = e.match(/^(?:aws\.String|aws\.ToString|strings\.TrimSpace|string|new)\(([\s\S]*)\)$/) ?? e.match(/^&([\s\S]+)$/) ?? e.match(/^\(([\s\S]*)\)$/);
-    if (m) {
-      e = m[1].trim();
-      changed = true;
-    }
-  }
-  const lit = unquote(e);
-  if (lit !== undefined) return { kind: 'literal', value: lit };
-  const sprintf = e.match(/^fmt\.Sprintf\(\s*("(?:[^"\\]|\\.)*")/);
-  if (sprintf) return { kind: 'pattern', glob: formatToGlob(unquote(sprintf[1]) ?? '') };
-  const env = e.match(ENV_CALL);
-  if (env) return env[2] ? { kind: 'env', name: env[1], fallback: env[2] } : { kind: 'env', name: env[1] };
-
-  const parts = splitTopLevel(e, '+');
-  if (parts.length > 1) {
-    const pieces = parts.map((p) => classifyGoExpr(p, src, offset, depth + 1));
-    if (pieces.some((p) => p.kind === 'literal')) {
-      return { kind: 'pattern', glob: pieces.map((p) => (p.kind === 'literal' ? p.value : p.kind === 'pattern' ? p.glob : '*')).join('') };
-    }
-  }
-
-  if (/^[A-Za-z_]\w*$/.test(e) && depth < 4) {
-    const before = src.slice(0, offset);
-    // Only assignments in blocks that enclose the use count, unless a function between them takes `e`.
-    const visible = (m: RegExpMatchArray) => visibleInBlocks(src, (m.index ?? 0) + m[0].indexOf(e), offset, e);
-    const all = [...before.matchAll(new RegExp(`(?:^|[\\s,(])${e}(?:\\s*,\\s*\\w+)?\\s*:?=(?!=)\\s*(\\S[^\\n]*)`, 'g'))];
-    const assigns = all.filter(visible);
-    const last = assigns[assigns.length - 1];
-    // `table = name` inside an `if` after the visible assignment changes the variable on some paths only.
-    const conditional = last && all.some((m) => (m.index ?? 0) > (last.index ?? 0) && !visible(m) && !/:=/.test(m[0]));
-    if (conditional) return { kind: 'unresolved', text: e };
-    // The value ends at the statement: `if t := os.Getenv("X"); t != "" {` assigns only os.Getenv("X").
-    if (last) {
-      // `ctx = trace.Start(ctx, ...)`: the text before the call ends inside its own assignment, so the
-      // value may be blank; that is not a value.
-      const value = splitTopLevel(last[1].replace(/\s*\/\/.*$/, ''), ';')[0];
-      return value?.trim() ? classifyGoExpr(value, src, last.index ?? 0, depth + 1) : { kind: 'unresolved', text: e };
-    }
-    const decl = [...src.matchAll(new RegExp(`(?:const|var)\\s+${e}(?:\\s+\\w+)?\\s*=\\s*([^\\n]+)`, 'g'))].find(visible);
-    if (decl) return classifyGoExpr(decl[1], src, decl.index ?? 0, depth + 1);
-  }
-  return { kind: 'unresolved', text: e };
+export function classifyGoExpr(expr: string, src: string, offset: number): ResourceRef {
+  return expressionRef('go', expr, src, offset);
 }
 
 interface SdkCall {
@@ -175,23 +62,32 @@ interface SdkCall {
   resourceExpr?: string;
   indexExpr?: string;
   copySourceExpr?: string;
+  node: Node;
 }
 
 function sdkCalls(src: string, imports: Map<string, string>): SdkCall[] {
-  const out: SdkCall[] = [];
-  for (const m of src.matchAll(/([A-Za-z_]\w*)\.([A-Z]\w*)Input\s*\{/g)) {
-    const pkg = imports.get(m[1]);
-    const svc = pkg?.match(SDK_PACKAGE)?.[1];
-    if (!svc) continue;
-    const open = m.index! + m[0].length - 1;
-    const close = matchBrace(src, open);
-    const fields = new Map<string, string>();
-    for (const part of splitTopLevel(src.slice(open + 1, close))) {
-      const f = part.match(/^([A-Z]\w*)\s*:\s*([\s\S]+)$/);
-      if (f) fields.set(f[1], f[2].trim());
-    }
-    const field = (RESOURCE_FIELDS[svc] ?? []).find((f) => fields.has(f));
-    out.push({ service: svc, operation: m[2], start: m.index!, end: close, resourceExpr: field ? fields.get(field) : undefined, indexExpr: fields.get('IndexName'), copySourceExpr: fields.get('CopySource') });
+  const s = syntax('go', src),
+    out: SdkCall[] = [];
+  for (const n of s.nodes) {
+    if (n.type !== 'composite_literal') continue;
+    const type = nodeField(n, 'type');
+    if (type?.type !== 'qualified_type') continue;
+    const pkg = imports.get(nodeField(type, 'package')?.text ?? ''),
+      service = pkg?.match(SDK_PACKAGE)?.[1],
+      name = nodeField(type, 'name')?.text;
+    if (!service || !name?.endsWith('Input')) continue;
+    const fields = s.fields(n),
+      resource = (RESOURCE_FIELDS[service] ?? []).find((k) => fields.has(k));
+    out.push({
+      node: n,
+      service,
+      operation: name.slice(0, -5),
+      start: n.startIndex,
+      end: n.endIndex - 1,
+      resourceExpr: resource ? fields.get(resource)?.text : undefined,
+      indexExpr: fields.get('IndexName')?.text,
+      copySourceExpr: fields.get('CopySource')?.text,
+    });
   }
   return out;
 }
@@ -210,21 +106,9 @@ export function indexName(ref: ResourceRef): string {
 }
 
 export function envReadsGo(src: string, file: string, added?: Set<number>): EnvRead[] {
-  const out: EnvRead[] = [];
-  const patterns: Array<[RegExp, (m: RegExpMatchArray) => boolean]> = [
-    [/os\.Getenv\(\s*"([A-Za-z_][A-Za-z0-9_]*)"/g, () => false],
-    [/os\.LookupEnv\(\s*"([A-Za-z_][A-Za-z0-9_]*)"/g, () => true],
-    [/\b[\w.]*[Ee]nv\.(\w+)\(\s*ctx\s*,\s*"([A-Za-z_][A-Za-z0-9_]*)"(\s*,)?/g, (m) => /OrElse|Default|Lookup|Optional/i.test(m[1]) || Boolean(m[3])],
-    [/`[^`]*\benv:"([A-Za-z_][A-Za-z0-9_]*)[",][^`]*`/g, (m) => /envDefault:/.test(m[0])],
-  ];
-  for (const [re, hasDefault] of patterns) {
-    for (const m of src.matchAll(re)) {
-      const line = lineAt(src, m.index!);
-      if (added && !added.has(line)) continue;
-      const name = m.length > 3 && m[2] ? m[2] : m[1];
-      out.push({ name, file, line, ...(hasDefault(m) ? { hasDefault: true } : {}) });
-    }
-  }
+  clearSyntax();
+  const out = syntax('go', src).reads(file, added);
+  clearSyntax();
   return out;
 }
 
@@ -235,39 +119,12 @@ export interface ExtractOptions {
   moduleDir?: string;
 }
 
-/**
- * Go source with line and block comments blanked out (offsets and newlines kept), so SDK calls and
- * env reads in comments are not extracted. Strings, raw strings and runes are left as they are.
- */
-export function withoutGoComments(src: string): string {
-  let out = '';
-  for (let i = 0; i < src.length; i++) {
-    const c = src[i];
-    if (c === '/' && src[i + 1] === '/') {
-      const end = src.indexOf('\n', i);
-      const j = end < 0 ? src.length : end;
-      out += ' '.repeat(j - i);
-      i = j - 1;
-    } else if (c === '/' && src[i + 1] === '*') {
-      const end = src.indexOf('*/', i + 2);
-      const j = end < 0 ? src.length : end + 2;
-      out += src.slice(i, j).replace(/[^\n]/g, ' ');
-      i = j - 1;
-    } else if (c === '"' || c === "'" || c === '`') {
-      let j = i + 1;
-      while (j < src.length && src[j] !== c && (c === '`' || src[j] !== '\n')) j += c !== '`' && src[j] === '\\' ? 2 : 1;
-      out += src.slice(i, Math.min(j + 1, src.length));
-      i = j;
-    } else out += c;
-  }
-  return out;
-}
-
 export function extractGo(files: SourceFile[], opts: ExtractOptions = {}): AppScan {
   const facts: AccessFact[] = [];
   const envReads: EnvRead[] = [];
   for (const file of files) {
-    const f = { ...file, content: withoutGoComments(file.content) };
+    clearSyntax();
+    const f = file;
     if (!f.path.endsWith('.go') || f.path.endsWith('_test.go')) continue;
     const added = opts.addedLines?.get(f.path);
     if (opts.addedLines && !added) continue;
@@ -277,12 +134,16 @@ export function extractGo(files: SourceFile[], opts: ExtractOptions = {}): AppSc
     const funcs = goFunctions(f.content);
     for (const call of sdkCalls(f.content, imports)) {
       if (!inAdded(added, f.content, call.start, call.end)) continue;
-      const resource: ResourceRef = call.resourceExpr ? classifyGoExpr(call.resourceExpr, f.content, call.start) : { kind: 'unresolved', text: '(no resource field)' };
+      const resource: ResourceRef = call.resourceExpr
+        ? classifyGoExpr(call.resourceExpr, f.content, call.start)
+        : { kind: 'unresolved', text: '(no resource field)' };
       const fn = funcs.find((x) => x.bodyStart < call.start && call.start < x.bodyEnd);
       const internal =
-        resource.kind === 'unresolved' && fn !== undefined &&
-        (fn.params.includes(resource.text) || (fn.receiverVar !== undefined && resource.text.startsWith(`${fn.receiverVar}.`)));
-      facts.push({
+        resource.kind === 'unresolved' &&
+        fn !== undefined &&
+        (fn.params.includes(resource.text) ||
+          (fn.receiverVar !== undefined && resource.text.startsWith(`${fn.receiverVar}.`)));
+      const base: AccessFact = {
         service: call.service,
         operation: call.operation,
         actions: actionsFor(call.service, call.operation),
@@ -290,14 +151,22 @@ export function extractGo(files: SourceFile[], opts: ExtractOptions = {}): AppSc
         file: f.path,
         line: lineAt(f.content, call.start),
         ...(internal ? { internal: true } : {}),
-        ...(call.indexExpr ? { index: indexName(classifyGoExpr(call.indexExpr, f.content, call.start)) } : {}),
-      });
+        ...(call.indexExpr
+          ? {
+              index: indexName(classifyGoExpr(call.indexExpr, f.content, call.start)),
+            }
+          : {}),
+      };
+      const s = syntax('go', f.content);
+      facts.push(...(transactionFacts(base, s.fields(call.node), s) ?? [base]));
       if (call.service === 's3' && COPY_OPERATIONS.has(call.operation)) {
         facts.push({
           service: 's3',
           operation: 'GetObject',
           actions: ['s3:GetObject'],
-          resource: call.copySourceExpr ? copySourceBucket(classifyGoExpr(call.copySourceExpr, f.content, call.start), call.copySourceExpr) : { kind: 'unresolved', text: '(no CopySource)' },
+          resource: call.copySourceExpr
+            ? copySourceBucket(classifyGoExpr(call.copySourceExpr, f.content, call.start), call.copySourceExpr)
+            : { kind: 'unresolved', text: '(no CopySource)' },
           file: f.path,
           line: lineAt(f.content, call.start),
         });
@@ -310,7 +179,11 @@ export function extractGo(files: SourceFile[], opts: ExtractOptions = {}): AppSc
       facts.push(...helperCalls(f, imports, opts.index, added, ownPackage));
     }
   }
-  return { facts: dedupeFacts(facts), envReads: dedupeEnv(envReads) };
+  clearSyntax();
+  return {
+    facts: dedupeFacts(facts).map(conservativeFact),
+    envReads: dedupeEnv(envReads),
+  };
 }
 
 interface HelperCall {
@@ -319,34 +192,60 @@ interface HelperCall {
   /** How the call is written, for the report: `pubsub.NewSNSPublisher`, or `getSecret` in the same package. */
   via: string;
   start: number;
-  open: number;
+  node: Node;
 }
 
 /** Calls to helpers of this repository: package-qualified ones, and plain calls to functions of the file's own package. */
-function helperCallSites(f: SourceFile, imports: Map<string, string>, index: GoIndex, ownPackage: string | undefined): HelperCall[] {
+function helperCallSites(
+  f: SourceFile,
+  imports: Map<string, string>,
+  index: GoIndex,
+  ownPackage: string | undefined,
+): HelperCall[] {
   const out: HelperCall[] = [];
-  for (const m of f.content.matchAll(/\b([A-Za-z_]\w*)\.([A-Z]\w*)\s*(\[[^\]\n]*\])?\s*\(/g)) {
-    const pkg = imports.get(m[1]);
-    if (pkg && index.has(pkg)) out.push({ pkg, name: m[2], via: `${m[1]}.${m[2]}`, start: m.index!, open: m.index! + m[0].length - 1 });
-  }
-  if (ownPackage && index.has(ownPackage)) {
-    for (const m of f.content.matchAll(/(^|[^.\w])([A-Za-z_]\w*)\s*\(/g)) {
-      const start = m.index! + m[1].length;
-      // `func getSecret(` and `func (r *T) getSecret(` define it; they do not call it.
-      if (/\bfunc\s*(\([^)]*\)\s*)?$/.test(f.content.slice(f.content.lastIndexOf('\n', start) + 1, start))) continue;
-      if (!index.opsFor(ownPackage, m[2]).length && !index.constructedType(ownPackage, m[2])) continue;
-      out.push({ pkg: ownPackage, name: m[2], via: m[2], start, open: m.index! + m[0].length - 1 });
-    }
+  for (const n of syntax('go', f.content).nodes) {
+    if (!isCall(n)) continue;
+    const fn = callable(n),
+      m = member(fn);
+    if (m) {
+      const pkg = imports.get(m.object.text);
+      if (pkg && index.has(pkg))
+        out.push({
+          pkg,
+          name: m.name,
+          via: m.object.text + '.' + m.name,
+          start: n.startIndex,
+          node: n,
+        });
+    } else if (
+      fn &&
+      ownPackage &&
+      index.has(ownPackage) &&
+      (index.opsFor(ownPackage, fn.text).length || index.constructedType(ownPackage, fn.text))
+    )
+      out.push({
+        pkg: ownPackage,
+        name: fn.text,
+        via: fn.text,
+        start: n.startIndex,
+        node: n,
+      });
   }
   return out;
 }
 
-function helperCalls(f: SourceFile, imports: Map<string, string>, index: GoIndex, added: Set<number> | undefined, ownPackage?: string): AccessFact[] {
+function helperCalls(
+  f: SourceFile,
+  imports: Map<string, string>,
+  index: GoIndex,
+  added: Set<number> | undefined,
+  ownPackage?: string,
+): AccessFact[] {
   const out: AccessFact[] = [];
   const funcs = goFunctions(f.content);
   for (const call of helperCallSites(f, imports, index, ownPackage)) {
-    const { pkg, open } = call;
-    const close = matchParen(f.content, open);
+    const { pkg } = call;
+    const close = call.node.endIndex - 1;
     if (!inAdded(added, f.content, call.start, close)) continue;
 
     // For a constructor, keep the operations of the methods this file calls on the returned value.
@@ -354,24 +253,46 @@ function helperCalls(f: SourceFile, imports: Map<string, string>, index: GoIndex
     let ops = index.opsFor(pkg, call.name).map((op) => ({ ...op, possible: false, fromType: false }));
     const type = index.constructedType(pkg, call.name);
     if (type) {
-      const bound = f.content.slice(f.content.lastIndexOf('\n', call.start) + 1, call.start).match(/([A-Za-z_]\w*)(?:\s*,\s*\w+)?\s*:?=\s*$/)?.[1];
-      const rest = f.content.slice(close);
-      const called = bound ? [...rest.matchAll(new RegExp(`\\b${bound}\\.([A-Z]\\w*)\\s*\\(`, 'g'))].map((x) => x[1]) : [];
-      const uses = bound ? [...rest.matchAll(new RegExp(`\\b${bound}\\b`, 'g'))].length : 0;
-      const escapes = bound !== '_' && (!bound || uses > called.length);
-      const certain = new Set(called.flatMap((meth) => index.methodOps(pkg, type, meth)).map((o) => `${o.service}:${o.operation}`));
+      const s = syntax('go', f.content);
+      const binding = s.bindings.find(
+        (b) => b.value && b.value.startIndex <= call.start && b.value.endIndex >= call.node.endIndex,
+      );
+      const bound = binding?.name;
+      const uses = bound
+        ? s.nodes.filter(
+            (n) =>
+              n.type === 'identifier' &&
+              n.text === bound &&
+              n.startIndex > close &&
+              s.binding(bound, n)?.target.id === binding?.target.id,
+          )
+        : [];
+      const called = uses.flatMap((n) => {
+        const m = member(n.parent ?? undefined);
+        return m && m.object.id === n.id && isCall(n.parent?.parent ?? n) ? [m.name] : [];
+      });
+      const escapes = bound !== '_' && (!bound || !binding?.declaration || uses.length > called.length);
+      const certain = new Set(
+        called.flatMap((meth) => index.methodOps(pkg, type, meth)).map((o) => `${o.service}:${o.operation}`),
+      );
       const own = new Set(ops.map((o) => `${o.service}:${o.operation}`));
       ops = [
         ...ops,
         ...index
           .typeOps(pkg, type)
-          .filter((o) => !own.has(`${o.service}:${o.operation}`) && (certain.has(`${o.service}:${o.operation}`) || escapes))
-          .map((o) => ({ ...o, possible: !certain.has(`${o.service}:${o.operation}`), fromType: true })),
+          .filter(
+            (o) => !own.has(`${o.service}:${o.operation}`) && (certain.has(`${o.service}:${o.operation}`) || escapes),
+          )
+          .map((o) => ({
+            ...o,
+            possible: !certain.has(`${o.service}:${o.operation}`),
+            fromType: true,
+          })),
       ];
     }
     if (!ops.length) continue;
 
-    const rawArgs = splitTopLevel(f.content.slice(open + 1, close));
+    const rawArgs = callArgs(call.node).map((a) => a.text);
     const args = rawArgs.map((a) => classifyGoExpr(a, f.content, call.start));
     const resolvable = args.filter((a) => a.kind !== 'unresolved');
     const services = new Set(ops.map((o) => o.service));
@@ -385,12 +306,18 @@ function helperCalls(f: SourceFile, imports: Map<string, string>, index: GoIndex
       const fallback = op.fixed
         ? op.fixed
         : op.derived
-        ? undefined
-        : services.size === 1 && resolvable.length === 1
-          ? resolvable[0]
-          : resolvable.find((a) => serviceHint(a) === op.service);
+          ? undefined
+          : services.size === 1 && resolvable.length === 1
+            ? resolvable[0]
+            : resolvable.find((a) => serviceHint(a) === op.service);
       const found = byPosition ?? fallback;
-      const resource = found && op.format && byPosition ? formatted(op.format, found) : (found ?? { kind: 'unresolved' as const, text: `arguments of ${call.via}` });
+      const resource =
+        found && op.format && byPosition
+          ? formatted(op.format, found)
+          : (found ?? {
+              kind: 'unresolved' as const,
+              text: `arguments of ${call.via}`,
+            });
       // A helper passing its own parameter on to another helper: its callers name the resource.
       const fn = funcs.find((x) => x.bodyStart < call.start && call.start < x.bodyEnd);
       const internal = resource.kind === 'unresolved' && fn !== undefined && fn.params.includes(resource.text);
@@ -420,20 +347,6 @@ function formatted(format: string, value: ResourceRef): ResourceRef {
   return { kind: 'pattern', glob: unescaped.replace(/%[sv]/, '*') };
 }
 
-function matchParen(src: string, open: number): number {
-  let depth = 0;
-  for (let i = open; i < src.length; i++) {
-    const c = src[i];
-    if (c === '"' || c === "'") {
-      for (i++; i < src.length && src[i] !== c; i++) if (src[i] === '\\') i++;
-    } else if (c === '`') i = src.indexOf('`', i + 1);
-    else if (c === '(') depth++;
-    else if (c === ')' && --depth === 0) return i;
-    if (i < 0) break;
-  }
-  return src.length - 1;
-}
-
 function dedupeFacts(fs: AccessFact[]): AccessFact[] {
   const seen = new Set<string>();
   return fs.filter((f) => {
@@ -453,7 +366,7 @@ function dedupeEnv(es: EnvRead[]): EnvRead[] {
 interface Op {
   service: string;
   operation: string;
-  /** Index of the function parameter that becomes the SDK resource field, when it is passed directly. */
+  /** Index of the function parameter that becomes the SDK resource field as nodeField, when it is passed directly. */
   param?: number;
   /** Receiver field that becomes the resource (`p.topic`), for methods. */
   field?: string;
@@ -485,10 +398,14 @@ export class GoIndex {
   private readonly packages = new Set<string>();
   private readonly ctorFields = new Map<string, Map<string, number>>();
 
-  constructor(readonly modulePath: string, files: SourceFile[]) {
+  constructor(
+    readonly modulePath: string,
+    files: SourceFile[],
+  ) {
     const calls = new Map<string, Callee[]>();
     for (const file of files) {
-      const f = { ...file, content: withoutGoComments(file.content) };
+      clearSyntax();
+      const f = file;
       if (!f.path.endsWith('.go') || f.path.endsWith('_test.go')) continue;
       const dir = path.posix.dirname(f.path);
       const pkg = dir === '.' ? modulePath : `${modulePath}/${dir}`;
@@ -497,16 +414,40 @@ export class GoIndex {
       for (const fn of goFunctions(f.content)) {
         const body = f.content.slice(fn.bodyStart, fn.bodyEnd);
         const ops: Op[] = sdkCalls(body, imports).map((c) => {
-          let expr = unwrapGo(c.resourceExpr ?? '');
-          // fmt.Sprintf("%s/clientCredentials", r.owner): one formatted input, rendered at the call site.
-          const sprintf = expr.match(/^fmt\.Sprintf\(\s*"((?:[^"\\]|\\.)*)"\s*,\s*([\w.]+)\s*\)$/);
-          const format = sprintf && (sprintf[1].match(/%[sv]/g) ?? []).length === 1 && !/%[^sv%]/.test(sprintf[1]) ? sprintf[1] : undefined;
-          if (format) expr = sprintf![2];
-          const param = fn.params.indexOf(expr);
-          const field = fn.receiverVar && expr.startsWith(`${fn.receiverVar}.`) ? expr.slice(fn.receiverVar.length + 1) : undefined;
-          const mapped = param >= 0 || Boolean(field && /^\w+$/.test(field));
-          const derived = !mapped && /\bfmt\.Sprintf\(|\+/.test(expr);
-          const own = !mapped && !derived && c.resourceExpr ? classifyGoExpr(c.resourceExpr, f.content, fn.bodyStart + c.start) : undefined;
+          const parsed = syntax('go', body);
+          const fields = parsed.fields(c.node);
+          const resourceField = (RESOURCE_FIELDS[c.service] ?? []).find((name) => fields.has(name));
+          let value = resourceField ? fields.get(resourceField) : undefined;
+          let format: string | undefined;
+          if (value && callable(value)?.text === 'fmt.Sprintf') {
+            const args = callArgs(value),
+              text = literal(args[0]);
+            if (
+              text !== undefined &&
+              args.length === 2 &&
+              (text.match(/%[sv]/g) ?? []).length === 1 &&
+              !/%[^sv%]/.test(text)
+            ) {
+              format = text;
+              value = unwrapped(args[1]);
+            }
+          }
+          const expr = value?.text ?? '';
+          const param = fn.params.indexOf(expr),
+            m = member(value);
+          const field = m && m.object.text === fn.receiverVar ? m.name : undefined;
+          const mapped = param >= 0 || Boolean(field);
+          const transaction =
+            c.service === 'dynamodb' && ['TransactWriteItems', 'TransactGetItems'].includes(c.operation);
+          const derived =
+            transaction ||
+            (!mapped &&
+              value !== undefined &&
+              (callable(value)?.text === 'fmt.Sprintf' || value.type === 'binary_expression'));
+          const own =
+            !mapped && !derived && c.resourceExpr
+              ? classifyGoExpr(c.resourceExpr, f.content, fn.bodyStart + c.start)
+              : undefined;
           const fixed = own && own.kind !== 'unresolved' ? own : undefined;
           // A resource the index cannot follow (a local from a struct field) is not guessed at the call site.
           const opaqueLocal = own?.kind === 'unresolved';
@@ -521,43 +462,64 @@ export class GoIndex {
             ...(c.indexExpr
               ? fn.params.includes(unwrapGo(c.indexExpr))
                 ? { indexParam: fn.params.indexOf(unwrapGo(c.indexExpr)) }
-                : { index: indexName(classifyGoExpr(c.indexExpr, f.content, fn.bodyStart + c.start)) }
+                : {
+                    index: indexName(classifyGoExpr(c.indexExpr, f.content, fn.bodyStart + c.start)),
+                  }
               : {}),
           };
         });
         if (/^New[A-Z]/.test(fn.name)) {
           // Constructor: which parameter ends up in which struct field (`topic: topicARN` or `x.topic = topicARN`).
           const fields = new Map<string, number>();
-          for (const m of body.matchAll(/(?:^|[{,\s.])(\w+)\s*(?::|=)\s*(\w+)\s*[,}\n]/g)) {
-            const idx = fn.params.indexOf(m[2]);
-            if (idx >= 0) fields.set(m[1], idx);
+          for (const n of syntax('go', body).nodes) {
+            if (n.type === 'keyed_element') {
+              const key = nodeField(n, 'key'),
+                value = nodeField(n, 'value');
+              const idx = fn.params.indexOf(value ? unwrapped(value).text : '');
+              if (idx >= 0 && key) fields.set(unwrapped(key).text, idx);
+            } else if (n.type === 'assignment_statement') {
+              const left = nodeField(n, 'left')?.namedChildren[0],
+                right = nodeField(n, 'right')?.namedChildren[0],
+                m = member(left ?? undefined);
+              const idx = fn.params.indexOf(right?.text ?? '');
+              if (m && idx >= 0) fields.set(m.name, idx);
+            }
           }
           this.ctorFields.set(`${pkg}#${fn.name}`, fields);
         }
         const key = fn.receiver ? `${pkg}#${fn.receiver}.${fn.name}` : `${pkg}#${fn.name}`;
         this.funcs.set(key, ops);
-        if (fn.receiver) this.types.set(`${pkg}#${fn.receiver}`, [...(this.types.get(`${pkg}#${fn.receiver}`) ?? []), ...ops]);
+        if (fn.receiver)
+          this.types.set(`${pkg}#${fn.receiver}`, [...(this.types.get(`${pkg}#${fn.receiver}`) ?? []), ...ops]);
         const callees: Callee[] = [];
-        const argsAt = (c: RegExpMatchArray) => {
-          const open = c.index! + c[0].length - 1;
-          return splitTopLevel(body.slice(open + 1, matchParen(body, open))).map((a) => unwrapGo(a));
-        };
-        const refsAt = (c: RegExpMatchArray) => argsAt(c).map((a) => classifyGoExpr(a, f.content, fn.bodyStart + c.index!));
-        for (const c of body.matchAll(/\b([A-Za-z_]\w*)\.([A-Z]\w*)\s*(?:\[[^\]\n]*\])?\s*\(/g)) {
-          const p = imports.get(c[1]);
-          if (p?.startsWith(modulePath)) callees.push({ key: `${p}#${c[2]}`, args: argsAt(c), argRefs: refsAt(c), params: fn.params, receiverVar: fn.receiverVar });
-        }
-        // Any plain call: exported helpers are called without a qualifier inside their own package too.
-        // Builtins and type conversions have no entry in the index, so they contribute nothing.
-        for (const c of body.matchAll(/(?:^|[^.\w])([A-Za-z_]\w*)\s*\(/g)) callees.push({ key: `${pkg}#${c[1]}`, args: argsAt(c), argRefs: refsAt(c), params: fn.params, receiverVar: fn.receiverVar });
-        if (fn.receiver && fn.receiverVar) {
-          for (const c of body.matchAll(new RegExp(`\\b${fn.receiverVar}\\.([A-Za-z_]\\w*)\\s*\\(`, 'g'))) {
-            callees.push({ key: `${pkg}#${fn.receiver}.${c[1]}`, args: argsAt(c), argRefs: refsAt(c), params: fn.params, sameReceiver: true, receiverVar: fn.receiverVar });
-          }
+        for (const n of syntax('go', body).nodes) {
+          if (!isCall(n)) continue;
+          const target = callable(n),
+            m = member(target),
+            nodes = callArgs(n),
+            args = nodes.map((a) => unwrapped(a).text),
+            argRefs = nodes.map((a) => classifyGoExpr(a.text, f.content, fn.bodyStart + n.startIndex));
+          const common = {
+            args,
+            argRefs,
+            params: fn.params,
+            receiverVar: fn.receiverVar,
+          };
+          if (m) {
+            const p = imports.get(m.object.text);
+            if (p?.startsWith(modulePath)) callees.push({ key: `${p}#${m.name}`, ...common });
+            else if (fn.receiver && m.object.text === fn.receiverVar)
+              callees.push({
+                key: `${pkg}#${fn.receiver}.${m.name}`,
+                sameReceiver: true,
+                ...common,
+              });
+          } else if (target) callees.push({ key: `${pkg}#${target.text}`, ...common });
         }
         calls.set(key, callees);
       }
     }
+    clearSyntax();
     // Pull in what same-repo callees do, a few levels deep.
     for (let round = 0; round < 3; round++) {
       for (const [key, callees] of calls) {
@@ -639,9 +601,13 @@ function remap(op: Op, call: Callee): Op {
     if (p >= 0) out.param = p;
     else if (viaField && call.receiverVar && viaField[1] === call.receiverVar) out.field = viaField[2];
     // getParam(ctx, "/app/flags"): the inner helper's resource is fixed by this helper.
-    else if (literal !== undefined) out.fixed = op.format ? { kind: 'literal', value: op.format.replace(/%[sv]/, literal) } : { kind: 'literal', value: literal };
+    else if (literal !== undefined)
+      out.fixed = op.format
+        ? { kind: 'literal', value: op.format.replace(/%[sv]/, literal) }
+        : { kind: 'literal', value: literal };
     // publish(ctx, os.Getenv("ORDERS_TOPIC"), msg): fixed too, as this helper's body resolves it.
-    else if (call.argRefs[param] && call.argRefs[param].kind !== 'unresolved') out.fixed = op.format ? formatted(op.format, call.argRefs[param]) : call.argRefs[param];
+    else if (call.argRefs[param] && call.argRefs[param].kind !== 'unresolved')
+      out.fixed = op.format ? formatted(op.format, call.argRefs[param]) : call.argRefs[param];
     // Anything else leaves the caller's arguments unrelated to the resource.
     else out.derived = true;
   }
@@ -677,56 +643,38 @@ interface GoFunc {
   bodyEnd: number;
 }
 
-/** Strip aws.String(...), &x and parentheses around an expression. */
+/** Unwrap only syntax nodes representing pointer and string conversion helpers. */
 function unwrapGo(expr: string): string {
-  let e = expr.trim();
-  for (let changed = true; changed; ) {
-    changed = false;
-    // new(expr) is Go 1.26's pointer to a value, like aws.String(expr).
-    const m = e.match(/^(?:aws\.String|aws\.ToString|string|new)\(([\s\S]*)\)$/) ?? e.match(/^&([\s\S]+)$/) ?? e.match(/^\(([\s\S]*)\)$/);
-    if (m) {
-      e = m[1].trim();
-      changed = true;
-    }
-  }
-  return e;
-}
-
-function matchParenGo(src: string, open: number): number {
-  let depth = 0;
-  for (let i = open; i < src.length; i++) {
-    if (src[i] === '(') depth++;
-    else if (src[i] === ')' && --depth === 0) return i;
-  }
-  return src.length - 1;
+  const s = syntax('go', 'package p\nfunc f(){_ = ' + expr + '\n}');
+  const n = s.bindings.find((b) => b.name === '_')?.value;
+  return n ? unwrapped(n).text : expr.trim();
 }
 
 function goFunctions(src: string): GoFunc[] {
   const out: GoFunc[] = [];
-  const re = /^func\s+(?:\(\s*(?:([A-Za-z_]\w*)\s+)?\*?\s*([A-Za-z_]\w*)(?:\[[^\]]*\])?\s*\)\s*)?([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s*\(/gm;
-  for (const m of src.matchAll(re)) {
-    let i = m.index! + m[0].length - 1;
-    let depth = 0;
-    let body = -1;
-    for (; i < src.length; i++) {
-      const c = src[i];
-      if (c === '(') depth++;
-      else if (c === ')') depth--;
-      else if (c === '{' && depth === 0) {
-        const before = src.slice(Math.max(0, i - 10), i).trimEnd();
-        if (/(interface|struct)$/.test(before)) {
-          i = matchBrace(src, i);
-          continue;
-        }
-        body = i;
-        break;
-      }
-    }
-    if (body < 0) continue;
-    const paramsOpen = m.index! + m[0].length - 1;
-    const paramsText = src.slice(paramsOpen + 1, matchParenGo(src, paramsOpen));
-    const params = splitTopLevel(paramsText).map((p) => p.trim().split(/\s+/)[0]).filter((p) => /^[A-Za-z_]\w*$/.test(p));
-    out.push({ name: m[3], receiver: m[2], receiverVar: m[1], params, bodyStart: body, bodyEnd: matchBrace(src, body) });
+  for (const n of syntax('go', src).nodes) {
+    if (!['function_declaration', 'method_declaration'].includes(n.type)) continue;
+    const body = nodeField(n, 'body'),
+      name = nodeField(n, 'name');
+    if (!body || !name) continue;
+    const receiver = nodeField(n, 'receiver')?.namedChildren[0];
+    let type = receiver && nodeField(receiver, 'type');
+    while (type && ['pointer_type', 'generic_type'].includes(type.type))
+      type = nodeField(type, 'type') ?? type.namedChildren[0];
+    const params = children(nodeField(n, 'parameters')).flatMap((p) =>
+      p
+        .childrenForFieldName('name')
+        .filter((n): n is Node => n !== null)
+        .map((n) => n.text),
+    );
+    out.push({
+      name: name.text,
+      receiver: type?.text,
+      receiverVar: receiver ? nodeField(receiver, 'name')?.text : undefined,
+      params,
+      bodyStart: body.startIndex,
+      bodyEnd: body.endIndex - 1,
+    });
   }
   return out;
 }

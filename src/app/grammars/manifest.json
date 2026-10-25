@@ -1,0 +1,66 @@
+{
+  "format": "terratrust.parser-assets/v1",
+  "packages": [
+    {
+      "package": "web-tree-sitter",
+      "version": "0.25.10",
+      "published": "2025-09-22T22:23:13.426Z",
+      "registry": "https://registry.npmjs.org/web-tree-sitter/0.25.10",
+      "license": "MIT",
+      "files": [
+        {
+          "file": "tree-sitter.wasm",
+          "bytes": 205488,
+          "sha256": "f38dcc4b43b818f9a0785bc1c6d5611a75ac4cdd428ff3f02757c34ca4e46d7f"
+        }
+      ]
+    },
+    {
+      "package": "tree-sitter-go",
+      "version": "0.25.0",
+      "published": "2025-08-29T06:22:53.571Z",
+      "registry": "https://registry.npmjs.org/tree-sitter-go/0.25.0",
+      "license": "MIT",
+      "files": [
+        {
+          "file": "tree-sitter-go.wasm",
+          "bytes": 217182,
+          "sha256": "9504573f352b20be7f2f1911754d710622aedc15afff16d5ed8fb5645681aee7"
+        }
+      ]
+    },
+    {
+      "package": "tree-sitter-python",
+      "version": "0.25.0",
+      "published": "2025-09-11T06:49:18.276Z",
+      "registry": "https://registry.npmjs.org/tree-sitter-python/0.25.0",
+      "license": "MIT",
+      "files": [
+        {
+          "file": "tree-sitter-python.wasm",
+          "bytes": 457883,
+          "sha256": "16108b50df4ee9a30168794252ab55e7c93bfc5765d7fa0aa3e335752c515f47"
+        }
+      ]
+    },
+    {
+      "package": "tree-sitter-typescript",
+      "version": "0.23.2",
+      "published": "2024-11-11T02:39:43.600Z",
+      "registry": "https://registry.npmjs.org/tree-sitter-typescript/0.23.2",
+      "license": "MIT",
+      "files": [
+        {
+          "file": "tree-sitter-typescript.wasm",
+          "bytes": 1413849,
+          "sha256": "778025db5a8be0e70f8ccc3671e486dfeddd048c25d9e8a70c26de2e1bf6f97d"
+        },
+        {
+          "file": "tree-sitter-tsx.wasm",
+          "bytes": 1445638,
+          "sha256": "79e5da75ea62855a0cd67177685f0164eac87d5f630b3cbe1e0a099751ad30f8"
+        }
+      ]
+    }
+  ]
+}
