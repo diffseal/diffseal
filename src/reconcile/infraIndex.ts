@@ -10,6 +10,8 @@ export interface Compute {
   address: string;
   type: string;
   env: Record<string, unknown>;
+  /** An external envFrom or environment file can define names and values we cannot enumerate. */
+  opaqueEnv?: boolean;
   roles: string[];
   /** Exact role instances the role argument was built from (`aws_iam_role.r[1]`), when known. */
   roleInstances: string[];
@@ -154,7 +156,7 @@ export class InfraIndex {
   }
 
   computesSetting(envName: string): Compute[] {
-    return this.computes.filter((c) => envName in c.env);
+    return this.computes.filter((c) => envName in c.env || c.opaqueEnv);
   }
 
   /**
