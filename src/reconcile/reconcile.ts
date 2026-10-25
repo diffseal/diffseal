@@ -164,9 +164,13 @@ function infraIdentity(v: unknown, root: string, index: InfraIndex, service?: st
     // Instance addresses: aws_sns_topic.t["a"] and aws_sns_topic.t["b"] are different topics.
     const addresses = [...v.refs];
     const name = addresses.map((a) => index.nameOf(root, a)).find(Boolean);
+    const providers=addresses.map(a=>index.accountsOf(root,a));
+    const accounts=[...new Set(providers.flat())];
+    const account=service!=='s3'&&accounts.length===1&&providers.every(a=>a.length===1)?accounts[0]:undefined;
     return {
       service,
       name,
+      ...(account ? {account} : {}),
       path: suffix.startsWith('/') ? suffix.slice(1) : undefined,
       addresses,
       root,
@@ -621,7 +625,7 @@ function needIdentity(resource: ResourceRef, t: Target, index: InfraIndex, servi
   if (id?.secretArn && id.name && /-[A-Za-z0-9]{6}$/.test(id.name)) {
     const types = SERVICE_TYPES.secretsmanager ?? ['aws_secretsmanager_secret'];
     const base = id.name.slice(0, -7);
-    if (index.instancesByName(t.root, types, base).length && !index.instancesByName(t.root, types, id.name).length) return { ...id, secretFullArn: true };
+    if (index.instancesByName(t.root, types, base,id.account).length && !index.instancesByName(t.root, types, id.name,id.account).length) return { ...id, secretFullArn: true };
   }
   return id;
 }
@@ -663,7 +667,7 @@ function checkTarget(fact: AccessFact, resource: ResourceRef, t: Target, index: 
   let need = needIdentity(resource, t, index, fact.service);
   // A table, queue or secret named without an ARN is in the account the role runs in, so a grant on
   // the same name in another account does not cover it. Only when the root targets one known account.
-  const accounts = index.evaluations.find((e) => e.root === t.root)?.accounts ?? [];
+  const accounts = index.accountsOf(t.root,t.role.instance);
   if (need && !need.account && !need.any && !need.addresses.length && !need.label.startsWith('arn:') && accounts.length === 1) need = { ...need, account: accounts[0] };
   if (need && fact.service === 'dynamodb' && fact.index) need = { ...need, path: `index/${fact.index}`, label: `${need.label} index ${fact.index}` };
   const target = need?.label ?? describeRef(resource);
@@ -917,7 +921,7 @@ function keyPolicy(index: InfraIndex, root: string, keyAddress: string, role: Ro
   if (value === undefined || value === null || value === '') return { allow: 'no', deny: 'no', delegates: 'yes' };
   const parsed = parsePolicy(value);
   if (parsed.kind !== 'ok') return { allow: 'unknown', deny: 'unknown', delegates: 'unknown' };
-  const accounts = index.evaluations.find((e) => e.root === root)?.accounts ?? [];
+  const accounts = index.accountsOf(role.root,role.instance);
   // A reference to `aws_iam_role.r["b"].arn` names that instance; a config-level reference to a role
   // made with count or for_each may or may not be this instance. A role ARN names this role only in
   // the root's account; when that account is not known statically, it may or may not.
@@ -1058,12 +1062,12 @@ const or = (a: Match, b: Match): Match => (a === 'yes' || b === 'yes' ? 'yes' : 
 /** Resources of the role's root that a literal name, URL or ARN names, when its account is this root's or not known. */
 function namedInRoot(index: InfraIndex, t: Target, need: Identity, service: string): string[] {
   if (!need.name || /[*?]/.test(need.name)) return [];
-  const accounts = index.evaluations.find((e) => e.root === t.root)?.accounts ?? [];
+  const accounts = index.accountsOf(t.root,t.role.instance);
   if (need.account && accounts.length && !accounts.includes(need.account)) return [];
-  if (!need.secretArn) return index.instancesByName(t.root, SERVICE_TYPES[service] ?? [], need.name);
+  if (!need.secretArn) return index.instancesByName(t.root, SERVICE_TYPES[service] ?? [], need.name,need.account);
   // A secret ARN names the secret without its suffix in Terraform.
   const bare = need.name.replace(/-(\?{6}|\*|[A-Za-z0-9]{6})$/, '');
-  return [...new Set([...index.instancesByName(t.root, SERVICE_TYPES[service] ?? [], need.name), ...index.instancesByName(t.root, SERVICE_TYPES[service] ?? [], bare)])];
+  return [...new Set([...index.instancesByName(t.root, SERVICE_TYPES[service] ?? [], need.name,need.account), ...index.instancesByName(t.root, SERVICE_TYPES[service] ?? [], bare,need.account)])];
 }
 
 function kmsDependency(

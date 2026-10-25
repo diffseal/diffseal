@@ -4,7 +4,7 @@
   "cases": [
     {
       "kind": "reconcile",
-      "name": "round9codex: in a root with two provider accounts, a policy tied to the role only by name does not prove access (round 9 codex P1)",
+      "name": "round9codex: in a root with two provider accounts, a policy tied to the role only by name does not prove access (round 9 codex P1): selected providers now prove the accounts differ",
       "infra": {
         "infra/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nprovider \"aws\" {\n  allowed_account_ids = [\"111111111111\"]\n}\nprovider \"aws\" {\n  alias               = \"other\"\n  allowed_account_ids = [\"222222222222\"]\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = \"worker\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  provider = aws.other\n  role     = \"worker\"\n  policy   = jsonencode({ Statement = [{ Effect = \"Allow\", Action = \"secretsmanager:GetSecretValue\", Resource = \"*\" }] })\n}\n"
       },
@@ -33,15 +33,15 @@
       },
       "expect": {
         "exactStatuses": [
-          "UNRESOLVED"
+          "NOT_GRANTED"
         ],
         "links": [
           {
-            "status": "UNRESOLVED",
+            "status": "NOT_GRANTED",
             "access": "secretsmanager:GetSecretValue on prod/db",
             "role": "aws_iam_role.r",
             "root": "infra/prod",
-            "detailContains": "Cannot tell whether role worker allows secretsmanager:GetSecretValue on prod/db; policies in infra/prod name a role worker too, but whether that root targets the same AWS account is not known statically"
+            "detailContains": "does not allow"
           }
         ]
       }

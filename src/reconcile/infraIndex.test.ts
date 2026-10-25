@@ -12,13 +12,13 @@ test('a role ARN only matches roots deployed to its account', () => {
   expect(index.rolesNamed('gw-task').map((r) => r.root)).toEqual(['envs/prod/gw', 'envs/sandbox/gw']);
 });
 
-test('in a root with providers for two accounts, a role ARN match is uncertain (round 7)', () => {
+test('the selected provider rules out a role ARN from another account (round 7)', () => {
   const src = new MemorySource({
     'r/main.tf': `terraform {\n  backend "s3" {}\n}\nprovider "aws" {\n  allowed_account_ids = ["111111111111"]\n}\nprovider "aws" {\n  alias               = "b"\n  allowed_account_ids = ["222222222222"]\n}\nresource "aws_iam_role" "w" {\n  name               = "worker"\n  assume_role_policy = "{}"\n}\nresource "aws_iam_role_policy" "p" {\n  role   = aws_iam_role.w.name\n  policy = jsonencode({ Statement = [{ Effect = "Allow", Action = "sqs:SendMessage", Resource = "*" }] })\n}\n`,
   });
   const index = new InfraIndex([evaluateRoot(src, 'r')]);
   const roles = index.rolesNamed('arn:aws:iam::222222222222:role/worker');
-  expect(roles.map((r) => r.accountUncertain)).toEqual([true]);
+  expect(roles).toEqual([]);
   const links = reconcile(
     [{ service: 'sqs', operation: 'SendMessage', actions: ['sqs:SendMessage'], resource: { kind: 'literal', value: 'q' }, file: 'a.go', line: 1 }],
     [],
