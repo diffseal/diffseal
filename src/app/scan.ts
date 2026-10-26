@@ -55,7 +55,7 @@ export async function scanApp(
   const all = source.allFiles().filter(isAppFile);
   let wanted = opts.addedLines ? all.filter((p) => opts.addedLines!.has(p)) : all;
   if (opts.entries?.length) {
-    await prepareLanguages(all.some((p) => p.endsWith('.go') && opts.entries!.some((entry) => p.startsWith(entry.replace(/\/$/, '') + '/'))) ? ['go'] : []);
+    await prepareLanguages(all.some((p) => p.endsWith('.go') && opts.entries!.some((entry) => path.posix.dirname(p) === path.posix.normalize(entry))) ? ['go'] : []);
     const closure = entryClosure(source, all, opts.entries, cache);
     wanted = wanted.filter(
       (p) =>
@@ -181,7 +181,7 @@ export function entryClosure(
     return undefined;
   };
   const seen = new Set<string>();
-  const queue = entries.map((e) => e.replace(/\/$/, ''));
+  const queue = entries.map((e) => path.posix.normalize(e));
   while (queue.length) {
     const dir = queue.pop()!;
     if (seen.has(dir)) continue;
