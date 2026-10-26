@@ -34,6 +34,7 @@ const examples: Array<{ language: string; files: Record<string, string>; asset: 
   { language: 'python', asset: 'python', files: { 'app.py': 'import boto3\nc=boto3.client("s3")\nc.get_object(Bucket="reports",Key="x")\n' } },
   ...['java', 'kotlin', 'c_sharp'].map((asset, i) => ({ language: asset, asset, files: managed[i].files })),
 ];
+examples.push({ ...examples[0], language: 'go-root-entry' });
 for (const example of examples) test(`the ${example.language} Action uses only its grammar and the runtime`, () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tt-one-language-'));
   const repo = path.join(dir, 'repo'), bin = path.join(dir, 'bin');
@@ -48,7 +49,7 @@ for (const example of examples) test(`the ${example.language} Action uses only i
     git(['init', '-q']); fs.writeFileSync(path.join(repo, 'empty.txt'), 'base'); git(['add', '.']); git(['commit', '-qm', 'base']);
     for (const [name, content] of Object.entries(example.files)) fs.writeFileSync(path.join(repo, name), content);
     git(['add', '.']); git(['commit', '-qm', 'add application']);
-    const result = spawnSync('node', ['--import', 'data:text/javascript,globalThis.fetch=()=>{throw Error("network forbidden")}', path.join(bin, 'action.js')], { cwd: repo, encoding: 'utf8', env: { ...process.env, INPUT_MODE: 'pr', INPUT_BASE: 'HEAD^', INPUT_COMMENT: 'false', INPUT_ADVISORY: 'true', INPUT_STRICT: 'false', INPUT_POLICY: '', GITHUB_EVENT_PATH: '', GITHUB_WORKSPACE: repo, GITHUB_OUTPUT: path.join(dir, 'outputs'), GITHUB_STEP_SUMMARY: path.join(dir, 'summary') } });
+    const result = spawnSync('node', ['--import', 'data:text/javascript,globalThis.fetch=()=>{throw Error("network forbidden")}', path.join(bin, 'action.js')], { cwd: repo, encoding: 'utf8', env: { ...process.env, INPUT_MODE: example.language === 'go-root-entry' ? 'app' : 'pr', INPUT_ENTRY: example.language === 'go-root-entry' ? '.' : '', INPUT_BASE: 'HEAD^', INPUT_COMMENT: 'false', INPUT_ADVISORY: 'true', INPUT_STRICT: 'false', INPUT_POLICY: '', GITHUB_EVENT_PATH: '', GITHUB_WORKSPACE: repo, GITHUB_OUTPUT: path.join(dir, 'outputs'), GITHUB_STEP_SUMMARY: path.join(dir, 'summary') } });
     expect(result.status).toBe(0);
     expect(fs.readFileSync(path.join(dir, 'summary'), 'utf8')).toContain('s3:GetObject');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
