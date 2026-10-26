@@ -311,3 +311,19 @@ test('an ordinary local module directory can use the cache namespace name withou
     expect(evaluateRoot(new FsSource(f.repo), '.').instances[0].attrs.bucket).toBe('logs');
   } finally { fs.rmSync(f.dir, { recursive: true, force: true }); }
 });
+
+test('local child paths in cached modules cannot escape into the caller repository', async () => {
+  const f = setup();
+  try {
+    fs.appendFileSync(path.join(f.remote, 'main.tf'), '\nmodule "escape" { source="../../" }\n'); f.git(['add', '.']); f.git(['commit', '-qm', 'invalid local child']);
+    f.write(f.source.replace('?ref=v1.2.0', ''));
+    fs.appendFileSync(path.join(f.repo, 'main.tf'), '\nresource "aws_sqs_queue" "outside" { name="outside" }\n');
+    expect((await f.run('modules', 'fetch', '--repo', f.repo, '--cache', f.cache)).exit).toBe(0);
+    const result = evaluateRoot(new FsSource(f.repo, f.cache), '.');
+    expect(result.instances.filter((i) => i.type === 'aws_sqs_queue').map((i) => i.address)).toEqual(['aws_sqs_queue.outside']);
+    expect(result.instances.find((i) => i.address === 'module.bucket.module.escape')?.type).toBe('terraform_module_call');
+    const lockFile = path.join(f.repo, 'terratrust.modules.lock.json'), lock = JSON.parse(fs.readFileSync(lockFile, 'utf8'));
+    lock.modules.push({ ...lock.modules[0], source: '../../', constraint: '' }); fs.writeFileSync(lockFile, JSON.stringify(lock));
+    expect(evaluateRoot(new FsSource(f.repo, f.cache), '.').instances.find((i) => i.address === 'module.bucket.module.escape')?.type).toBe('terraform_module_call');
+  } finally { fs.rmSync(f.dir, { recursive: true, force: true }); }
+});

@@ -8,6 +8,7 @@ import * as path from 'node:path';
  */
 export interface FileSource {
   readonly label: string;
+  allowsModulePath?(parent: string, child: string): boolean;
   resolveModule?(source: string, constraint?: string): string | undefined;
   /** Immutable object identity, available without reading its contents. */
   blobId?(relPath: string): string | undefined;
@@ -42,6 +43,7 @@ const SKIP_DIRS = new Set(['.git', 'node_modules', '.terraform', '.claude', '.wo
 export class FsSource implements FileSource {
   readonly label: string;
   private modules?: OfflineModules;
+  allowsModulePath(parent: string, child: string): boolean { return this.modules?.allowsLocal(parent, child) ?? true; }
   resolveModule(source: string, constraint?: string): string | undefined {
     if (!this.moduleCache) return;
     return (this.modules ??= new OfflineModules(this, this.moduleCache)).resolve(source, constraint);
@@ -97,6 +99,7 @@ export class GitSource implements FileSource {
   private readonly dirs = new Map<string, string[]>();
 
   private modules?: OfflineModules;
+  allowsModulePath(parent: string, child: string): boolean { return this.modules?.allowsLocal(parent, child) ?? true; }
   resolveModule(source: string, constraint?: string): string | undefined {
     if (!this.moduleCache) return;
     return (this.modules ??= new OfflineModules(this, this.moduleCache)).resolve(source, constraint);

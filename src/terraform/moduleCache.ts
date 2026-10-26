@@ -76,6 +76,11 @@ export class OfflineModules {
     const digest = p.slice(MODULE_PREFIX.length).split('/')[0];
     return this.lock.modules.some((entry) => entry.sha256 === digest);
   }
+  allowsLocal(parent: string, child: string): boolean {
+    if (!this.owns(parent)) return true;
+    const root = MODULE_PREFIX + parent.slice(MODULE_PREFIX.length).split('/')[0];
+    return child === root || child.startsWith(root + '/');
+  }
   private object(p: string): { files: Record<string, string>; name: string } | undefined {
     const [digest, ...rest] = p.slice(MODULE_PREFIX.length).split('/');
     const files = this.lock.modules.some((entry) => entry.sha256 === digest) ? this.load(digest) : undefined;
