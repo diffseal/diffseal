@@ -24,7 +24,7 @@ export function compareEvaluations(base: RootEvaluation | undefined, head: RootE
   ] as const) {
     for (const [address, instance] of opaque) {
       if (!instance.externalModule || expanded.has(address) || consumedOpaque.has(address)) continue;
-      const peers = [...expanded.keys()].filter((peer) => peer.startsWith(address + '.') && !consumedExpanded.has(peer));
+      const peers = [...expanded.keys()].filter((peer) => (peer.startsWith(address + '.') || peer.startsWith(address + '[')) && !consumedExpanded.has(peer));
       if (!peers.length) continue;
       consumedOpaque.add(address); for (const peer of peers) consumedExpanded.add(peer);
       out.push({ ...toChange(instance, 'update', instance.attrs, instance.attrs), confidence: 'unknown', actionReason: 'Module source is available in only one snapshot; resource lifecycle changes cannot be established' });

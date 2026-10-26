@@ -1,3 +1,4 @@
+import { selectModuleVersion } from './moduleVersions.js';
 /** Verified, content-addressed module objects. This reader never uses the network. */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -47,6 +48,7 @@ export class OfflineModules {
   resolve(source: string, constraint = ''): string | undefined {
     const entry = this.lock.modules.find((entry) => entry.source === source && entry.constraint === constraint);
     if (!entry) return;
+    if (entry.version !== undefined) selectModuleVersion([entry.version], constraint);
     if (!this.load(entry.sha256)) return;
     return MODULE_PREFIX + entry.sha256 + (entry.subdir ? '/' + entry.subdir : '');
   }
@@ -68,6 +70,16 @@ export class OfflineModules {
     }
     this.objects.set(digest, files); this.sizes.set(digest, bytes.length); this.bytes += bytes.length;
     return files;
+  }
+  owns(p: string): boolean {
+    if (!p.startsWith(MODULE_PREFIX)) return false;
+    const digest = p.slice(MODULE_PREFIX.length).split('/')[0];
+    return this.lock.modules.some((entry) => entry.sha256 === digest);
+  }
+  allowsLocal(parent: string, child: string): boolean {
+    if (!this.owns(parent)) return true;
+    const root = MODULE_PREFIX + parent.slice(MODULE_PREFIX.length).split('/')[0];
+    return child === root || child.startsWith(root + '/');
   }
   private object(p: string): { files: Record<string, string>; name: string } | undefined {
     const [digest, ...rest] = p.slice(MODULE_PREFIX.length).split('/');
