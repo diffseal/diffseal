@@ -106,7 +106,7 @@ resource "aws_lambda_function" "f" {
     expect(r.stderr).not.toContain('network forbidden');
     expect(fs.readFileSync(output, 'utf8')).toContain('gate=review');
     const text = fs.readFileSync(summary, 'utf8');
-    expect(text).toContain('NOT GRANTED');
+    expect(text).toContain("does not allow s3:GetObject");
     expect(text).toContain('s3:GetObject');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

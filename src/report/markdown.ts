@@ -8,10 +8,9 @@ export interface AppLinkRow {
 }
 
 export interface ReportMeta {
-  /** e.g. "Plan review" or "Replay of 032f697f1". */
-  title: string;
-  subtitle?: string;
-  /** Free-form caveats shown above the footer, e.g. static-analysis assumptions. */
+  /** One line of context under the heading, e.g. "Plan review of `tfplan.json`." Markdown, not escaped. */
+  title?: string;
+  /** Short caveats for the footer, e.g. static-analysis assumptions. */
   notes?: string[];
   appLinks?: AppLinkRow[];
   suggestions?: Suggestion[];
@@ -35,7 +34,7 @@ export function renderSuggestions(suggestions: Suggestion[]): string[] {
     e.code.add(s.code);
     byTarget.set(k, e);
   }
-  const out = ['', '### Suggested fixes', ''];
+  const out = ['', byTarget.size === 1 ? '### Suggested fix' : '### Suggested fixes', ''];
   for (const { s, code } of byTarget.values()) {
     out.push(`Add to \`${s.target}\` in \`${s.file}:${s.line}\`:`, '', '```hcl', ...[...code].join('\n\n').split('\n'), '```', '');
   }
@@ -70,37 +69,20 @@ const code = (s: string) => '`' + s.replace(/`/g, "'") + '`';
 export function renderMarkdown(result: AnalysisResult, meta: ReportMeta): string {
   const out: string[] = [];
   const attention = result.findings.filter((f) => !f.preExisting && !f.accepted && (f.status === 'FAIL' || f.status === 'WARN' || f.status === 'UNKNOWN'));
-  const counts = countBy(result.changes.map((c) => c.action));
 
-  out.push(`## TerraTrust: ${meta.title}`);
-  if (meta.subtitle) out.push(`_${cell(meta.subtitle)}_`);
-  out.push('');
-  out.push(`**Gate: ${GATE_LABEL[result.gate.result]}**`);
-  if (result.gate.reasons.length) {
-    out.push('');
-    for (const r of result.gate.reasons.slice(0, 8)) out.push(`- ${cell(r)}`);
-    if (result.gate.reasons.length > 8) out.push(`- ...and ${result.gate.reasons.length - 8} more`);
-  }
-  out.push('');
-  out.push('| Changes | Findings to review | Fixed monthly cost |');
-  out.push('| :-- | :-- | :-- |');
-  out.push(
-    `| ${Object.entries(counts).map(([a, n]) => `${n} ${a}`).join(', ') || 'none'} | ${summarizeStatuses(attention)} | ${formatUsd(result.cost.fixedMonthlyDeltaUsd)} |`
-  );
+  out.push(`## TerraTrust: ${GATE_LABEL[result.gate.result]}`);
+  if (meta.title) out.push('', meta.title);
+  const callout = renderCallout(result.gate, { blast: result.blast, findings: result.findings, links: meta.appLinks ?? [] });
+  if (callout.length) out.push('', ...callout);
+  out.push('', summaryLine(result, attention));
 
-  if (meta.appLinks?.length) {
-    out.push('', '### What the code needs from AWS', '', '| Status | Code | Access | Detail |', '| :-- | :-- | :-- | :-- |');
-    const order = ['NOT_GRANTED', 'MISSING', 'UNRESOLVED', 'GRANTED'];
-    const rows = [...meta.appLinks].sort((a, b) => order.indexOf(a.status) - order.indexOf(b.status));
-    for (const l of rows.slice(0, MAX_ROWS)) out.push(`| ${l.status.replace('_', ' ')} | ${code(l.callsite)} | ${cell(l.access)} | ${cell(l.detail)} |`);
-    if (rows.length > MAX_ROWS) out.push(`| | ...and ${rows.length - MAX_ROWS} more | | |`);
-  }
+  if (meta.appLinks?.length) out.push('', '### What the code needs from AWS', ...renderAppLinks(meta.appLinks));
 
   out.push(...renderSuggestions(meta.suggestions ?? []));
 
   const notable = result.blast.filter((b) => b.severity !== 'INFO' || b.action !== 'create');
   if (result.blast.length) {
-    out.push('', '### Changes', '', '| Risk | Resource | Action | Why |', '| :-- | :-- | :-- | :-- |');
+    out.push('', '### Resources', '', '| Risk | Resource | Action | Why |', '| :-- | :-- | :-- | :-- |');
     const rows = [...notable, ...result.blast.filter((b) => !notable.includes(b))];
     for (const b of rows.slice(0, MAX_ROWS)) out.push(blastRow(b));
     if (rows.length > MAX_ROWS) out.push(`| | ...and ${rows.length - MAX_ROWS} more | | |`);
@@ -122,22 +104,107 @@ export function renderMarkdown(result: AnalysisResult, meta: ReportMeta): string
 
   const evidence = result.findings.filter((f) => !attention.includes(f));
   if (evidence.length) {
-    out.push('', `<details><summary>Passing, accepted and pre-existing checks (${evidence.length})</summary>`, '');
+    out.push('', `<details><summary>${evidenceSummary(evidence)}</summary>`, '');
     out.push('| Status | Check | Resource | Detail | Controls |', '| :-- | :-- | :-- | :-- | :-- |');
     for (const f of sortFindings(evidence).slice(0, 150)) out.push(findingRow(f));
     out.push('', '</details>');
   }
 
   const notes = [...(meta.notes ?? []), ...(costRows.length ? [result.cost.basis] : [])];
-  out.push('', '---');
-  for (const n of notes) out.push(`<sub>${cell(n)}</sub><br>`);
-  out.push(`<sub>TerraTrust ${meta.version ?? ''}. Controls cite ISO/IEC 27001:2022 Annex A; whether a check is required is set by your policy, not by the standard.</sub>`);
+  if (result.findings.length) notes.push('Controls refer to ISO/IEC 27001:2022 Annex A. Your policy decides which checks are required, not the standard.');
+  out.push('', '---', footer(meta.version, notes));
 
   let md = out.join('\n') + '\n';
   if (md.length > MAX_CHARS) {
     md = md.slice(0, MAX_CHARS) + '\n\n_Report truncated to fit a GitHub comment. Use `--json` for the full result._\n';
   }
   return md;
+}
+
+/** "1 change", "2 changes". */
+export const plural = (n: number, word: string, many = word + 's') => `${n} ${n === 1 ? word : many}`;
+
+export function footer(version: string | undefined, notes: string[]): string {
+  return `<sub>${[`TerraTrust${version ? ' ' + version : ''}.`, ...notes.map(cell)].join(' ')}</sub>`;
+}
+
+const CALLOUT: Record<'review' | 'block', [kind: string, lead: string]> = {
+  block: ['CAUTION', 'Blocked by your policy:'],
+  review: ['WARNING', 'Review before merging:'],
+};
+
+/**
+ * The gate's reasons as a GitHub alert box. Reasons built from a change, finding or code link are
+ * rewritten as a sentence naming it; any other reason is shown as written.
+ */
+export function renderCallout(
+  gate: AnalysisResult['gate'],
+  from: { blast?: BlastFinding[]; findings?: Finding[]; links?: AppLinkRow[] }
+): string[] {
+  if (gate.result === 'pass') return [];
+  const known = new Map<string, string>();
+  for (const b of from.blast ?? []) known.set(`${b.severity}: ${b.resource}: ${b.reason}`, `${code(b.resource)}: ${cell(b.reason)}`);
+  for (const f of from.findings ?? []) known.set(`FAIL ${f.ruleId}: ${f.resource}: ${f.detail}`, `${code(f.resource)}: ${cell(f.title)}. ${cell(f.detail)}`);
+  for (const l of from.links ?? []) known.set(`${l.status}: ${l.callsite}: ${l.access}`, linkSentence(l));
+  const items = [...new Set(gate.reasons.map((r) => known.get(r) ?? cell(r)))];
+  const [kind, lead] = CALLOUT[gate.result];
+  return [
+    `> [!${kind}]`,
+    `> **${lead}**`,
+    '>',
+    ...items.slice(0, 8).map((i) => `> - ${i}`),
+    ...(items.length > 8 ? [`> - ...and ${items.length - 8} more`] : []),
+  ];
+}
+
+function linkSentence(l: AppLinkRow): string {
+  if (l.status === 'NOT_GRANTED') return `${code(l.callsite)} needs ${cell(l.access)}, but its role does not allow it.`;
+  if (l.status === 'MISSING') return `${code(l.callsite)} ${cell(l.access)}, but no analyzed compute sets it.`;
+  return `${code(l.callsite)}: ${cell(l.access)}`;
+}
+
+const LINK_ORDER = ['NOT_GRANTED', 'MISSING', 'UNRESOLVED', 'GRANTED'];
+
+/** Calls that need work as a list with their detail; granted and unresolved calls folded into a table. */
+export function renderAppLinks(links: AppLinkRow[]): string[] {
+  const out: string[] = [];
+  const act = links.filter((l) => l.status === 'NOT_GRANTED' || l.status === 'MISSING');
+  if (act.length) {
+    out.push('');
+    for (const l of act.slice(0, MAX_ROWS)) out.push(`- **${l.status === 'MISSING' ? 'Missing' : 'Not granted'}** ${code(l.callsite)}: ${cell(l.detail)}`);
+    if (act.length > MAX_ROWS) out.push(`- ...and ${act.length - MAX_ROWS} more`);
+  }
+  const rest = links.filter((l) => !act.includes(l)).sort((a, b) => LINK_ORDER.indexOf(a.status) - LINK_ORDER.indexOf(b.status));
+  if (rest.length) {
+    const n = (st: string) => rest.filter((l) => l.status === st).length;
+    const label = [n('GRANTED') && `${n('GRANTED')} granted`, n('UNRESOLVED') && `${n('UNRESOLVED')} unresolved`].filter(Boolean).join(', ');
+    out.push('', `<details><summary>${label}</summary>`, '', '| Status | Code | Access | Detail |', '| :-- | :-- | :-- | :-- |');
+    for (const l of rest.slice(0, MAX_ROWS)) out.push(`| ${l.status.toLowerCase()} | ${code(l.callsite)} | ${cell(l.access)} | ${cell(l.detail)} |`);
+    if (rest.length > MAX_ROWS) out.push(`| | ...and ${rest.length - MAX_ROWS} more | | |`);
+    out.push('', '</details>');
+  }
+  return out;
+}
+
+const DONE: Record<string, string> = { create: 'created', update: 'updated', replace: 'replaced', delete: 'deleted' };
+
+function summaryLine(result: AnalysisResult, attention: Finding[]): string {
+  const counts = countBy(result.changes.map((c) => c.action));
+  const parts = [Object.keys(counts).length ? `Changes: ${Object.entries(counts).map(([a, n]) => `${n} ${DONE[a] ?? a}`).join(', ')}.` : 'No resource changes.'];
+  if (attention.length) parts.push(`${plural(attention.length, 'finding')} to review.`);
+  if (result.cost.fixedMonthlyDeltaUsd !== 0) parts.push(`Fixed monthly cost: ${formatUsd(result.cost.fixedMonthlyDeltaUsd)}.`);
+  return parts.join(' ');
+}
+
+function evidenceSummary(fs: Finding[]): string {
+  const n = (p: (f: Finding) => boolean) => fs.filter(p).length;
+  const parts = [
+    [n((f) => f.accepted !== undefined), 'accepted'],
+    [n((f) => !f.accepted && f.preExisting === true), 'pre-existing'],
+    [n((f) => !f.accepted && !f.preExisting && f.status === 'PASS'), 'passed'],
+    [n((f) => !f.accepted && !f.preExisting && f.status !== 'PASS'), 'informational'],
+  ].filter(([k]) => k) as [number, string][];
+  return `${plural(fs.length, 'other check')}: ${parts.map(([k, w]) => `${k} ${w}`).join(', ')}`;
 }
 
 const acceptedNote = (a: { reason: string; owner?: string; expires: string }) => `accepted until ${a.expires}${a.owner ? ` by ${a.owner}` : ''}: ${a.reason}`;
@@ -160,12 +227,6 @@ function findingRow(f: Finding): string {
 function sortFindings(fs: Finding[]): Finding[] {
   const order = ['FAIL', 'WARN', 'UNKNOWN', 'INFO', 'PASS'];
   return [...fs].sort((a, b) => order.indexOf(a.status) - order.indexOf(b.status) || a.resource.localeCompare(b.resource));
-}
-
-function summarizeStatuses(fs: Finding[]): string {
-  if (!fs.length) return 'none';
-  const c = countBy(fs.map((f) => f.status));
-  return ['FAIL', 'WARN', 'UNKNOWN'].filter((s) => c[s]).map((s) => `${c[s]} ${s}`).join(', ');
 }
 
 function countBy(xs: string[]): Record<string, number> {

@@ -83,7 +83,7 @@ server.registerTool(
     run(async () => {
       const result = analyze(readPlan(JSON.parse(fs.readFileSync(path.resolve(args.planJsonPath), 'utf8'))));
       return {
-        content: [{ type: 'text', text: renderMarkdown(result, { title: `Plan review of ${path.basename(args.planJsonPath)}`, version: VERSION }) }],
+        content: [{ type: 'text', text: renderMarkdown(result, { title: `Plan review of \`${path.basename(args.planJsonPath)}\`.`, version: VERSION }) }],
         structuredContent: { gate: result.gate.result, reasons: result.gate.reasons },
       };
     })

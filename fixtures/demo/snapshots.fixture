@@ -37,7 +37,7 @@
       },
       "gate": "review",
       "exit": 0,
-      "finding": "NOT GRANTED"
+      "finding": "does not allow dynamodb:Query"
     },
     {
       "name": "harmless-change",

@@ -1,6 +1,6 @@
 import type { AppLink } from '../reconcile/reconcile.js';
 import type { AppLinkRow } from '../report/markdown.js';
-import { renderMarkdown } from '../report/markdown.js';
+import { cell, plural, renderMarkdown } from '../report/markdown.js';
 import { shortRootLabels, type ReplayResult } from './replay.js';
 
 export const VERSION = '0.3.0-beta';
@@ -21,19 +21,24 @@ export function appLinkRows(links: AppLink[]): AppLinkRow[] {
   });
 }
 
-export function renderReplay(r: ReplayResult): string {
+/**
+ * The replay report. A pull request check passes `commit: false`: there the head is the merge commit
+ * GitHub creates, and its subject and author say nothing about the change.
+ */
+export function renderReplay(r: ReplayResult, opts: { commit?: boolean } = {}): string {
   const appLinks = appLinkRows(r.appLinks);
   const likely = r.combined.changes.filter((c) => c.confidence !== 'proven').length;
+  const files = r.terraformFiles.length ? `${plural(r.terraformFiles.length, 'Terraform file')} changed. ` : '';
   const notes = [
-    `Static replay of ${r.base.slice(0, 9)}..${r.head.slice(0, 9)}: configuration at both commits was evaluated without state, credentials or provider calls.`,
-    `Roots: ${r.roots.map((x) => x.root).join(', ') || 'none affected'}.`,
+    `Read the Terraform at ${r.base.slice(0, 9)} and ${r.head.slice(0, 9)} without state, credentials or provider calls.`,
+    `${files}Roots: ${r.roots.map((x) => x.root).join(', ') || 'none affected'}.`,
   ];
-  if (likely) notes.push(`${likely} change(s) depend on values only known after apply; their action is likely, not proven.`);
+  if (likely) notes.push(`${plural(likely, 'change depends', 'changes depend')} on values known only after apply, so ${likely === 1 ? 'its action is' : 'their actions are'} likely, not proven.`);
   const diagnostics = r.roots.flatMap((x) => x.diagnostics);
   if (diagnostics.length) notes.push(`HCL diagnostics: ${diagnostics.slice(0, 3).join('; ')}${diagnostics.length > 3 ? ' ...' : ''}`);
+  const c = r.commit;
   return renderMarkdown(r.combined, {
-    title: `${r.commit.sha.slice(0, 9)} ${r.commit.subject}`,
-    subtitle: `${r.commit.author}, ${r.commit.date.slice(0, 10)}. ${r.terraformFiles.length} Terraform file(s) changed.`,
+    title: opts.commit === false ? undefined : `Commit \`${c.sha.slice(0, 9)}\` ${cell(c.subject)}, by ${cell(c.author)} on ${c.date.slice(0, 10)}.`,
     notes,
     appLinks,
     suggestions: r.appLinks.flatMap((l) => (l.suggestion ? [l.suggestion] : [])),

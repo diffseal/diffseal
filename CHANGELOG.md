@@ -14,6 +14,7 @@
 
 ### Changed
 
+- Redesign the report and PR comment. The heading states the gate, and a GitHub alert box lists what blocks or needs review. The PR comment no longer shows the merge commit GitHub creates. Granted and unresolved code calls fold into a collapsed table, and the footer is one line.
 - Reuse bounded extraction summaries by Git blob identity and extractor version. Release parse trees after extracting facts.
 - Load only the grammars used by a scan. Store offline parser assets as gzip files and decompress selected assets locally. Terraform-only analysis loads no parser runtime or grammar.
 - Make scan, check-app, replay and evidence APIs asynchronous so grammar initialization happens when needed. CLI, Action and MCP callers await these APIs.

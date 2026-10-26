@@ -51,7 +51,7 @@ async function main(): Promise<number> {
   if (mode === 'plan') {
     const planFile = path.resolve(workspace, input('plan-json', 'tfplan.json'));
     const result = analyze(readPlan(JSON.parse(fs.readFileSync(planFile, 'utf8'))), { policy });
-    markdown = renderMarkdown(result, { title: `Plan review of ${path.basename(planFile)}`, version: VERSION });
+    markdown = renderMarkdown(result, { title: `Plan review of \`${path.basename(planFile)}\`.`, version: VERSION });
     gate = result.gate.result;
   } else if (mode === 'app') {
     const r = await checkApp({
@@ -80,7 +80,7 @@ async function main(): Promise<number> {
       now: new Date(),
       rootsUnder: input('roots-under') || undefined,
     });
-    markdown = renderReplay(r);
+    markdown = renderReplay(r, { commit: false });
     gate = r.combined.gate.result;
     hasReport = Boolean(r.roots.length || r.appLinks.length || r.combined.gate.reasons.length || policyChanged);
   } else {

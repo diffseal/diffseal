@@ -85,14 +85,21 @@ for (const name of [
       );
       const markdown = fs.readFileSync(summary, "utf8");
       expect(markdown).toContain(scenario.finding);
+      // A PR comment names the verdict, not the temporary merge commit GitHub checks out.
+      expect(markdown.split("\n")[0]).toBe(
+        `## TerraTrust: ${scenario.gate.toUpperCase()}`,
+      );
+      expect(markdown).not.toContain(scenario.name);
       if (name === "missing-iam-permission") {
         expect(markdown).toContain("dynamodb:Query");
         expect(markdown).toContain("statement {");
         expect(markdown).toContain("aws_dynamodb_table.shipments.arn");
+        expect(markdown).toContain("> [!WARNING]");
       }
       if (name === "replace-database") {
         expect(markdown).toContain("hash_key");
         expect(markdown).toContain("loses the items");
+        expect(markdown).toContain("> [!CAUTION]");
       }
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });

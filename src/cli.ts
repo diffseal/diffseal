@@ -91,7 +91,7 @@ function runReview(args: Args): number {
   const planFile = str(args, '--plan');
   if (!planFile) throw new Error('review needs --plan <tfplan.json> (the output of `terraform show -json <planfile>`)');
   const result = analyze(readPlan(JSON.parse(fs.readFileSync(planFile, 'utf8'))), { policy: loadPolicy(args) });
-  const md = renderMarkdown(result, { title: `Plan review of ${path.basename(planFile)}`, version: VERSION });
+  const md = renderMarkdown(result, { title: `Plan review of \`${path.basename(planFile)}\`.`, version: VERSION });
   const out = str(args, '--out');
   if (out) {
     writeOutput(out, md);
@@ -223,7 +223,7 @@ async function runDemo(): Promise<number> {
   const root = path.resolve(import.meta.dirname, '..');
   const plan = path.join(root, 'examples', 'unsafe-tfplan.json');
   const result = analyze(readPlan(JSON.parse(fs.readFileSync(plan, 'utf8'))));
-  process.stdout.write(renderMarkdown(result, { title: 'Plan review of examples/unsafe-tfplan.json', version: VERSION }));
+  process.stdout.write(renderMarkdown(result, { title: 'Plan review of `examples/unsafe-tfplan.json`.', version: VERSION }));
   process.stdout.write('\n');
   const app = await checkApp({ app: path.join(root, 'examples', 'orders-service'), infra: path.join(root, 'examples', 'demo-infra'), worktree: true });
   process.stdout.write(renderAppCheck(app));
