@@ -114,7 +114,7 @@ function commitsToReplay(args: Args, repo: string): string[] {
   return limit ? shas.slice(-Number(limit)) : shas;
 }
 
-function runReplay(args: Args): number {
+async function runReplay(args: Args): Promise<number> {
   const repo = str(args, '--repo');
   if (!repo) throw new Error('replay needs --repo <path to a local clone>');
   const outDir = str(args, '--out-dir') ?? 'dry-runs';
@@ -136,7 +136,7 @@ function runReplay(args: Args): number {
   for (const sha of commits) {
     let r: ReplayResult;
     try {
-      r = replayCommit({ repo, head: sha, base: str(args, '--base'), policy, rootsUnder: str(args, '--roots-under') });
+      r = await replayCommit({ repo, head: sha, base: str(args, '--base'), policy, rootsUnder: str(args, '--roots-under') });
     } catch (e) {
       console.error(`${sha.slice(0, 9)}: ${(e as Error).message}`);
       failed.push(sha);
@@ -180,19 +180,19 @@ function runReplay(args: Args): number {
   return blocked ? 2 : 0;
 }
 
-function runEvidence(args: Args): number {
+async function runEvidence(args: Args): Promise<number> {
   const repo = str(args, '--repo'), since = str(args, '--since'), until = str(args, '--until');
   if (!repo || !since || !until) throw new Error('evidence needs --repo, --since and --until');
   const approvals = str(args, '--approvals');
-  const result = evidencePack({repo,since,until,outDir:str(args,'--out-dir')??'dry-runs/evidence',approvals:approvals?loadApprovals(fs.readFileSync(approvals,'utf8')):undefined});
+  const result = await evidencePack({repo,since,until,outDir:str(args,'--out-dir')??'dry-runs/evidence',approvals:approvals?loadApprovals(fs.readFileSync(approvals,'utf8')):undefined});
   console.error(`Evidence: ${result.records} records from ${result.selected} selected commits, ${result.failures} failures. Folder: ${result.outDir}`);
   return result.failures ? 1 : 0;
 }
 
-function runCheckApp(args: Args): number {
+async function runCheckApp(args: Args): Promise<number> {
   const app = str(args, '--app');
   if (!app) throw new Error('check-app needs --app <path to the application repository>');
-  const r = checkApp({
+  const r = await checkApp({
     app,
     rev: str(args, '--rev'),
     base: str(args, '--base'),
@@ -214,13 +214,13 @@ function runCheckApp(args: Args): number {
   return args.flags.has('--strict') && r.gate.result !== 'pass' ? 2 : 0;
 }
 
-function runDemo(): number {
+async function runDemo(): Promise<number> {
   const root = path.resolve(import.meta.dirname, '..');
   const plan = path.join(root, 'examples', 'unsafe-tfplan.json');
   const result = analyze(readPlan(JSON.parse(fs.readFileSync(plan, 'utf8'))));
   process.stdout.write(renderMarkdown(result, { title: 'Plan review of examples/unsafe-tfplan.json', version: VERSION }));
   process.stdout.write('\n');
-  const app = checkApp({ app: path.join(root, 'examples', 'orders-service'), infra: path.join(root, 'examples', 'demo-infra'), worktree: true });
+  const app = await checkApp({ app: path.join(root, 'examples', 'orders-service'), infra: path.join(root, 'examples', 'demo-infra'), worktree: true });
   process.stdout.write(renderAppCheck(app));
   return 0;
 }
@@ -237,7 +237,7 @@ function serializable(r: ReplayResult) {
   return { version: VERSION, ...rest, roots: rest.roots.map(({ root, result, diagnostics }) => ({ root, result, diagnostics })) };
 }
 
-export function main(argv: string[]): number {
+export async function main(argv: string[]): Promise<number> {
   let args: Args;
   try {
     args = parseArgs(argv);
@@ -256,10 +256,10 @@ export function main(argv: string[]): number {
   }
   try {
     if (cmd === 'review') return runReview(args);
-    if (cmd === 'replay') return runReplay(args);
-    if (cmd === 'evidence') return runEvidence(args);
-    if (cmd === 'check-app') return runCheckApp(args);
-    if (cmd === 'demo') return runDemo();
+    if (cmd === 'replay') return await runReplay(args);
+    if (cmd === 'evidence') return await runEvidence(args);
+    if (cmd === 'check-app') return await runCheckApp(args);
+    if (cmd === 'demo') return await runDemo();
     console.error(`Unknown command "${cmd}".\n`);
     process.stdout.write(HELP);
     return 1;
@@ -269,4 +269,4 @@ export function main(argv: string[]): number {
   }
 }
 
-if (import.meta.main) process.exit(main(process.argv.slice(2)));
+if (import.meta.main) process.exit(await main(process.argv.slice(2)));

@@ -29,7 +29,7 @@ resource "aws_lambda_function" "f" {
 `;
 
 describe('checkApp', () => {
-  test('worktree with a base checks uncommitted and untracked changes since the base', () => {
+  test('worktree with a base checks uncommitted and untracked changes since the base', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tt-app-'));
     const git = (...args: string[]) => spawnSync('git', ['-C', dir, '-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { encoding: 'utf8' });
     git('init', '-q');
@@ -44,14 +44,14 @@ describe('checkApp', () => {
       path.join(dir, 'new.ts'),
       `import { DeleteTopicCommand } from '@aws-sdk/client-sns';\nawait sns.send(new DeleteTopicCommand({ TopicArn: process.env.TOPIC_ARN }));\n`
     );
-    const r = checkApp({ app: dir, worktree: true, base: 'HEAD' });
+    const r = await checkApp({ app: dir, worktree: true, base: 'HEAD' });
     const byAction = Object.fromEntries(r.links.map((l) => [l.actions.join(','), l.status]));
     expect(byAction).toEqual({ 'sns:Publish': 'GRANTED', 'sns:DeleteTopic': 'NOT_GRANTED' });
     expect(r.gate.result).toBe('review');
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  test('worktree with a base works when the app is a subdirectory of the repository (round 2)', () => {
+  test('worktree with a base works when the app is a subdirectory of the repository (round 2)', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tt-app-sub-'));
     const git = (...args: string[]) => spawnSync('git', ['-C', dir, '-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { encoding: 'utf8' });
     git('init', '-q');
@@ -62,12 +62,12 @@ describe('checkApp', () => {
     git('add', '-A');
     git('commit', '-qm', 'base');
     fs.appendFileSync(path.join(dir, 'services/orders/app.ts'), `await sns.send(new DeleteTopicCommand({ TopicArn: process.env.TOPIC_ARN }));\n`);
-    const r = checkApp({ app: path.join(dir, 'services/orders'), infra: dir, worktree: true, base: 'HEAD' });
+    const r = await checkApp({ app: path.join(dir, 'services/orders'), infra: dir, worktree: true, base: 'HEAD' });
     expect(r.links.map((l) => l.status)).toEqual(['NOT_GRANTED']);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  test('with a base, link settings in .terratrust.json come from the base, and a change to them is flagged (round 3)', () => {
+  test('with a base, link settings in .terratrust.json come from the base, and a change to them is flagged (round 3)', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tt-app-link-'));
     const git = (...args: string[]) => spawnSync('git', ['-C', dir, '-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { encoding: 'utf8' });
     git('init', '-q');
@@ -82,7 +82,7 @@ describe('checkApp', () => {
     fs.appendFileSync(path.join(dir, 'app.ts'), `console.log(process.env.QUEUE_URL);\n`);
     git('add', '-A');
     git('commit', '-qm', 'pr');
-    const r = checkApp({ app: dir, rev: 'HEAD', base: 'HEAD~1' });
+    const r = await checkApp({ app: dir, rev: 'HEAD', base: 'HEAD~1' });
     expect(r.link.roles).toEqual(['r']);
     expect(r.link.env).toEqual([]);
     expect(r.gate.result).toBe('review');

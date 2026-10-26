@@ -10,3 +10,5 @@ examples/output/*dry-runs*/
 dist/*
 !dist/action.js
 !dist/*.wasm
+
+!dist/*.wasm-*.gz

@@ -54,7 +54,7 @@ export interface ReplayResult {
 
 const TF_FILE = /\.(tf|tofu|tfvars|tf\.json|tfvars\.json)$|(^|\/)\.terraform\.lock\.hcl$|(^|\/)terragrunt\.hcl$/;
 
-export function replayCommit(opts: ReplayOptions): ReplayResult {
+export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   const commit = commitInfo(opts.repo, opts.head);
   const baseRev = opts.base ?? commit.parents[0];
   if (!baseRev) throw new Error(`${commit.sha.slice(0, 9)} has no parent; pass --base`);
@@ -108,7 +108,7 @@ export function replayCommit(opts: ReplayOptions): ReplayResult {
     .flatMap((c) => [c.path, c.oldPath])
     .filter((p): p is string => Boolean(p))
     .filter((p) => /(^|\/)terragrunt\.hcl$/.test(p) || (/\.tfvars(\.json)?$/.test(p) && !(autoLoaded.test(p) && evaluatedRoots.has(path.posix.dirname(p)))));
-  const appLinks = checkAppChanges(opts, headSource, baseSource, changed, headEvals);
+  const appLinks = await checkAppChanges(opts, headSource, baseSource, changed, headEvals);
   const combined = combineRoots(roots);
   if (unevaluated.length) {
     if (combined.gate.result === 'pass') combined.gate.result = 'review';
@@ -169,17 +169,17 @@ function repoPolicy(source: GitSource): PolicyConfig {
 }
 
 /** Reconcile the app code a commit adds against every root's infrastructure at head. */
-function checkAppChanges(
+async function checkAppChanges(
   opts: ReplayOptions,
   head: GitSource,
   base: GitSource,
   changed: ChangedPath[],
   evaluated: Map<string, RootEvaluation>
-): AppLink[] {
+): Promise<AppLink[]> {
   const appFiles = changed.filter((c) => c.status !== 'D' && isAppFile(c.path)).map((c) => c.path);
   if (!appFiles.length) return [];
   const addedLines = parseAddedLines(unifiedDiff(opts.repo, base.sha, head.sha, appFiles));
-  const scan = scanApp(head, { addedLines });
+  const scan = await scanApp(head, { addedLines });
   if (!scan.facts.length && !scan.envReads.length) return [];
   const evals = discoverRoots(head, opts.rootsUnder).map((r) => evaluated.get(r) ?? evaluateRoot(head, r));
   const index = new InfraIndex(evals);

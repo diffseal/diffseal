@@ -12,34 +12,34 @@ const files = (bucket: string) => ({
   'app.ts': 'import {PutObjectCommand} from "@aws-sdk/client-s3";\nnew PutObjectCommand({Bucket:"uploads"});\n',
 });
 
-test('unchanged file summaries are reused while changes to helpers invalidate their callers', () => {
+test('unchanged file summaries are reused while changes to helpers invalidate their callers', async () => {
   const cache = new ExtractionCache();
-  const first = scanApp(new MemorySource(files('first')), { cache });
+  const first = await scanApp(new MemorySource(files('first')), { cache });
   const before = cache.stats();
-  const again = scanApp(new MemorySource(files('first')), { cache });
+  const again = await scanApp(new MemorySource(files('first')), { cache });
   expect(again).toEqual(first);
   expect(cache.stats().hits).toBeGreaterThan(before.hits);
-  const changed = scanApp(new MemorySource(files('second')), { cache });
-  expect(changed).toEqual(scanApp(new MemorySource(files('second')), { cache: new ExtractionCache({ maxBytes: 0 }) }));
+  const changed = await scanApp(new MemorySource(files('second')), { cache });
+  expect(changed).toEqual(await scanApp(new MemorySource(files('second')), { cache: new ExtractionCache({ maxBytes: 0 }) }));
   expect(changed.facts.filter((f) => f.file === 'cmd/main.go').map((f) => f.resource)).toEqual([
     { kind: 'literal', value: 'second' },
   ]);
 });
 
-test('cache hits preserve changed-line filtering and file names after a rename', () => {
+test('cache hits preserve changed-line filtering and file names after a rename', async () => {
   const cache = new ExtractionCache();
   const text =
     'import {PutObjectCommand} from "@aws-sdk/client-s3";\nnew PutObjectCommand({\n Bucket:"uploads",\n});\n';
-  const first = scanApp(new MemorySource({ 'a.ts': text }), { cache, addedLines: new Map([['a.ts', new Set([3])]]) });
+  const first = await scanApp(new MemorySource({ 'a.ts': text }), { cache, addedLines: new Map([['a.ts', new Set([3])]]) });
   expect(first.facts).toHaveLength(1);
-  const unchangedLines = scanApp(new MemorySource({ 'a.ts': text }), {
+  const unchangedLines = await scanApp(new MemorySource({ 'a.ts': text }), {
     cache,
     addedLines: new Map([['a.ts', new Set([1])]]),
   });
   expect(unchangedLines.facts).toHaveLength(0);
-  const renamed = scanApp(new MemorySource({ 'b.ts': text }), { cache });
+  const renamed = await scanApp(new MemorySource({ 'b.ts': text }), { cache });
   expect(renamed.facts[0].file).toBe('b.ts');
   expect(renamed).toEqual(
-    scanApp(new MemorySource({ 'b.ts': text }), { cache: new ExtractionCache({ maxEntries: 0 }) }),
+    await scanApp(new MemorySource({ 'b.ts': text }), { cache: new ExtractionCache({ maxEntries: 0 }) }),
   );
 });

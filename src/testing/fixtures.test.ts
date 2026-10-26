@@ -18,7 +18,7 @@ const fixturesDir = path.resolve(import.meta.dirname, '../../fixtures');
 const files = findFixtureFiles(fixturesDir);
 
 describe('implementation-independent specification fixtures', () => {
-  test('fixture directory contains suites', () => {
+  test('fixture directory contains suites', async () => {
     expect(files.length).toBeGreaterThan(0);
   });
 
@@ -27,8 +27,8 @@ describe('implementation-independent specification fixtures', () => {
     const suite = JSON.parse(fs.readFileSync(file, 'utf8')) as FixtureSuite;
     describe(`${rel}: ${suite.suite}`, () => {
       for (const tc of suite.cases) {
-        test(tc.name, () => {
-          runFixtureCase(tc);
+        test(tc.name, async () => {
+          await runFixtureCase(tc);
         });
       }
     });

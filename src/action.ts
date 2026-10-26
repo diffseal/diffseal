@@ -54,7 +54,7 @@ async function main(): Promise<number> {
     markdown = renderMarkdown(result, { title: `Plan review of ${path.basename(planFile)}`, version: VERSION });
     gate = result.gate.result;
   } else if (mode === 'app') {
-    const r = checkApp({
+    const r = await checkApp({
       app: workspace,
       rev: 'HEAD',
       base,
@@ -67,7 +67,7 @@ async function main(): Promise<number> {
     gate = r.gate.result;
     hasReport = Boolean(r.links.length || r.gate.reasons.length || policyChanged);
   } else if (mode === 'pr') {
-    const r = replayCommit({
+    const r = await replayCommit({
       repo: workspace,
       head: 'HEAD',
       base,

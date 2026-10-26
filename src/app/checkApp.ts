@@ -41,7 +41,7 @@ export interface CheckAppResult {
   deployments?: import('./deployments.js').DeploymentMapping[];
 }
 
-export function checkApp(opts: CheckAppOptions): CheckAppResult {
+export async function checkApp(opts: CheckAppOptions): Promise<CheckAppResult> {
   const appSource: FileSource = opts.worktree ? new FsSource(opts.app) : new GitSource(opts.app, opts.rev ?? 'HEAD');
   const notes: string[] = [];
   // With a base, link settings come from the base: a change cannot choose the role or env it is judged by.
@@ -70,7 +70,7 @@ export function checkApp(opts: CheckAppOptions): CheckAppResult {
     }
     notes.push(`Only calls added since ${base.slice(0, 9)}${opts.worktree ? ', including uncommitted and untracked files,' : ''} are checked.`);
   }
-  const scan = scanApp(appSource, { addedLines, entries: opts.entries });
+  const scan = await scanApp(appSource, { addedLines, entries: opts.entries });
   if (opts.entries?.length) notes.push(`Scanned the code reachable from ${opts.entries.join(', ')}.`);
 
   const infraRepo = opts.infra ?? (link.infra?.repo ? path.resolve(opts.app, link.infra.repo) : opts.app);
