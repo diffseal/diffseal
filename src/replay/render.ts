@@ -3,7 +3,7 @@ import type { AppLinkRow } from '../report/markdown.js';
 import { renderMarkdown } from '../report/markdown.js';
 import { shortRootLabels, type ReplayResult } from './replay.js';
 
-export const VERSION = '0.2.0-beta';
+export const VERSION = '0.3.0-beta';
 
 /** App links as report rows; identical results in several roots become one row naming the roots. */
 export function appLinkRows(links: AppLink[]): AppLinkRow[] {
