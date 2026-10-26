@@ -1,3 +1,4 @@
+import { defaultModuleCache } from '../terraform/moduleCache.js';
 import { deploymentIndex } from './deployments.js';
 import * as path from 'node:path';
 import type { Gate } from '../core/model.js';
@@ -13,6 +14,7 @@ import { isAppFile, scanApp } from './scan.js';
 export interface CheckAppOptions {
   /** Application repository (a local clone). */
   app: string;
+  moduleCache?: string;
   /** Commit to check; defaults to HEAD. Ignored with `worktree`. */
   rev?: string;
   /** Only check calls added since this commit (pull request mode). */
@@ -75,7 +77,7 @@ export function checkApp(opts: CheckAppOptions): CheckAppResult {
 
   const infraRepo = opts.infra ?? (link.infra?.repo ? path.resolve(opts.app, link.infra.repo) : opts.app);
   const infraRev = opts.infraRev ?? link.infra?.rev;
-  const infraSource: FileSource = opts.worktree && !infraRev ? new FsSource(infraRepo) : new GitSource(infraRepo, infraRev ?? 'HEAD');
+  const infraSource: FileSource = opts.worktree && !infraRev ? new FsSource(infraRepo, opts.moduleCache ?? defaultModuleCache()) : new GitSource(infraRepo, infraRev ?? 'HEAD', opts.moduleCache ?? defaultModuleCache());
   const roots = discoverRoots(infraSource, opts.rootsUnder ?? link.infra?.rootsUnder);
   const index = new InfraIndex(roots.map((r) => evaluateRoot(infraSource, r)));
 

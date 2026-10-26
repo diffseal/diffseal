@@ -1,3 +1,4 @@
+import { OfflineModules, MODULE_PREFIX } from './moduleCache.js';
 import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -7,6 +8,7 @@ import * as path from 'node:path';
  */
 export interface FileSource {
   readonly label: string;
+  resolveModule?(source: string, constraint?: string): string | undefined;
   /** Immutable object identity, available without reading its contents. */
   blobId?(relPath: string): string | undefined;
   readFile(relPath: string): string | undefined;
@@ -39,11 +41,17 @@ const SKIP_DIRS = new Set(['.git', 'node_modules', '.terraform', '.claude', '.wo
 /** The working tree. Used by `terratrust scan` and local checks, never by historical replay. */
 export class FsSource implements FileSource {
   readonly label: string;
-  constructor(private readonly root: string) {
+  private modules?: OfflineModules;
+  resolveModule(source: string, constraint?: string): string | undefined {
+    if (!this.moduleCache) return;
+    return (this.modules ??= new OfflineModules(this, this.moduleCache)).resolve(source, constraint);
+  }
+  constructor(private readonly root: string, private readonly moduleCache?: string) {
     this.label = root;
   }
   /** Reads regular files inside the root only: no `..`, no symlinks out, nothing huge or special. */
   readFile(p: string) {
+    if (normalize(p).startsWith(MODULE_PREFIX)) return this.modules?.readFile(normalize(p));
     try {
       const rootReal = fs.realpathSync.native(this.root);
       const real = fs.realpathSync.native(path.resolve(this.root, p));
@@ -56,6 +64,7 @@ export class FsSource implements FileSource {
     }
   }
   listFiles(dir: string) {
+    if (normalize(dir).startsWith(MODULE_PREFIX)) return this.modules?.listFiles(normalize(dir)) ?? [];
     try {
       return fs.readdirSync(path.join(this.root, dir), { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
     } catch {
@@ -87,7 +96,12 @@ export class GitSource implements FileSource {
   private readonly contents = new Map<string, string>();
   private readonly dirs = new Map<string, string[]>();
 
-  constructor(private readonly repo: string, rev: string) {
+  private modules?: OfflineModules;
+  resolveModule(source: string, constraint?: string): string | undefined {
+    if (!this.moduleCache) return;
+    return (this.modules ??= new OfflineModules(this, this.moduleCache)).resolve(source, constraint);
+  }
+  constructor(private readonly repo: string, rev: string, private readonly moduleCache?: string) {
     this.sha = resolveCommit(repo, rev);
     this.label = `${rev}@${this.sha.slice(0, 9)}`;
     const out = git(repo, ['ls-tree', '-r', '-z', '--full-tree', this.sha]);
@@ -111,6 +125,7 @@ export class GitSource implements FileSource {
 
   readFile(p: string) {
     const key = normalize(p);
+    if (key.startsWith(MODULE_PREFIX)) return this.modules?.readFile(key);
     if (this.contents.has(key)) return this.contents.get(key);
     if (!this.blobs.has(key)) return undefined;
     this.prefetch([key]);
@@ -144,6 +159,7 @@ export class GitSource implements FileSource {
   }
 
   listFiles(dir: string) {
+    if (normalize(dir).startsWith(MODULE_PREFIX)) return this.modules?.listFiles(normalize(dir)) ?? [];
     return this.dirs.get(normalize(dir)) ?? [];
   }
 

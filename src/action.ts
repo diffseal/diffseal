@@ -56,6 +56,7 @@ async function main(): Promise<number> {
   } else if (mode === 'app') {
     const r = checkApp({
       app: workspace,
+      moduleCache: input('module-cache') ? path.resolve(workspace, input('module-cache')) : undefined,
       rev: 'HEAD',
       base,
       infra: input('infra-path') ? path.resolve(workspace, input('infra-path')) : undefined,
@@ -69,6 +70,7 @@ async function main(): Promise<number> {
   } else if (mode === 'pr') {
     const r = replayCommit({
       repo: workspace,
+      moduleCache: input('module-cache') ? path.resolve(workspace, input('module-cache')) : undefined,
       head: 'HEAD',
       base,
       // Replay reads the policy file from the same base it compares with, also when the event has no

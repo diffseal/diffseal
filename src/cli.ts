@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { fetchModules } from './terraform/modulesFetch.js';
 import { evidencePack } from './evidence/pack.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -24,6 +25,7 @@ Usage:
   terratrust check-app --app <path> [--rev <rev> | --worktree] [--base <rev>] [--infra <path>] [--infra-rev <rev>]
                        [--roots-under <dir>] [--role <name,...>] [--entry <dir,...>] [--out <report.md>] [--json <file>] [--strict]
   terratrust evidence --since <date> --until <date> --repo <path> [--approvals <file.json>] [--out-dir <folder>]
+  terratrust modules fetch [--repo <path>] [--cache <dir>]
   terratrust demo
 
 Commands:
@@ -37,6 +39,8 @@ Commands:
              With --base, only calls added since that commit are checked.
   evidence   Export an unsigned audit period, inclusive since and exclusive until in UTC.
              Replays every first-parent commit in that period. An incomplete export exits 1; historic gates do not fail export.
+  modules    Fetch public module packages and write a verified lock file. This command uses the network.
+             replay and check-app accept --module-cache <dir> and never fetch implicitly.
   demo       Run review and check-app on the bundled examples.
 
 Exit codes: 0 pass, 1 error, 2 gate failed (BLOCK, or REVIEW with --strict).
@@ -136,7 +140,7 @@ function runReplay(args: Args): number {
   for (const sha of commits) {
     let r: ReplayResult;
     try {
-      r = replayCommit({ repo, head: sha, base: str(args, '--base'), policy, rootsUnder: str(args, '--roots-under') });
+      r = replayCommit({ repo, moduleCache: str(args, '--module-cache'), head: sha, base: str(args, '--base'), policy, rootsUnder: str(args, '--roots-under') });
     } catch (e) {
       console.error(`${sha.slice(0, 9)}: ${(e as Error).message}`);
       failed.push(sha);
@@ -193,6 +197,7 @@ function runCheckApp(args: Args): number {
   const app = str(args, '--app');
   if (!app) throw new Error('check-app needs --app <path to the application repository>');
   const r = checkApp({
+    moduleCache: str(args, '--module-cache'),
     app,
     rev: str(args, '--rev'),
     base: str(args, '--base'),
@@ -237,7 +242,7 @@ function serializable(r: ReplayResult) {
   return { version: VERSION, ...rest, roots: rest.roots.map(({ root, result, diagnostics }) => ({ root, result, diagnostics })) };
 }
 
-export function main(argv: string[]): number {
+export async function main(argv: string[]): Promise<number> {
   let args: Args;
   try {
     args = parseArgs(argv);
@@ -255,6 +260,11 @@ export function main(argv: string[]): number {
     return 1;
   }
   try {
+    if (cmd === 'modules' && args._[1] === 'fetch') {
+      const lock = await fetchModules({ repo: str(args, '--repo'), cache: str(args, '--cache') });
+      console.log(`Locked ${lock.modules.length} module packages`);
+      return 0;
+    }
     if (cmd === 'review') return runReview(args);
     if (cmd === 'replay') return runReplay(args);
     if (cmd === 'evidence') return runEvidence(args);
@@ -269,4 +279,4 @@ export function main(argv: string[]): number {
   }
 }
 
-if (import.meta.main) process.exit(main(process.argv.slice(2)));
+if (import.meta.main) process.exit(await main(process.argv.slice(2)));

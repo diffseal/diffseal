@@ -1,3 +1,4 @@
+import { defaultModuleCache, MODULE_LOCK } from '../terraform/moduleCache.js';
 import { deploymentIndex } from '../app/deployments.js';
 import * as path from 'node:path';
 import { analyze } from '../analysis/analyze.js';
@@ -14,6 +15,7 @@ import type { RootEvaluation } from '../terraform/expand.js';
 
 export interface ReplayOptions {
   repo: string;
+  moduleCache?: string;
   /** Commit to replay. */
   head: string;
   /** Defaults to the first parent of head. */
@@ -58,9 +60,10 @@ export function replayCommit(opts: ReplayOptions): ReplayResult {
   const commit = commitInfo(opts.repo, opts.head);
   const baseRev = opts.base ?? commit.parents[0];
   if (!baseRev) throw new Error(`${commit.sha.slice(0, 9)} has no parent; pass --base`);
-  const headSource = new GitSource(opts.repo, commit.sha);
-  const baseSource = new GitSource(opts.repo, baseRev);
+  const headSource = new GitSource(opts.repo, commit.sha, opts.moduleCache ?? defaultModuleCache());
+  const baseSource = new GitSource(opts.repo, baseRev, opts.moduleCache ?? defaultModuleCache());
   const changed = changedPaths(opts.repo, baseSource.sha, headSource.sha);
+  const moduleLockChanged = headSource.readFile(MODULE_LOCK) !== baseSource.readFile(MODULE_LOCK);
   const tfChanged = changed.filter((c) => TF_FILE.test(c.path) || (c.oldPath && TF_FILE.test(c.oldPath)));
   const changedDirs = new Set(tfChanged.flatMap((c) => [c.path, c.oldPath].filter((p): p is string => Boolean(p)).map((p) => path.posix.dirname(p))));
 
@@ -77,11 +80,11 @@ export function replayCommit(opts: ReplayOptions): ReplayResult {
     .filter((p): p is string => Boolean(p) && !TF_FILE.test(p!));
   const roots: RootReplay[] = [];
   const headEvals = new Map<string, RootEvaluation>();
-  if (changedDirs.size || dataChanged.length) {
+  if (changedDirs.size || dataChanged.length || moduleLockChanged) {
     const candidates = new Set([...discoverRoots(headSource, opts.rootsUnder), ...discoverRoots(baseSource, opts.rootsUnder)]);
     for (const root of [...candidates].sort()) {
       const closure = new Set([...moduleClosure(headSource, root), ...moduleClosure(baseSource, root)]);
-      const touchesConfig = [...changedDirs].some((d) => closure.has(d));
+      const touchesConfig = moduleLockChanged || [...changedDirs].some((d) => closure.has(d));
       if (!touchesConfig && !(dataChanged.length && readsFiles(closure, headSource, baseSource))) continue;
       const baseEval = evaluateRoot(baseSource, root);
       const headEval = evaluateRoot(headSource, root);

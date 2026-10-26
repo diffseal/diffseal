@@ -1,0 +1,4 @@
+{
+  "module": "variable \"name\" {}\nresource \"aws_s3_bucket\" \"this\" {\n bucket=var.name\n}\noutput \"name\" { value=aws_s3_bucket.this.bucket }\n",
+  "root": "terraform {\n backend \"s3\" {}\n}\nmodule \"bucket\" {\n source=SOURCE\n VERSION\n name=\"logs\"\n}\n"
+}
