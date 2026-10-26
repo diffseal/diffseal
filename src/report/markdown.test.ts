@@ -128,3 +128,11 @@ describe('report layout edge cases (review of the redesign)', () => {
     expect(md).toContain('| granted | `src/a\\|b.ts:2` |');
   });
 });
+
+test('an actionable call keeps the access it needs, which the detail may not name (review of the redesign)', () => {
+  const r = analyze(readPlan(plan([])));
+  const md = renderMarkdown(r, {
+    appLinks: [{ status: 'NOT_GRANTED', callsite: 'src/h.ts:9', access: 'kms:Decrypt on key/abc', detail: 'role r cannot read s3:GetObject on reports, which is encrypted with key/abc' }],
+  });
+  expect(md).toContain('- **Not granted** `src/h.ts:9` kms:Decrypt on key/abc.');
+});

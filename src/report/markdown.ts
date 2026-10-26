@@ -188,7 +188,7 @@ export function renderAppLinks(links: AppLinkRow[]): string[] {
   const act = links.filter((l) => l.status === 'NOT_GRANTED' || l.status === 'MISSING');
   if (act.length) {
     out.push('');
-    for (const l of act.slice(0, MAX_ROWS)) out.push(`- **${l.status === 'MISSING' ? 'Missing' : 'Not granted'}** ${code(l.callsite)}: ${cell(l.detail)}`);
+    for (const l of act.slice(0, MAX_ROWS)) out.push(`- **${l.status === 'MISSING' ? 'Missing' : 'Not granted'}** ${code(l.callsite)} ${cell(l.access)}. ${cell(l.detail)}`);
     if (act.length > MAX_ROWS) out.push(`- ...and ${act.length - MAX_ROWS} more`);
   }
   const rest = links.filter((l) => !act.includes(l)).sort((a, b) => LINK_ORDER.indexOf(a.status) - LINK_ORDER.indexOf(b.status));
