@@ -106,7 +106,11 @@ export async function fetchModules(opts: { repo?: string; cache?: string }): Pro
   const repo = path.resolve(opts.repo ?? '.'), cache = path.resolve(opts.cache ?? defaultModuleCache());
   const source = new FsSource(repo), oldLock = parseModuleLock(source.readFile(MODULE_LOCK)), queue: Array<{ source: string; constraint: string }> = [];
   for (const dir of new Set(source.allFiles().filter(isConfigFile).map((file) => path.posix.dirname(file)))) {
-    for (const call of loadModule(source, dir)?.moduleCalls.values() ?? []) if (call.source && !call.localDir) queue.push({ source: call.source, constraint: call.version ?? '' });
+    for (const call of loadModule(source, dir)?.moduleCalls.values() ?? []) {
+      if (!call.source) throw Error(`Fetch requires a literal module source in ${call.file}`);
+      if (call.block.body.attributes.some((attr) => attr.name === 'version') && call.version === undefined) throw Error(`Fetch requires a literal module version in ${call.file}`);
+      if (!call.localDir) queue.push({ source: call.source, constraint: call.version ?? '' });
+    }
   }
   const modules: ModuleLockEntry[] = [], seen = new Set<string>();
   while (queue.length) {
@@ -124,6 +128,8 @@ export async function fetchModules(opts: { repo?: string; cache?: string }): Pro
       const dir = pending.pop()!; if (visited.has(dir)) continue; visited.add(dir);
       if (visited.size > 1000) throw Error('Module local dependency graph exceeds 1000 directories');
       for (const child of loadModule(snapshot, dir)?.moduleCalls.values() ?? []) {
+        if (!child.source) throw Error('Fetch requires a literal module source in a downloaded dependency');
+        if (child.block.body.attributes.some((attr) => attr.name === 'version') && child.version === undefined) throw Error('Fetch requires a literal module version in a downloaded dependency');
         if (child.localDir) pending.push(child.localDir);
         else if (child.source) queue.push({ source: child.source, constraint: child.version ?? '' });
       }

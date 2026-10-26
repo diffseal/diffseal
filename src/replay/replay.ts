@@ -113,6 +113,10 @@ export function replayCommit(opts: ReplayOptions): ReplayResult {
     .filter((p) => /(^|\/)terragrunt\.hcl$/.test(p) || (/\.tfvars(\.json)?$/.test(p) && !(autoLoaded.test(p) && evaluatedRoots.has(path.posix.dirname(p)))));
   const appLinks = checkAppChanges(opts, headSource, baseSource, changed, headEvals);
   const combined = combineRoots(roots);
+  if (moduleLockChanged && roots.some((root) => root.changes.some((change) => change.type === 'terraform_module_call'))) {
+    if (combined.gate.result === 'pass') combined.gate.result = 'review';
+    combined.gate.reasons.push('Module lock changed while module source remains unavailable offline; review the dependency change');
+  }
   if (unevaluated.length) {
     if (combined.gate.result === 'pass') combined.gate.result = 'review';
     combined.gate.reasons.push(`Inputs changed that static replay does not evaluate (${[...new Set(unevaluated)].slice(0, 5).join(', ')}); review them by hand or with a plan`);

@@ -201,6 +201,9 @@ test('a lock-only change compares the old and new pinned contents for nested roo
     const out = path.join(f.dir, 'replay'); expect((await f.run('replay', '--repo', f.repo, '--commit', 'HEAD', '--module-cache', f.cache, '--out-dir', out)).exit).toBe(0);
     const report = JSON.parse(fs.readFileSync(path.join(out, git(['rev-parse', '--short=9', 'HEAD']) + '.json'), 'utf8'));
     expect(report.roots[0].root).toBe('infra/prod'); expect(report.roots[0].result.changes[0].action).toBe('replace');
+    const absent = path.join(f.dir, 'absent-replay');
+    expect((await f.run('replay', '--repo', f.repo, '--commit', 'HEAD', '--module-cache', path.join(f.dir, 'missing-cache'), '--out-dir', absent)).exit).toBe(0);
+    expect(JSON.parse(fs.readFileSync(path.join(absent, git(['rev-parse', '--short=9', 'HEAD']) + '.json'), 'utf8')).combined.gate.result).toBe('review');
   } finally { fs.rmSync(f.dir, { recursive: true, force: true }); }
 });
 
@@ -251,4 +254,14 @@ test('unsafe registry archives fail without writing a lock or extracting files',
     expect(fs.existsSync(path.join(f.repo, 'terratrust.modules.lock.json'))).toBe(false);
     expect(fs.existsSync(path.join(f.dir, 'outside'))).toBe(false);
   } finally { server.stop(true); fs.rmSync(f.dir, { recursive: true, force: true }); }
+});
+
+test('fetch rejects nonliteral module sources rather than writing an empty lock', async () => {
+  const f = setup();
+  try {
+    fs.writeFileSync(path.join(f.repo, 'main.tf'), 'module "dynamic" { source=var.module_source }');
+    const result = await f.run('modules', 'fetch', '--repo', f.repo, '--cache', f.cache);
+    expect(result.exit).toBe(1); expect(result.stderr).toContain('literal module source');
+    expect(fs.existsSync(path.join(f.repo, 'terratrust.modules.lock.json'))).toBe(false);
+  } finally { fs.rmSync(f.dir, { recursive: true, force: true }); }
 });
