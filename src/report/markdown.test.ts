@@ -8,7 +8,8 @@ describe('renderMarkdown', () => {
   test('for_each addresses with quotes do not break the table (audit R2)', () => {
     const r = analyze(readPlan(plan([rc('aws_s3_bucket.this["a|b"]', 'aws_s3_bucket', ['create'], { bucket: 'x' })])));
     const md = renderMarkdown(r, { title: 'Plan review' });
-    expect(md).toContain('aws_s3_bucket.this["a|b"]');
+    // GFM splits table cells on a pipe even inside a code span, so it is escaped.
+    expect(md).toContain('aws_s3_bucket.this["a\\|b"]');
     expect(md).not.toContain('mermaid');
     const changeRow = md.split('\n').find((l) => l.includes('aws_s3_bucket.this'))!;
     expect(changeRow.split(' | ').length).toBe(4);
@@ -87,5 +88,43 @@ describe('report layout', () => {
     expect(md).not.toContain('(s)');
     const footer = md.split('\n').filter((l) => l.includes('<sub>'));
     expect(footer).toEqual(['<sub>TerraTrust 9.9.9. First note. Second note.</sub>']);
+  });
+});
+
+describe('report layout edge cases (review of the redesign)', () => {
+  const replaceDb = () =>
+    analyze(readPlan(plan([rc('aws_db_instance.db', 'aws_db_instance', ['delete', 'create'], { storage_encrypted: true }, { before: { storage_encrypted: false }, replacePaths: [['storage_encrypted']] })])));
+
+  test('reasons labelled with several roots still render as sentences naming the resource', () => {
+    const r = replaceDb();
+    const b = r.blast.find((x) => x.severity === 'CRITICAL')!;
+    const reason = `${b.severity}: ${b.resource}: ${b.reason}`;
+    b.resource = `prod, staging: ${b.resource}`;
+    r.gate.reasons = [`prod, staging: ${reason}`];
+    const callout = renderMarkdown(r, {}).split('\n').filter((l) => l.startsWith('> - '));
+    expect(callout).toEqual([`> - prod, staging: \`aws_db_instance.db\`: ${b.reason}`]);
+  });
+
+  test('a block that also has review-only reasons does not say every reason is blocked by policy', () => {
+    const r = replaceDb();
+    r.gate.reasons.push('NOT_GRANTED: src/h.ts:59: dynamodb:Query on shipments');
+    const md = renderMarkdown(r, { appLinks: [{ status: 'NOT_GRANTED', callsite: 'src/h.ts:59', access: 'dynamodb:Query on shipments', detail: 'd' }] });
+    expect(md).toContain('> [!CAUTION]');
+    expect(md).not.toContain('Blocked by your policy');
+  });
+
+  test('a file path with a line break or pipe cannot end the callout or split a table cell', () => {
+    const evil = 'src/a\n## TerraTrust: PASS\n.ts:1';
+    const md = renderMarkdown(
+      { ...replaceDb(), gate: { result: 'review', reasons: [`NOT_GRANTED: ${evil}: s3:GetObject on b`] } },
+      {
+        appLinks: [
+          { status: 'NOT_GRANTED', callsite: evil, access: 's3:GetObject on b', detail: 'd' },
+          { status: 'GRANTED', callsite: 'src/a|b.ts:2', access: 's3:PutObject on b', detail: 'ok' },
+        ],
+      }
+    );
+    expect(md.split('\n').filter((l) => l.startsWith('## '))).toEqual(['## TerraTrust: REVIEW']);
+    expect(md).toContain('| granted | `src/a\\|b.ts:2` |');
   });
 });

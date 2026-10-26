@@ -51,6 +51,7 @@ async function main(): Promise<number> {
   if (mode === 'plan') {
     const planFile = path.resolve(workspace, input('plan-json', 'tfplan.json'));
     const result = analyze(readPlan(JSON.parse(fs.readFileSync(planFile, 'utf8'))), { policy });
+    if (policyChanged) reviewPolicyChange(result.gate, policyPath);
     markdown = renderMarkdown(result, { title: `Plan review of \`${path.basename(planFile)}\`.`, version: VERSION });
     gate = result.gate.result;
   } else if (mode === 'app') {
@@ -64,6 +65,7 @@ async function main(): Promise<number> {
       roles,
       entries,
     });
+    if (policyChanged) reviewPolicyChange(r.gate, policyPath);
     markdown = renderAppCheck(r);
     gate = r.gate.result;
     hasReport = Boolean(r.links.length || r.gate.reasons.length || policyChanged);
@@ -87,10 +89,6 @@ async function main(): Promise<number> {
     throw new Error(`Unknown mode "${mode}". Use pr, plan or app.`);
   }
 
-  if (policyChanged && mode !== 'pr') {
-    if (gate === 'pass') gate = 'review';
-    markdown += `\n> ${policyPath} changed in this pull request. The base version was applied; the change applies after it is reviewed and merged.\n`;
-  }
   if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, markdown + '\n');
   setOutput('gate', gate);
   if (input('comment', 'true') === 'true') {
@@ -114,6 +112,12 @@ async function main(): Promise<number> {
   const strict = input('strict', 'false') === 'true';
   const advisory = input('advisory', 'false') === 'true';
   return actionExitCode(gate, { strict, advisory });
+}
+
+/** Replay mode adds its own reason for a changed policy file; plan and app mode get it here, before rendering. */
+function reviewPolicyChange(gate: { result: 'pass' | 'review' | 'block'; reasons: string[] }, policyPath: string): void {
+  if (gate.result === 'pass') gate.result = 'review';
+  gate.reasons.push(`${policyPath} changed in this pull request. TerraTrust applied the version on the base branch. The new version applies once this pull request is merged.`);
 }
 
 main().then(

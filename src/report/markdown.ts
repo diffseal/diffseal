@@ -64,7 +64,10 @@ export function cell(v: unknown): string {
     .trim();
 }
 
-const code = (s: string) => '`' + s.replace(/`/g, "'") + '`';
+/** Inline code on one line: a line break in a path or address must not start a new Markdown block. */
+const code = (s: string) => '`' + s.replace(/`/g, "'").replace(/\r\n|\r|\n/g, ' ') + '`';
+/** Inline code inside a table row, where GFM splits cells on a pipe even within a code span. */
+const codeCell = (s: string) => code(s).replace(/\|/g, '\\|');
 
 export function renderMarkdown(result: AnalysisResult, meta: ReportMeta): string {
   const out: string[] = [];
@@ -98,7 +101,7 @@ export function renderMarkdown(result: AnalysisResult, meta: ReportMeta): string
   if (costRows.length) {
     out.push('', '### Cost', '', '| Resource | Monthly | Basis |', '| :-- | :-- | :-- |');
     for (const i of costRows.slice(0, MAX_ROWS)) {
-      out.push(`| ${code(i.resource)} | ${i.monthlyDeltaUsd === undefined ? 'n/a' : formatUsd(i.monthlyDeltaUsd)} | ${cell(i.note)} |`);
+      out.push(`| ${codeCell(i.resource)} | ${i.monthlyDeltaUsd === undefined ? 'n/a' : formatUsd(i.monthlyDeltaUsd)} | ${cell(i.note)} |`);
     }
   }
 
@@ -129,8 +132,8 @@ export function footer(version: string | undefined, notes: string[]): string {
 }
 
 const CALLOUT: Record<'review' | 'block', [kind: string, lead: string]> = {
-  block: ['CAUTION', 'Blocked by your policy:'],
-  review: ['WARNING', 'Review before merging:'],
+  block: ['CAUTION', 'Blocked. Check these before merging:'],
+  review: ['WARNING', 'Check these before merging:'],
 };
 
 /**
@@ -143,8 +146,13 @@ export function renderCallout(
 ): string[] {
   if (gate.result === 'pass') return [];
   const known = new Map<string, string>();
-  for (const b of from.blast ?? []) known.set(`${b.severity}: ${b.resource}: ${b.reason}`, `${code(b.resource)}: ${cell(b.reason)}`);
-  for (const f of from.findings ?? []) known.set(`FAIL ${f.ruleId}: ${f.resource}: ${f.detail}`, `${code(f.resource)}: ${cell(f.title)}. ${cell(f.detail)}`);
+  // With several roots, the replay puts the same root label in front of the resource and the reason.
+  for (const b of from.blast ?? []) {
+    for (const [label, addr] of labelSplits(b.resource)) known.set(`${label}${b.severity}: ${addr}: ${b.reason}`, `${rootLabel(label)}${code(addr)}: ${cell(b.reason)}`);
+  }
+  for (const f of from.findings ?? []) {
+    for (const [label, addr] of labelSplits(f.resource)) known.set(`${label}FAIL ${f.ruleId}: ${addr}: ${f.detail}`, `${rootLabel(label)}${code(addr)}: ${cell(f.title)}. ${cell(f.detail)}`);
+  }
   for (const l of from.links ?? []) known.set(`${l.status}: ${l.callsite}: ${l.access}`, linkSentence(l));
   const items = [...new Set(gate.reasons.map((r) => known.get(r) ?? cell(r)))];
   const [kind, lead] = CALLOUT[gate.result];
@@ -155,6 +163,15 @@ export function renderCallout(
     ...items.slice(0, 8).map((i) => `> - ${i}`),
     ...(items.length > 8 ? [`> - ...and ${items.length - 8} more`] : []),
   ];
+}
+
+const rootLabel = (label: string) => (label ? `${cell(label)} ` : '');
+
+/** Every way to read "label: address" as a root label prefix and an address, including no label. */
+function labelSplits(resource: string): [label: string, address: string][] {
+  const out: [string, string][] = [['', resource]];
+  for (let i = resource.indexOf(': '); i >= 0; i = resource.indexOf(': ', i + 1)) out.push([resource.slice(0, i + 2), resource.slice(i + 2)]);
+  return out;
 }
 
 function linkSentence(l: AppLinkRow): string {
@@ -179,7 +196,7 @@ export function renderAppLinks(links: AppLinkRow[]): string[] {
     const n = (st: string) => rest.filter((l) => l.status === st).length;
     const label = [n('GRANTED') && `${n('GRANTED')} granted`, n('UNRESOLVED') && `${n('UNRESOLVED')} unresolved`].filter(Boolean).join(', ');
     out.push('', `<details><summary>${label}</summary>`, '', '| Status | Code | Access | Detail |', '| :-- | :-- | :-- | :-- |');
-    for (const l of rest.slice(0, MAX_ROWS)) out.push(`| ${l.status.toLowerCase()} | ${code(l.callsite)} | ${cell(l.access)} | ${cell(l.detail)} |`);
+    for (const l of rest.slice(0, MAX_ROWS)) out.push(`| ${l.status.toLowerCase()} | ${codeCell(l.callsite)} | ${cell(l.access)} | ${cell(l.detail)} |`);
     if (rest.length > MAX_ROWS) out.push(`| | ...and ${rest.length - MAX_ROWS} more | | |`);
     out.push('', '</details>');
   }
@@ -212,16 +229,16 @@ const acceptedNote = (a: { reason: string; owner?: string; expires: string }) =>
 function blastRow(b: BlastFinding): string {
   const severity = b.accepted ? `${b.severity} (accepted)` : b.severity;
   const reason = b.accepted ? `${b.reason}. ${acceptedNote(b.accepted)}` : b.reason;
-  return `| ${severity} | ${code(b.resource)} | ${b.action} | ${cell(reason)} |`;
+  return `| ${severity} | ${codeCell(b.resource)} | ${b.action} | ${cell(reason)} |`;
 }
 
 function findingRow(f: Finding): string {
   if (f.accepted) {
-    return `| ${f.status} (accepted) | ${cell(f.title)} | ${code(f.resource)} | ${cell(`${f.detail}. ${acceptedNote(f.accepted)}`)} | ${f.controls.map((c) => c.replace('ISO27001:', '')).join(', ')} |`;
+    return `| ${f.status} (accepted) | ${cell(f.title)} | ${codeCell(f.resource)} | ${cell(`${f.detail}. ${acceptedNote(f.accepted)}`)} | ${f.controls.map((c) => c.replace('ISO27001:', '')).join(', ')} |`;
   }
   const status = f.preExisting ? `${f.status} (pre-existing)` : f.status;
   const detail = f.remediation ? `${f.detail}. Fix: ${f.remediation}` : f.detail;
-  return `| ${status} | ${cell(f.title)} | ${code(f.resource)} | ${cell(detail)} | ${f.controls.map((c) => c.replace('ISO27001:', '')).join(', ')} |`;
+  return `| ${status} | ${cell(f.title)} | ${codeCell(f.resource)} | ${cell(detail)} | ${f.controls.map((c) => c.replace('ISO27001:', '')).join(', ')} |`;
 }
 
 function sortFindings(fs: Finding[]): Finding[] {
