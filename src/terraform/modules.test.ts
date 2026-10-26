@@ -265,3 +265,49 @@ test('fetch rejects nonliteral module sources rather than writing an empty lock'
     expect(fs.existsSync(path.join(f.repo, 'terratrust.modules.lock.json'))).toBe(false);
   } finally { fs.rmSync(f.dir, { recursive: true, force: true }); }
 });
+
+test('cache visibility changes cover counted module instances without lifecycle claims', async () => {
+  const { compareEvaluations } = await import('./compare.js'); const f = setup();
+  try {
+    f.write(f.source);
+    const file = path.join(f.repo, 'main.tf'); fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('name="logs"', 'count=2\n name="logs"'));
+    expect((await f.run('modules', 'fetch', '--repo', f.repo, '--cache', f.cache)).exit).toBe(0);
+    const opaque = evaluateRoot(new FsSource(f.repo), '.'), known = evaluateRoot(new FsSource(f.repo, f.cache), '.');
+    for (const changes of [compareEvaluations(opaque, known), compareEvaluations(known, opaque)]) { expect(changes.map((c) => c.action)).toEqual(['update']); expect(changes[0].confidence).toBe('unknown'); }
+  } finally { fs.rmSync(f.dir, { recursive: true, force: true }); }
+});
+
+test('an unknown version expression cannot reuse an unconstrained lock', async () => {
+  const f = setup();
+  try {
+    f.write(f.source); expect((await f.run('modules', 'fetch', '--repo', f.repo, '--cache', f.cache)).exit).toBe(0);
+    const file = path.join(f.repo, 'main.tf'); fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('name="logs"', 'version=var.version\n name="logs"'));
+    expect(evaluateRoot(new FsSource(f.repo, f.cache), '.').instances[0].type).toBe('terraform_module_call');
+  } finally { fs.rmSync(f.dir, { recursive: true, force: true }); }
+});
+
+test('a locked registry version must satisfy the declared constraint', async () => {
+  const f = setup();
+  const server = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch(req) {
+    const url = new URL(req.url);
+    if (url.pathname === '/.well-known/terraform.json') return Response.json({ 'modules.v1': '/modules/' });
+    if (url.pathname.endsWith('/versions')) return Response.json({ modules: [{ versions: [{ version: '1.2.0' }] }] });
+    return new Response(null, { status: 204, headers: { 'X-Terraform-Get': f.source } });
+  } });
+  try {
+    f.write(`127.0.0.1:${server.port}/example/bucket/aws`, '~> 1.2.0');
+    expect((await f.run('modules', 'fetch', '--repo', f.repo, '--cache', f.cache)).exit).toBe(0);
+    const file = path.join(f.repo, 'terratrust.modules.lock.json'), lock = JSON.parse(fs.readFileSync(file, 'utf8'));
+    lock.modules[0].version = '2.0.0'; fs.writeFileSync(file, JSON.stringify(lock));
+    expect(() => evaluateRoot(new FsSource(f.repo, f.cache), '.')).toThrow('No module version matches');
+  } finally { server.stop(true); fs.rmSync(f.dir, { recursive: true, force: true }); }
+});
+
+test('an ordinary local module directory can use the cache namespace name without a cache', () => {
+  const f = setup();
+  try {
+    const module = path.join(f.repo, '__terratrust_modules/local'); fs.mkdirSync(module, { recursive: true }); fs.writeFileSync(path.join(module, 'main.tf'), fixture.module);
+    f.write('./__terratrust_modules/local');
+    expect(evaluateRoot(new FsSource(f.repo), '.').instances[0].attrs.bucket).toBe('logs');
+  } finally { fs.rmSync(f.dir, { recursive: true, force: true }); }
+});

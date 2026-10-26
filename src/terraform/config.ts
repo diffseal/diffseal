@@ -121,7 +121,7 @@ export function loadModule(source: FileSource, dir: string): ModuleConfig | unde
   }
 
   for (const call of mod.moduleCalls.values())
-    if (!call.localDir && call.source) call.localDir = source.resolveModule?.(call.source, call.version);
+    if (!call.localDir && call.source && !(call.version === undefined && call.block.body.attributes.some((attr) => attr.name === 'version'))) call.localDir = source.resolveModule?.(call.source, call.version);
   perSource.set(d, mod);
   return mod;
 }
