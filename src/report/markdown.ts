@@ -56,11 +56,17 @@ const GATE_LABEL: Record<AnalysisResult['gate']['result'], string> = {
 
 const SEVERITY_ORDER: Severity[] = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO'];
 
+/**
+ * Plain text for a table cell or a sentence: one line, no HTML, and no emphasis. A resource pattern
+ * like provider/*\/name must keep its asterisks; underscores inside identifiers cannot form emphasis.
+ */
 export function cell(v: unknown): string {
   return String(v ?? '')
     .replace(/\|/g, '\\|')
     .replace(/\r?\n/g, ' ')
     .replace(/</g, '&lt;')
+    .replace(/[*~]/g, '\\$&')
+    .replace(/(?<![A-Za-z0-9])_|_(?![A-Za-z0-9])/g, '\\_')
     .trim();
 }
 

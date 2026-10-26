@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { analyze } from '../analysis/analyze.js';
 import { readPlan } from '../plan/readPlan.js';
 import { plan, rc } from '../testing/planFixtures.js';
-import { renderMarkdown } from './markdown.js';
+import { cell, renderMarkdown } from './markdown.js';
 
 describe('renderMarkdown', () => {
   test('for_each addresses with quotes do not break the table (audit R2)', () => {
@@ -135,4 +135,17 @@ test('an actionable call keeps the access it needs, which the detail may not nam
     appLinks: [{ status: 'NOT_GRANTED', callsite: 'src/h.ts:9', access: 'kms:Decrypt on key/abc', detail: 'role r cannot read s3:GetObject on reports, which is encrypted with key/abc' }],
   });
   expect(md).toContain('- **Not granted** `src/h.ts:9` kms:Decrypt on key/abc.');
+});
+
+test('wildcards in resource patterns are not read as Markdown emphasis (review of the redesign)', () => {
+  const r = analyze(readPlan(plan([])));
+  const pattern = 'secretsmanager:GetSecretValue on provider/*/api-credentials-*';
+  const md = renderMarkdown(
+    { ...r, gate: { result: 'review', reasons: [`NOT_GRANTED: src/h.ts:9: ${pattern}`] } },
+    { appLinks: [{ status: 'NOT_GRANTED', callsite: 'src/h.ts:9', access: pattern, detail: `role r does not allow ${pattern}` }] }
+  );
+  expect(md).toContain('provider/\\*/api-credentials-\\*');
+  expect(md).not.toMatch(/[^\\]\*\/api/);
+  // Underscores inside identifiers never form emphasis in GFM, so they stay readable.
+  expect(cell('hash_key _x_')).toBe('hash_key \\_x\\_');
 });
