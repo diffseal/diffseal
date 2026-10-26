@@ -1,3 +1,4 @@
+import { prepareLanguages, languageForFile } from '../app/parser.js';
 import { extractManaged } from '../app/managed.js';
 import { expect } from 'bun:test';
 import { analyze } from '../analysis/analyze.js';
@@ -280,7 +281,8 @@ function checkAnalysisExpectations(
   }
 }
 
-export function runFixtureCase(tc: FixtureCase): void {
+export async function runFixtureCase(tc: FixtureCase): Promise<void> {
+  if (tc.kind === 'app') await prepareLanguages(Object.keys(tc.files).filter((p) => /\.(go|ts|tsx|js|jsx|mjs|cjs|py|java|kt|cs)$/.test(p)).map(languageForFile));
   if (tc.kind === 'terraform') {
     const headSource = new MemorySource(tc.head);
     if (tc.expect.roots !== undefined) {
@@ -348,7 +350,7 @@ export function runFixtureCase(tc: FixtureCase): void {
     const facts: AccessFact[] = [];
     const envReads: EnvRead[] = [];
     if (tc.files['go.mod'] !== undefined) {
-      const r = scanApp(new MemorySource(tc.files), { entries: tc.entryFiles, addedLines });
+      const r = await scanApp(new MemorySource(tc.files), { entries: tc.entryFiles, addedLines });
       facts.push(...r.facts);
       envReads.push(...r.envReads);
     } else {
@@ -432,7 +434,7 @@ export function runFixtureCase(tc: FixtureCase): void {
       ? new Map(Object.entries(tc.options.fileEnv))
       : undefined;
     if (tc.app) {
-      const scan = scanApp(new MemorySource(tc.app), { entries: tc.options?.entries });
+      const scan = await scanApp(new MemorySource(tc.app), { entries: tc.options?.entries });
       facts = scan.facts;
       envReads = scan.envReads;
       fileEnv = scan.fileEnv;

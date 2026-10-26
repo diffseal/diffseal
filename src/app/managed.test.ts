@@ -36,7 +36,7 @@ test('the isolated Node Action parses C sharp and reports its missing S3 permiss
   };
   try {
     const dist = path.resolve(import.meta.dirname, '../../dist');
-    for (const file of fs.readdirSync(dist).filter((f) => f === 'action.js' || f.endsWith('.wasm')))
+    for (const file of fs.readdirSync(dist).filter((f) => f === 'action.js' || /\.wasm-[^.]+\.gz$/.test(f)))
       fs.copyFileSync(path.join(dist, file), path.join(bin, file));
     git(['init', '-q']);
     write(

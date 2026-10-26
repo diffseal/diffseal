@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { replayCommit } from './replay.js';
 for (const broken of [false, true])
-  test(`JSON-only configuration edits are ${broken ? 'reviewed when malformed' : 'evaluated without an uncovered-file warning'}`, () => {
+  test(`JSON-only configuration edits are ${broken ? 'reviewed when malformed' : 'evaluated without an uncovered-file warning'}`, async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tt-json-replay-'));
     const git = (args: string[]) => {
       const r = spawnSync(
@@ -34,7 +34,7 @@ for (const broken of [false, true])
       fs.writeFileSync(path.join(dir, 'main.tf.json'), broken ? '{"resource": {' : value(2));
       git(['add', '.']);
       git(['commit', '-qm', 'head']);
-      const result = replayCommit({ repo: dir, head: 'HEAD' });
+      const result = await replayCommit({ repo: dir, head: 'HEAD' });
       expect(result.combined.gate.result).toBe(broken ? 'review' : 'pass');
       if (!broken) {
         expect(result.combined.changes).toHaveLength(1);

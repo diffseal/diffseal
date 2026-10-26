@@ -1,6 +1,7 @@
 /** Copy exact, reviewed npm parser artefacts into the offline runtime. No compiler or network. */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { gzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
 const pins = [
   {
@@ -55,6 +56,7 @@ const packages = pins.map((pin) => {
   const files = pin.files.map((file) => {
     const bytes = fs.readFileSync(path.join(dir, file));
     fs.writeFileSync(path.join(dest, file), bytes);
+    fs.writeFileSync(path.join(dest, file + '.gz'), gzipSync(bytes, { level: 9 }));
     return {
       file,
       bytes: bytes.length,

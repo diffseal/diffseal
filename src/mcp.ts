@@ -21,9 +21,9 @@ const server = new McpServer({ name: 'terratrust', version: VERSION });
 
 type ToolResult = { content: Array<{ type: 'text'; text: string }>; structuredContent?: Record<string, unknown>; isError?: boolean };
 
-function run(fn: () => ToolResult): ToolResult {
+async function run(fn: () => ToolResult | Promise<ToolResult>): Promise<ToolResult> {
   try {
-    return fn();
+    return await fn();
   } catch (e) {
     return { isError: true, content: [{ type: 'text', text: `TerraTrust could not complete this check: ${(e as Error).message}` }] };
   }
@@ -49,8 +49,8 @@ server.registerTool(
     },
   },
   async (args) =>
-    run(() => {
-      const r = checkApp({
+    run(async () => {
+      const r = await checkApp({
         app: path.resolve(args.app),
         infra: args.infra ? path.resolve(args.infra) : undefined,
         base: args.base,
@@ -80,7 +80,7 @@ server.registerTool(
     inputSchema: { planJsonPath: z.string().describe('Path to the plan JSON file') },
   },
   async (args) =>
-    run(() => {
+    run(async () => {
       const result = analyze(readPlan(JSON.parse(fs.readFileSync(path.resolve(args.planJsonPath), 'utf8'))));
       return {
         content: [{ type: 'text', text: renderMarkdown(result, { title: `Plan review of ${path.basename(args.planJsonPath)}`, version: VERSION }) }],
@@ -103,8 +103,8 @@ server.registerTool(
     },
   },
   async (args) =>
-    run(() => {
-      const r = replayCommit({ repo: path.resolve(args.repo), head: args.commit, base: args.base });
+    run(async () => {
+      const r = await replayCommit({ repo: path.resolve(args.repo), head: args.commit, base: args.base });
       return { content: [{ type: 'text', text: renderReplay(r) }], structuredContent: { gate: r.combined.gate.result, reasons: r.combined.gate.reasons } };
     })
 );

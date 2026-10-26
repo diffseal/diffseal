@@ -34,7 +34,7 @@ export interface EvidenceResult {
 export function evidenceSigningInput(outDir: string): Buffer {
   return fs.readFileSync(path.join(outDir, 'MANIFEST.sha256'));
 }
-export function evidencePack(opts: EvidenceOptions): EvidenceResult {
+export async function evidencePack(opts: EvidenceOptions): Promise<EvidenceResult> {
   const bound = (text: string): number => {
     const m = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2}))?$/);
     if (!m) throw new Error('Evidence dates must be YYYY-MM-DD or RFC3339 with a timezone');
@@ -116,7 +116,7 @@ export function evidencePack(opts: EvidenceOptions): EvidenceResult {
       }
       let replay;
       try {
-        replay = replayCommit({ repo: opts.repo, head: sha });
+        replay = await replayCommit({ repo: opts.repo, head: sha });
       } catch (e) {
         const error = (e as Error).message;
         errors.push({ commit: sha, error });

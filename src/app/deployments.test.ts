@@ -12,7 +12,7 @@ const cases = JSON.parse(
   expect: { statuses: LinkStatus[]; role?: string; notes?: string; entries?: string[] };
 }>;
 for (const c of cases)
-  test(c.name, () => {
+  test(c.name, async () => {
     const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'tt-deploy-'));
     try {
       for (const [file, text] of Object.entries(c.files)) {
@@ -20,7 +20,7 @@ for (const c of cases)
         fs.mkdirSync(path.dirname(p), { recursive: true });
         fs.writeFileSync(p, text);
       }
-      const r = checkApp({ app: repo, worktree: true, entries: c.expect.entries });
+      const r = await checkApp({ app: repo, worktree: true, entries: c.expect.entries });
       expect(r.links.map((l) => l.status)).toEqual(c.expect.statuses);
       if (c.expect.role) expect(r.links[0].role).toBe(c.expect.role);
       if (c.expect.notes) expect(r.notes.join('\n')).toContain(c.expect.notes);
@@ -65,7 +65,7 @@ test('PR replay uses the same Pod Identity deployment binding', async () => {
     fs.writeFileSync(path.join(repo, 'cmd/orders/main.go'), c.files['cmd/orders/main.go']);
     git(['add', '.']);
     git(['commit', '-qm', 'call']);
-    expect(replayCommit({ repo, head: 'HEAD' }).appLinks.map((l) => l.status)).toEqual(['GRANTED']);
+    expect((await replayCommit({ repo, head: 'HEAD' })).appLinks.map((l) => l.status)).toEqual(['GRANTED']);
   } finally {
     fs.rmSync(repo, { recursive: true, force: true });
   }

@@ -1,34 +1,56 @@
-/** Offline parser initialization. Public extraction APIs remain synchronous after module loading. */
+/** Async local asset loading. Tree walks stay synchronous after their grammar is prepared. */
 import { readFileSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
 import { Parser, Language, type Node, type Tree } from 'web-tree-sitter';
-import runtime from './grammars/tree-sitter.wasm' with { type: 'file' };
-import go from './grammars/tree-sitter-go.wasm' with { type: 'file' };
-import python from './grammars/tree-sitter-python.wasm' with { type: 'file' };
-import typescript from './grammars/tree-sitter-typescript.wasm' with { type: 'file' };
-import tsx from './grammars/tree-sitter-tsx.wasm' with { type: 'file' };
-import java from './grammars/tree-sitter-java.wasm' with { type: 'file' };
-import kotlin from './grammars/tree-sitter-kotlin.wasm' with { type: 'file' };
-import csharp from './grammars/tree-sitter-c_sharp.wasm' with { type: 'file' };
+import runtime from './grammars/tree-sitter.wasm.gz' with { type: 'file' };
+import go from './grammars/tree-sitter-go.wasm.gz' with { type: 'file' };
+import python from './grammars/tree-sitter-python.wasm.gz' with { type: 'file' };
+import typescript from './grammars/tree-sitter-typescript.wasm.gz' with { type: 'file' };
+import tsx from './grammars/tree-sitter-tsx.wasm.gz' with { type: 'file' };
+import java from './grammars/tree-sitter-java.wasm.gz' with { type: 'file' };
+import kotlin from './grammars/tree-sitter-kotlin.wasm.gz' with { type: 'file' };
+import csharp from './grammars/tree-sitter-c_sharp.wasm.gz' with { type: 'file' };
 export type AppLanguage = 'go' | 'python' | 'typescript' | 'tsx' | 'java' | 'kotlin' | 'csharp';
 export type SyntaxNode = Node;
 function bytes(asset: unknown): Buffer {
   if (typeof asset !== 'string') throw new Error('Parser asset import must use the file loader');
-  return readFileSync(new URL(asset, import.meta.url));
+  return gunzipSync(readFileSync(new URL(asset, import.meta.url)));
 }
-await Parser.init({ wasmBinary: bytes(runtime) });
-const languages = new Map<AppLanguage, Language>(
-  await Promise.all(
-    (Object.entries({ go, python, typescript, tsx, java, kotlin, csharp }) as Array<[AppLanguage, unknown]>).map(
-      async ([name, asset]) => [name, await Language.load(bytes(asset))] as [AppLanguage, Language],
-    ),
-  ),
-);
+const assets = { go, python, typescript, tsx, java, kotlin, csharp };
+let initialization: Promise<void> | undefined;
+const languages = new Map<AppLanguage, Language>();
+const loading = new Map<AppLanguage, Promise<void>>();
+/** Load only selected local assets, once per process. No network fallback. */
+export async function prepareLanguages(names: Iterable<AppLanguage>): Promise<void> {
+  const selected = [...new Set(names)];
+  if (!selected.length) return;
+  initialization ??= Parser.init({ wasmBinary: bytes(runtime) });
+  await initialization;
+  await Promise.all(selected.map((name) => {
+    let pending = loading.get(name);
+    if (!pending) {
+      pending = Language.load(bytes(assets[name])).then((value) => { languages.set(name, value); });
+      loading.set(name, pending);
+      pending.catch(() => loading.delete(name));
+    }
+    return pending;
+  }));
+}
+export function languageForFile(file: string): AppLanguage {
+  if (file.endsWith('.go')) return 'go';
+  if (file.endsWith('.py')) return 'python';
+  if (file.endsWith('.java')) return 'java';
+  if (file.endsWith('.kt')) return 'kotlin';
+  if (file.endsWith('.cs')) return 'csharp';
+  return file.endsWith('.tsx') ? 'tsx' : 'typescript';
+}
 const parsers = new Map<AppLanguage, Parser>();
 const valueNews = new WeakMap<Tree, Set<number>>();
 export const isValueNew = (node: Node): boolean => valueNews.get(node.tree)?.has(node.startIndex) ?? false;
 export function parseCode(language: AppLanguage, source: string): Tree {
   let parser = parsers.get(language);
   if (!parser) {
+    if (!languages.has(language)) throw new Error(`Call prepareLanguages before parsing ${language}`);
     parser = new Parser();
     parser.setLanguage(languages.get(language)!);
     parsers.set(language, parser);

@@ -1,5 +1,6 @@
 import { extractManaged, envReadsManaged } from './managed.js';
 import { ExtractionCache, extractionCache, fileIdentity } from './cache.js';
+import { languageForFile, prepareLanguages } from './parser.js';
 import { clearSyntax } from './syntax.js';
 import * as path from 'node:path';
 import type { FileSource } from '../terraform/source.js';
@@ -26,10 +27,10 @@ export interface ScanResult extends AppScan {
  * Extract AWS access facts and env reads from an application snapshot. With `addedLines`, only calls
  * and reads on added lines count; the whole snapshot is still read to resolve helpers and packages.
  */
-export function scanApp(
+export async function scanApp(
   source: FileSource,
   opts: { addedLines?: AddedLines; entries?: string[]; cache?: ExtractionCache } = {},
-): ScanResult {
+): Promise<ScanResult> {
   const cache = opts.cache ?? extractionCache;
   const read = (p: string, asPath = p): SourceFile => ({
     path: asPath,
@@ -54,6 +55,7 @@ export function scanApp(
   const all = source.allFiles().filter(isAppFile);
   let wanted = opts.addedLines ? all.filter((p) => opts.addedLines!.has(p)) : all;
   if (opts.entries?.length) {
+    await prepareLanguages(all.some((p) => p.endsWith('.go') && opts.entries!.some((entry) => p.startsWith(entry.replace(/\/$/, '') + '/'))) ? ['go'] : []);
     const closure = entryClosure(source, all, opts.entries, cache);
     wanted = wanted.filter(
       (p) =>
@@ -61,6 +63,7 @@ export function scanApp(
         opts.entries!.some((e) => p.startsWith(e.replace(/\/$/, '') + '/') && !p.endsWith('.go')),
     );
   }
+  await prepareLanguages(wanted.map(languageForFile));
   const goAll = all.filter((p) => p.endsWith('.go'));
   const facts: AccessFact[] = [];
   const envReads: EnvRead[] = [];
@@ -125,7 +128,9 @@ export function scanApp(
   for (const f of new Set(facts.map((x) => x.file))) {
     const dir = path.posix.dirname(f);
     const names = new Set<string>();
-    for (const p of all.filter((x) => path.posix.dirname(x) === dir)) {
+    const siblings = all.filter((x) => path.posix.dirname(x) === dir);
+    await prepareLanguages(siblings.map(languageForFile));
+    for (const p of siblings) {
       const reads = cache.memo('env', identity(p), [p], () => {
         const content = source.readFile(p) ?? '';
         try {
