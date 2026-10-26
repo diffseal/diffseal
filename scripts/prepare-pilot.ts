@@ -10,8 +10,9 @@ if (destination === root || (destination.startsWith(root + path.sep) && !destina
 if (fs.existsSync(destination) && (!fs.statSync(destination).isDirectory() || fs.readdirSync(destination).length)) throw Error('Pilot output must be a new or empty folder');
 if (JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version !== VERSION) throw Error('Package and engine versions differ');
 const dist = path.join(root, 'dist');
-const files = fs.readdirSync(dist).filter((file) => ['action.js', 'cli.js', 'mcp.js'].includes(file) || /\.wasm(?:-[^.]+\.gz)?$/.test(file));
-if (files.filter((file) => /\.wasm(?:-[^.]+\.gz)?$/.test(file)).length !== 8 || !['action.js', 'cli.js', 'mcp.js'].every((file) => files.includes(file))) throw Error('Run bun run build first; the package needs all entry points and eight parser assets');
+// The pilot vendors only the Action, whose bundle and parser assets are committed, so this works from a fresh clone.
+const files = fs.readdirSync(dist).filter((file) => file === 'action.js' || /\.wasm(?:-[^.]+\.gz)?$/.test(file));
+if (files.filter((file) => /\.wasm(?:-[^.]+\.gz)?$/.test(file)).length !== 8 || !files.includes('action.js')) throw Error('dist/ is incomplete; the package needs action.js and eight parser assets');
 const tool = path.join(destination, '.github/actions/terratrust');
 fs.mkdirSync(path.join(tool, 'dist/licenses'), { recursive: true });
 for (const file of files) fs.copyFileSync(path.join(dist, file), path.join(tool, 'dist', file));
