@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0-beta, prepared and not tagged
+## 0.3.0-beta, 2026-10-26
 
 ### Added
 

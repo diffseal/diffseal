@@ -1,6 +1,6 @@
 # TerraTrust
 
-> **Beta status, v0.2.0-beta.** TerraTrust reviews Terraform changes on AWS, checks that application code has the IAM permissions it needs, and writes audit change records. It is a beta validated on one production monorepo. Run the GitHub Action in advisory mode first, with `advisory: 'true'`, and report issues in the [GitHub issue tracker](https://github.com/TerraTrust/terratrust/issues).
+> **Beta status, v0.3.0-beta.** TerraTrust reviews Terraform changes on AWS, checks that application code has the IAM permissions it needs, and writes audit change records. It is a beta validated on one production monorepo. Run the GitHub Action in advisory mode first, with `advisory: 'true'`, and report issues in the [GitHub issue tracker](https://github.com/TerraTrust/terratrust/issues).
 
 TerraTrust reviews Terraform changes on AWS and checks that application code has the IAM permissions it needs. It works from source code and git history. It never asks for cloud credentials and never runs `terraform`.
 
