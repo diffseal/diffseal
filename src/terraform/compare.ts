@@ -16,6 +16,21 @@ export function compareEvaluations(base: RootEvaluation | undefined, head: RootE
   const consumedBefore = new Set<string>();
   const consumedAfter = new Set<string>();
 
+  // Availability of source code is not a resource lifecycle change. An opaque module covers its
+  // whole subtree when only the opposite snapshot can expand it.
+  for (const [opaque, expanded, consumedOpaque, consumedExpanded] of [
+    [before, after, consumedBefore, consumedAfter],
+    [after, before, consumedAfter, consumedBefore],
+  ] as const) {
+    for (const [address, instance] of opaque) {
+      if (!instance.externalModule || expanded.has(address) || consumedOpaque.has(address)) continue;
+      const peers = [...expanded.keys()].filter((peer) => peer.startsWith(address + '.') && !consumedExpanded.has(peer));
+      if (!peers.length) continue;
+      consumedOpaque.add(address); for (const peer of peers) consumedExpanded.add(peer);
+      out.push({ ...toChange(instance, 'update', instance.attrs, instance.attrs), confidence: 'unknown', actionReason: 'Module source is available in only one snapshot; resource lifecycle changes cannot be established' });
+    }
+  }
+
   // moved blocks: pair base-only addresses with head-only addresses (resource or whole-module moves).
   // Moves chain (a -> b, then b -> c), so an address follows them to its final destination.
   const moves = head?.moved ?? [];

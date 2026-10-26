@@ -32,6 +32,9 @@ inputs:
   entry:
     description: 'mode: app. Main package directories to check one binary, comma-separated.'
     required: false
+  module-cache:
+    description: 'Optional path to verified module objects populated by terratrust modules fetch. Analysis never downloads modules.'
+    required: false
   policy:
     description: 'Path to a policy JSON (requireCustomerManagedKeys, minBackupRetentionDays, blockOn).'
     required: false
