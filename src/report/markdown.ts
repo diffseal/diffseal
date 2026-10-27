@@ -93,7 +93,8 @@ export function renderMarkdown(result: AnalysisResult, meta: ReportMeta): string
   if (result.blast.length) {
     out.push('', '### Resources', '', '| Risk | Resource | Action | Why |', '| :-- | :-- | :-- | :-- |');
     const rows = [...notable, ...result.blast.filter((b) => !notable.includes(b))];
-    for (const b of rows.slice(0, MAX_ROWS)) out.push(blastRow(b));
+    const likely = new Set(result.changes.filter((c) => c.confidence !== 'proven').map((c) => c.address));
+    for (const b of rows.slice(0, MAX_ROWS)) out.push(blastRow(b, likely.has(b.resource)));
     if (rows.length > MAX_ROWS) out.push(`| | ...and ${rows.length - MAX_ROWS} more | | |`);
   }
 
@@ -120,7 +121,6 @@ export function renderMarkdown(result: AnalysisResult, meta: ReportMeta): string
   }
 
   const notes = [...(meta.notes ?? []), ...(costRows.length ? [result.cost.basis] : [])];
-  if (result.findings.length) notes.push('Controls refer to ISO/IEC 27001:2022 Annex A. Your policy decides which checks are required, not the standard.');
   out.push('', '---', footer(meta.version, notes));
 
   let md = out.join('\n') + '\n';
@@ -133,8 +133,12 @@ export function renderMarkdown(result: AnalysisResult, meta: ReportMeta): string
 /** "1 change", "2 changes". */
 export const plural = (n: number, word: string, many = word + 's') => `${n} ${n === 1 ? word : many}`;
 
+/** Explains what the footer leaves out: how TerraTrust reads Terraform, proven and likely, the controls. */
+export const HOW_IT_WORKS = 'https://github.com/TerraTrust/terratrust/blob/main/docs/guide/faq.md';
+
+/** One line of facts about this report. Every comment repeats it, so general explanations live behind the link. */
 export function footer(version: string | undefined, notes: string[]): string {
-  return `<sub>${[`TerraTrust${version ? ' ' + version : ''}.`, ...notes.map(cell)].join(' ')}</sub>`;
+  return `<sub>${[`TerraTrust${version ? ' ' + version : ''}.`, ...notes.map(cell), `[How it works](${HOW_IT_WORKS})`].join(' ')}</sub>`;
 }
 
 const CALLOUT: Record<'review' | 'block', [kind: string, lead: string]> = {
@@ -232,10 +236,10 @@ function evidenceSummary(fs: Finding[]): string {
 
 const acceptedNote = (a: { reason: string; owner?: string; expires: string }) => `accepted until ${a.expires}${a.owner ? ` by ${a.owner}` : ''}: ${a.reason}`;
 
-function blastRow(b: BlastFinding): string {
+function blastRow(b: BlastFinding, likely: boolean): string {
   const severity = b.accepted ? `${b.severity} (accepted)` : b.severity;
   const reason = b.accepted ? `${b.reason}. ${acceptedNote(b.accepted)}` : b.reason;
-  return `| ${severity} | ${codeCell(b.resource)} | ${b.action} | ${cell(reason)} |`;
+  return `| ${severity} | ${codeCell(b.resource)} | ${b.action}${likely ? ' (likely)' : ''} | ${cell(reason)} |`;
 }
 
 function findingRow(f: Finding): string {

@@ -43,6 +43,10 @@ When blast-radius analysis evaluates a `likely` replacement, it scales the sever
 
 In `check-app`, a link is `proven` when the resource expression in the SDK call is traced directly to a literal, a string pattern, or an environment variable read. When checking a diff with `replay` or `check-app --base`, if an SDK call has an unresolved resource expression and the same diff adds a read of a single environment variable whose suffix matches that AWS service, such as `PAYMENT_TABLE_NAME` for a DynamoDB call, TerraTrust pairs them and marks the link `confidence: "likely"`.
 
+## Which standard do the control IDs refer to?
+
+Control IDs such as `A.8.32` refer to ISO/IEC 27001:2022 Annex A. The change record and `--json` output also list the matching NIS2 and DORA references for each check. A control ID says which control a check gives evidence for. It does not say the standard requires that check. Your policy file decides which checks block, which need review and which are only recorded.
+
 ## How are sensitive values handled?
 
 TerraTrust checks sensitive values without ever printing them.

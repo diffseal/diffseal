@@ -1,6 +1,6 @@
 import type { AppLink } from '../reconcile/reconcile.js';
 import type { AppLinkRow } from '../report/markdown.js';
-import { cell, plural, renderMarkdown } from '../report/markdown.js';
+import { cell, renderMarkdown } from '../report/markdown.js';
 import { shortRootLabels, type ReplayResult } from './replay.js';
 
 export const VERSION = '0.3.0-beta';
@@ -27,13 +27,9 @@ export function appLinkRows(links: AppLink[]): AppLinkRow[] {
  */
 export function renderReplay(r: ReplayResult, opts: { commit?: boolean } = {}): string {
   const appLinks = appLinkRows(r.appLinks);
-  const likely = r.combined.changes.filter((c) => c.confidence !== 'proven').length;
-  const files = r.terraformFiles.length ? `${plural(r.terraformFiles.length, 'Terraform file')} changed. ` : '';
-  const notes = [
-    `Read the Terraform at ${r.base.slice(0, 9)} and ${r.head.slice(0, 9)} without state, credentials or provider calls.`,
-    `${files}Roots: ${r.roots.map((x) => x.root).join(', ') || 'none affected'}.`,
-  ];
-  if (likely) notes.push(`${plural(likely, 'change depends', 'changes depend')} on values known only after apply, so ${likely === 1 ? 'its action is' : 'their actions are'} likely, not proven.`);
+  // Only facts about this change: which commits were compared, and the roots when the resource names do not say.
+  const notes = [`Compared \`${r.base.slice(0, 9)}\` with \`${r.head.slice(0, 9)}\`.`];
+  if (r.roots.length > 1) notes.push(`Roots: ${r.roots.map((x) => x.root).join(', ')}.`);
   const diagnostics = r.roots.flatMap((x) => x.diagnostics);
   if (diagnostics.length) notes.push(`HCL diagnostics: ${diagnostics.slice(0, 3).join('; ')}${diagnostics.length > 3 ? ' ...' : ''}`);
   const c = r.commit;

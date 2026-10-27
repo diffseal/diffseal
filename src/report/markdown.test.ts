@@ -87,7 +87,20 @@ describe('report layout', () => {
     const md = renderMarkdown(timeout(), { title: 'x', notes: ['First note.', 'Second note.'], version: '9.9.9' });
     expect(md).not.toContain('(s)');
     const footer = md.split('\n').filter((l) => l.includes('<sub>'));
-    expect(footer).toEqual(['<sub>TerraTrust 9.9.9. First note. Second note.</sub>']);
+    expect(footer).toEqual(['<sub>TerraTrust 9.9.9. First note. Second note. [How it works](https://github.com/TerraTrust/terratrust/blob/main/docs/guide/faq.md)</sub>']);
+  });
+
+  test('the footer leaves general explanations to the FAQ', () => {
+    const md = renderMarkdown(replaceDb(), { title: 'x', version: '9.9.9' });
+    expect(replaceDb().findings.length).toBeGreaterThan(0);
+    expect(md).not.toContain('Annex A');
+  });
+
+  test('a change that is likely, not proven, says so in its row', () => {
+    const changes = readPlan(plan([rc('aws_lambda_function.f', 'aws_lambda_function', ['update'], { timeout: 30 }, { before: { timeout: 15 } })]));
+    const md = renderMarkdown(analyze(changes.map((c) => ({ ...c, confidence: 'likely' as const }))), { title: 'x' });
+    expect(md).toContain('| `aws_lambda_function.f` | update (likely) |');
+    expect(renderMarkdown(analyze(changes), { title: 'x' })).toContain('| `aws_lambda_function.f` | update |');
   });
 });
 
