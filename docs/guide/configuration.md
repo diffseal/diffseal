@@ -4,7 +4,7 @@ TerraTrust reads repository configuration from `.terratrust.json` at the root of
 
 ## Overview of `.terratrust.json`
 
-A `.terratrust.json` file can hold three groups of settings:
+A `.terratrust.json` file can hold these groups of settings:
 
 - `policy`: Thresholds and blocking severities for infrastructure policy checks and blast radius.
 - `exceptions`: Time-limited acceptances for specific policy findings or destructive changes.
@@ -89,3 +89,21 @@ TerraTrust prevents a change from relaxing the rules or link settings that judge
 - In `terratrust check-app --base <rev>` and the GitHub Action `app` mode, `.terratrust.json` is read from the base commit when one is given.
 - In the GitHub Action, a `policy` file path must sit inside the repository without `..` path traversal so its base-commit version can be read.
 - Whenever `.terratrust.json` or the `policy` file differs between the base commit and the head commit, TerraTrust raises the gate to at least `review` and notes that the updated configuration applies starting from the next change after this one is reviewed and merged.
+
+## Trusted upload replay settings
+
+The reusable upload workflow reads `replay` from `.terratrust.json` through `git show`. For pull requests it uses the base branch commit from the event. For pushes it uses the pushed commit on the default branch. It never reads these settings from the working tree or workflow inputs.
+
+```json
+{
+  "replay": {
+    "rootsUnder": "infra",
+    "policyFile": "policy.json",
+    "moduleCache": ".terratrust/modules"
+  }
+}
+```
+
+All three fields are optional paths inside the repository. `rootsUnder` limits the Terraform roots. Without it, TerraTrust discovers roots across the repository. `policyFile` selects a policy JSON file. Without it, TerraTrust uses the policy in `.terratrust.json` and the built-in defaults. `moduleCache` selects an existing verified offline module cache. It does not fetch modules. Without it, TerraTrust uses the default cache. Unknown or unavailable module contents remain visible in the report.
+
+The workflow has no analysis inputs. A pull request cannot narrow its own analysis by editing these settings. Changes take effect after merge. Direct CLI and Action calls still use their explicit flags and inputs.

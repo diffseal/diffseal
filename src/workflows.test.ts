@@ -43,3 +43,19 @@ test('tag releases validate the build before publishing with tag notes', () => {
   expect(runs).toContain('--verify-tag');
   expect(runs).toContain('tar -czf');
 });
+
+test('trusted upload workflow has no analysis inputs and uses base Git settings and the release Action', () => {
+  const w = workflow('upload');
+  expect(w.on).toEqual({ workflow_call: null });
+  expect(w.permissions).toEqual({ contents: 'read', 'pull-requests': 'write', 'id-token': 'write' });
+  const steps = w.jobs.upload.steps;
+  expect(steps[0].uses).toMatch(/^actions\/checkout@[a-f0-9]{40}$/);
+  expect(steps[0].with).toEqual({ 'fetch-depth': 0, 'persist-credentials': false });
+  expect(steps[2].uses).toBe('TerraTrust/terratrust@v0.4.0-beta');
+  expect(steps[2].with).toMatchObject({ mode: 'pr', upload: 'true', advisory: 'true' });
+  const text = readFileSync(new URL('../.github/workflows/upload.yml', import.meta.url), 'utf8');
+  expect(text).toContain('github.event.pull_request.base.sha || github.sha');
+  expect(text).toContain("['show', `${rev}:.terratrust.json`]");
+  expect(text).not.toContain('inputs.');
+  expect(text).not.toContain('readFileSync');
+});

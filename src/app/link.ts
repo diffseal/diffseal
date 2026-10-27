@@ -6,6 +6,8 @@ import type { FileSource } from '../terraform/source.js';
  * and command-line flags (which win).
  */
 export interface AppLinkConfig {
+  /** Trusted reusable workflow settings, read from the base branch through git show. */
+  replay?: { rootsUnder?: string; policyFile?: string; moduleCache?: string };
   infra?: { repo?: string; rev?: string; rootsUnder?: string };
   /** IAM roles the app runs as, by name or ARN. */
   roles?: string[];
