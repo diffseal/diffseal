@@ -2,7 +2,7 @@ import { defaultModuleCache, MODULE_LOCK } from '../terraform/moduleCache.js';
 import { deploymentIndex } from '../app/deployments.js';
 import * as path from 'node:path';
 import { analyze } from '../analysis/analyze.js';
-import type { AnalysisResult, Gate, PolicyConfig, ResourceChange } from '../core/model.js';
+import { addGateItem, type GateItem, type AnalysisResult, type Gate, type PolicyConfig, type ResourceChange } from '../core/model.js';
 import { compareEvaluations } from '../terraform/compare.js';
 import { discoverRoots, loadModule, moduleClosure } from '../terraform/config.js';
 import { evaluateRoot } from '../terraform/expand.js';
@@ -115,30 +115,30 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   const combined = combineRoots(roots);
   if (moduleLockChanged && roots.some((root) => root.changes.some((change) => change.type === 'terraform_module_call'))) {
     if (combined.gate.result === 'pass') combined.gate.result = 'review';
-    combined.gate.reasons.push('Module lock changed while module source remains unavailable offline; review the dependency change');
+    addGateItem(combined.gate, { kind: 'coverage', level: 'review', text: 'Module lock changed while module source remains unavailable offline; review the dependency change' });
   }
   if (unevaluated.length) {
     if (combined.gate.result === 'pass') combined.gate.result = 'review';
-    combined.gate.reasons.push(`Inputs changed that static replay does not evaluate (${[...new Set(unevaluated)].slice(0, 5).join(', ')}); review them by hand or with a plan`);
+    addGateItem(combined.gate, { kind: 'coverage', level: 'review', text: `Inputs changed that static replay does not evaluate (${[...new Set(unevaluated)].slice(0, 5).join(', ')}); review them by hand or with a plan` });
   }
   if (uncovered.length) {
     if (combined.gate.result === 'pass') combined.gate.result = 'review';
-    combined.gate.reasons.push(`Terraform changed outside every analyzed root (${uncovered.slice(0, 5).join(', ')}${uncovered.length > 5 ? ', ...' : ''}); it was not checked`);
+    addGateItem(combined.gate, { kind: 'coverage', level: 'review', text: `Terraform changed outside every analyzed root (${uncovered.slice(0, 5).join(', ')}${uncovered.length > 5 ? ', ...' : ''}); it was not checked` });
   }
   // Terraform would refuse configuration that does not parse; what the change touches is reviewed.
   const changedSet = new Set(changed.map((c) => c.path));
   const broken = [...new Set(roots.flatMap((r) => r.diagnostics))].filter((d) => changedSet.has(d.slice(0, d.indexOf(':'))));
   if (broken.length) {
     if (combined.gate.result === 'pass') combined.gate.result = 'review';
-    combined.gate.reasons.push(`Terraform this change edits does not parse, so it was checked only in part (${broken.slice(0, 3).join('; ')}${broken.length > 3 ? '; ...' : ''})`);
+    addGateItem(combined.gate, { kind: 'coverage', level: 'review', text: `Terraform this change edits does not parse, so it was checked only in part (${broken.slice(0, 3).join('; ')}${broken.length > 3 ? '; ...' : ''})` });
   }
   for (const f of changedConfig) {
     if (combined.gate.result === 'pass') combined.gate.result = 'review';
-    combined.gate.reasons.push(`${f} changed: its policy and exceptions apply from the next change on, after this one is reviewed`);
+    addGateItem(combined.gate, { kind: 'policy', level: 'review', text: `${f} changed: its policy and exceptions apply from the next change on, after this one is reviewed` });
   }
   const attention = appLinks.filter((l) => l.status === 'NOT_GRANTED' || l.status === 'MISSING');
   if (attention.length && combined.gate.result === 'pass') combined.gate.result = 'review';
-  for (const l of attention) combined.gate.reasons.push(`${l.status}: ${l.callsite}: ${l.access}`);
+  for (const l of attention) addGateItem(combined.gate, { kind: 'access', level: 'review', rule: l.status, resource: l.callsite, text: `${l.status}: ${l.callsite}: ${l.access}` });
 
   return {
     commit,
@@ -224,7 +224,7 @@ export function shortRootLabels(roots: string[]): Record<string, string> {
 export function combineRoots(roots: RootReplay[]): AnalysisResult {
   const labels = shortRootLabels(roots.map((r) => r.root));
   const label = (root: string, r: string) => (labels[root] ? `${labels[root]}: ${r}` : r);
-  const gate: Gate = { result: 'pass', reasons: [] };
+  const gate: Gate = { result: 'pass', reasons: [], items: [] };
   const rank = { pass: 0, review: 1, block: 2 } as const;
   const out: AnalysisResult = {
     changes: [],
@@ -235,7 +235,7 @@ export function combineRoots(roots: RootReplay[]): AnalysisResult {
   };
   const findings = new Map<string, { roots: string[]; f: AnalysisResult['findings'][number] }>();
   const blast = new Map<string, { roots: string[]; b: AnalysisResult['blast'][number] }>();
-  const reasons = new Map<string, string[]>();
+  const reasons = new Map<string, { roots: string[]; item: GateItem }>();
   for (const { root, result } of roots) {
     out.changes.push(...result.changes.map((c) => ({ ...c, address: label(root, c.address) })));
     for (const f of result.findings) {
@@ -253,12 +253,16 @@ export function combineRoots(roots: RootReplay[]): AnalysisResult {
     out.cost.items.push(...result.cost.items.map((i) => ({ ...i, resource: label(root, i.resource) })));
     out.cost.fixedMonthlyDeltaUsd = Math.round((out.cost.fixedMonthlyDeltaUsd + result.cost.fixedMonthlyDeltaUsd) * 100) / 100;
     if (rank[result.gate.result] > rank[gate.result]) gate.result = result.gate.result;
-    for (const r of result.gate.reasons) reasons.set(r, [...(reasons.get(r) ?? []), root]);
+    for (const item of result.gate.items) {
+      const previous = reasons.get(item.text);
+      reasons.set(item.text, { roots: [...(previous?.roots ?? []), root], item });
+    }
   }
   const multi = (rs: string[], r: string) => (labels[rs[0]] ? `${rs.map((x) => labels[x]).join(', ')}: ${r}` : r);
   out.findings = [...findings.values()].map(({ roots: rs, f }) => ({ ...f, resource: multi(rs, f.resource) }));
   out.blast = [...blast.values()].map(({ roots: rs, b }) => ({ ...b, resource: multi(rs, b.resource) }));
-  gate.reasons = [...reasons.entries()].map(([r, rs]) => multi(rs, r));
+  gate.items = [...reasons.values()].map(({ roots: rs, item }) => ({ ...item, text: multi(rs, item.text) }));
+  gate.reasons = gate.items.map((item) => item.text);
   const sev = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, INFO: 4 } as const;
   out.blast.sort((a, b) => sev[a.severity] - sev[b.severity]);
   return out;

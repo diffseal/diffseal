@@ -6,6 +6,12 @@ branding:
   color: 'green'
 
 inputs:
+  upload:
+    description: 'Upload the scrubbed change record using GitHub OIDC. Requires a trusted reusable workflow.'
+    default: 'false'
+  upload-url:
+    description: 'TerraTrust service URL.'
+    default: 'https://api.terratrust.dev'
   mode:
     description: >-
       pr: replay the pull request's changes (needs actions/checkout with fetch-depth: 0).
@@ -60,6 +66,8 @@ inputs:
     default: ${{ github.token }}
 
 outputs:
+  upload-id:
+    description: 'Stored TerraTrust run id, when upload succeeds.'
   gate:
     description: 'pass, review or block'
 

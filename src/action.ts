@@ -1,3 +1,4 @@
+import { addGateItem, type Gate } from './core/model.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { analyze } from './analysis/analyze.js';
@@ -7,6 +8,8 @@ import { renderAppCheck } from './report/appCheck.js';
 import { renderMarkdown } from './report/markdown.js';
 import { VERSION, renderReplay } from './replay/render.js';
 import { replayCommit } from './replay/replay.js';
+import { uploadRun, uploadComment } from './action/upload.js';
+import type { ReplayResult } from './replay/replay.js';
 import { upsertComment } from './action/comment.js';
 import { actionExitCode, eventBase, needsBase, pullRequestBase, readPolicy } from './action/inputs.js';
 
@@ -48,6 +51,7 @@ async function main(): Promise<number> {
   let markdown: string;
   let gate: 'pass' | 'review' | 'block';
   let hasReport = true;
+  let replay: ReplayResult | undefined;
   if (mode === 'plan') {
     const planFile = path.resolve(workspace, input('plan-json', 'tfplan.json'));
     const result = analyze(readPlan(JSON.parse(fs.readFileSync(planFile, 'utf8'))), { policy });
@@ -82,6 +86,7 @@ async function main(): Promise<number> {
       now: new Date(),
       rootsUnder: input('roots-under') || undefined,
     });
+    replay = r;
     markdown = renderReplay(r, { commit: false });
     gate = r.combined.gate.result;
     hasReport = Boolean(r.roots.length || r.appLinks.length || r.combined.gate.reasons.length || policyChanged);
@@ -89,6 +94,9 @@ async function main(): Promise<number> {
     throw new Error(`Unknown mode "${mode}". Use pr, plan or app.`);
   }
 
+  const uploaded = await uploadRun({ upload: input('upload'), url: input('upload-url', 'https://api.terratrust.dev'), mode, eventName: process.env.GITHUB_EVENT_NAME, event: process.env.GITHUB_EVENT_PATH ? JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8')) : undefined, advisory: input('advisory', 'false') === 'true', replay });
+  if (uploaded) setOutput('upload-id', uploaded.id);
+  markdown = uploadComment(markdown, gate, uploaded);
   if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, markdown + '\n');
   setOutput('gate', gate);
   if (input('comment', 'true') === 'true') {
@@ -115,9 +123,9 @@ async function main(): Promise<number> {
 }
 
 /** Replay mode adds its own reason for a changed policy file; plan and app mode get it here, before rendering. */
-function reviewPolicyChange(gate: { result: 'pass' | 'review' | 'block'; reasons: string[] }, policyPath: string): void {
+function reviewPolicyChange(gate: Gate, policyPath: string): void {
   if (gate.result === 'pass') gate.result = 'review';
-  gate.reasons.push(`${policyPath} changed in this pull request. TerraTrust applied the version on the base branch. The new version applies once this pull request is merged.`);
+  addGateItem(gate, { kind: 'policy', level: 'review', text: `${policyPath} changed in this pull request. TerraTrust applied the version on the base branch. The new version applies once this pull request is merged.` });
 }
 
 main().then(

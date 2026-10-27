@@ -14,6 +14,8 @@ Set `mode` to select what the Action checks:
 
 | Input | Default | Used in modes | Description |
 | :-- | :-- | :-- | :-- |
+| `upload` | `'false'` | `pr` | Upload the scrubbed change record for a `pull_request` or `push` event. Requires GitHub OIDC and a trusted reusable workflow. |
+| `upload-url` | `https://api.terratrust.dev` | `pr` | Service URL. Requires HTTPS. Local tests may use HTTP on localhost or 127.0.0.1. |
 | `mode` | `'pr'` | all | Check mode: `pr`, `plan`, or `app`. Any other value fails with an error. |
 | `plan-json` | `'tfplan.json'` | `plan` | Path to the JSON file produced by `terraform show -json <planfile>`. |
 | `base` | `''` | `pr`, `app`, `plan` | Base git revision to compare against. When omitted on a `pull_request` or `merge_group` event, TerraTrust resolves the merge base between the event base SHA and `HEAD`. Requires `fetch-depth: 0` on checkout. Used in `plan` mode only when `policy` is set. |
@@ -32,6 +34,7 @@ Set `mode` to select what the Action checks:
 
 | Output | Values | Description |
 | :-- | :-- | :-- |
+| `upload-id` | run id | Set only when the service accepts an upload. |
 | `gate` | `pass`, `review`, `block` | Lowercase gate result for the run. |
 
 ## Exit codes and gate behavior
@@ -173,3 +176,31 @@ jobs:
           entry: cmd/orders-api
           advisory: 'true'
 ```
+
+## Upload to TerraTrust
+
+Uploads are off by default. To collect evidence, install the TerraTrust GitHub App for your organisation and call the trusted reusable workflow:
+
+```yaml
+name: TerraTrust evidence upload
+on: [pull_request, push]
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+jobs:
+  terratrust:
+    uses: TerraTrust/terratrust/.github/workflows/upload.yml@v0.4.0-beta
+```
+
+The workflow checks out GitHub's test merge commit for a pull request. It reads analysis settings from `.terratrust.json` on the base branch through `git show`. It accepts no analysis inputs. Use the optional [`replay` settings](configuration.md#trusted-upload-replay-settings) to select roots, a policy file or a verified offline module cache. The workflow runs the Action from the same release tag, with `mode: pr`, `upload: 'true'` and `advisory: 'true'`.
+
+The service accepts only jobs identified by GitHub OIDC as trusted reusable workflows. Setting `upload: 'true'` in an ordinary pull request workflow does not make it trusted. An organisation owner can register another reusable workflow that pull request authors cannot edit. Uploads use a short-lived GitHub OIDC token with audience `terratrust`.
+
+In branch protection, make **TerraTrust evidence** a required check. Select the **TerraTrust GitHub App** as its expected source. This prevents another job or app from satisfying the rule by posting the same check name. A missing trusted upload leaves the required check pending. Keep the upload job advisory so the App's check decides whether a blocked change can merge. GitHub treats a neutral check as passing, so use your normal required approving review rule for REVIEW findings.
+
+Pull requests from forks cannot upload. They have no OIDC token for this workflow and receive no TerraTrust evidence check. A required evidence check therefore prevents them from merging until your organisation handles the change through a trusted branch.
+
+The Action sends a scrubbed change record: commit metadata, root paths, resource addresses and actions, gate reasons and structured items, risks, control findings, access call sites and analysis notes. It sends no approvals. The service collects approvals from GitHub. The Action never uploads source files, Terraform configuration, plan files, state files or cloud credentials. Values marked sensitive in Terraform are scrubbed from findings. The OIDC token authenticates the request.
+
+Uploads happen before the pull request comment. A blocked run may include a service link where an approver can request an exception for that pull request. An upload error produces a warning and preserves the job's gate and exit code. The Action retries a failed network request or a server error once. The `upload-id` output is present only after a successful upload. The service stores default branch pushes; pushes to other branches do not add evidence.

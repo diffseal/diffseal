@@ -232,9 +232,24 @@ export interface CostSummary {
   basis: string;
 }
 
+export interface GateItem {
+  level: 'block' | 'review';
+  kind: 'risk' | 'control' | 'access' | 'exception' | 'coverage' | 'policy';
+  rule?: string;
+  resource?: string;
+  text: string;
+}
+
+/** Append structured reasons together so their ordering cannot drift. */
+export function addGateItem(gate: Gate, item: GateItem): void {
+  gate.items.push(item);
+  gate.reasons.push(item.text);
+}
+
 export interface Gate {
   result: 'pass' | 'review' | 'block';
   reasons: string[];
+  items: GateItem[];
 }
 
 export interface PolicyConfig {

@@ -1,3 +1,4 @@
+import { verifyPack } from './verify.js';
 import { expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -66,6 +67,7 @@ test('evidence CLI writes an unsigned complete period with controls, exceptions 
     expect(records).not.toContain(f.shas[3] + '.json');
     const scope = JSON.parse(fs.readFileSync(path.join(out, 'pack.json'), 'utf8'));
     expect(scope.complete).toBe(true);
+    expect(verifyPack(out, { allowUnsigned: true }).ok).toBe(true);
     expect(scope.signing.status).toBe('unsigned');
     const manifest = fs.readFileSync(path.join(out, 'MANIFEST.sha256'), 'utf8');
     for (const line of manifest.trim().split('\n')) {

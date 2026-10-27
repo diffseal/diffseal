@@ -12,3 +12,6 @@ dist/*
 !dist/*.wasm
 
 !dist/*.wasm-*.gz
+
+# The offline verifier bundles its public key list in the CLI.
+!dist/cli.js

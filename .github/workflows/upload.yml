@@ -1,0 +1,47 @@
+name: TerraTrust upload
+on:
+  workflow_call:
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      # Default checkout uses refs/pull/N/merge for a pull request.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Read trusted analysis settings
+        id: settings
+        env:
+          SETTINGS_REV: ${{ github.event.pull_request.base.sha || github.sha }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          import { appendFileSync } from 'node:fs';
+          const rev = process.env.SETTINGS_REV;
+          if (!/^[a-f0-9]{40,64}$/.test(rev ?? '')) throw new Error('Missing settings commit');
+          const exists = execFileSync('git', ['ls-tree', '--name-only', rev, '--', '.terratrust.json'], { encoding: 'utf8' }).trim();
+          const config = exists ? JSON.parse(execFileSync('git', ['show', `${rev}:.terratrust.json`], { encoding: 'utf8' })) : {};
+          const settings = config.replay ?? {};
+          if (typeof settings !== 'object' || Array.isArray(settings)) throw new Error('replay must be an object');
+          for (const [key, output] of [['rootsUnder', 'roots-under'], ['policyFile', 'policy'], ['moduleCache', 'module-cache']]) {
+            const value = settings[key] ?? '';
+            if (typeof value !== 'string' || /[\r\n\\\x00]/.test(value) || value.startsWith('/') || /^[A-Za-z]:/.test(value) || value.split('/').includes('..')) throw new Error(`Invalid replay.${key}: use a path inside the repository`);
+            appendFileSync(process.env.GITHUB_OUTPUT, `${output}=${value}\n`);
+          }
+          NODE
+      # Keep this release tag in sync with the reusable workflow's release.
+      # Never run the Action from the customer's checkout.
+      - uses: TerraTrust/terratrust@v0.4.0-beta
+        with:
+          mode: pr
+          upload: 'true'
+          advisory: 'true'
+          roots-under: ${{ steps.settings.outputs.roots-under }}
+          policy: ${{ steps.settings.outputs.policy }}
+          module-cache: ${{ steps.settings.outputs.module-cache }}

@@ -111,6 +111,7 @@ export async function checkApp(opts: CheckAppOptions): Promise<CheckAppResult> {
     ...(deployments.mappings.length ? {deployments:deployments.mappings} : {}),
     gate: {
       result: attention.length || linkChanged ? 'review' : 'pass',
+      items: [...attention.map((l) => ({ kind: 'access' as const, level: 'review' as const, rule: l.status, resource: l.callsite, text: `${l.status}: ${l.callsite}: ${l.access}` })), ...(linkChanged ? [{ kind: 'policy' as const, level: 'review' as const, text: '.terratrust.json changed' }] : [])],
       reasons: [...attention.map((l) => `${l.status}: ${l.callsite}: ${l.access}`), ...(linkChanged ? ['.terratrust.json changed'] : [])],
     },
     notes,

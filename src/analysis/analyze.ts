@@ -1,4 +1,4 @@
-import { scrubDeep, sensitiveLeaves, type AnalysisResult, type Gate, type PolicyConfig, type PolicyException, type ResourceChange } from '../core/model.js';
+import { addGateItem, scrub, scrubDeep, sensitiveLeaves, type AnalysisResult, type Gate, type PolicyConfig, type PolicyException, type ResourceChange } from '../core/model.js';
 import { DEFAULT_POLICY, evaluatePolicies } from '../policy/engine.js';
 import { analyzeBlastRadius } from './blastRadius.js';
 import { estimateCost } from './cost.js';
@@ -19,15 +19,17 @@ export function analyze(all: ResourceChange[], opts: { policy?: PolicyConfig; no
   const gate = decideGate(findings, blast, policy.blockOn);
   for (const e of expired) {
     const what = `Exception for ${e?.rule ?? 'every rule'} on ${e?.resource ?? '(no resource)'}`;
-    gate.reasons.push(
-      isWellFormed(e)
+    addGateItem(gate, { kind: 'exception', level: 'review', text: isWellFormed(e)
         ? `${what} expired ${e.expires}; it no longer applies`
         : `${what} is malformed: it needs a resource and an expires date as YYYY-MM-DD; it does not apply`
-    );
+    });
   }
   if (expired.length && gate.result === 'pass') gate.result = 'review';
   // Rules and the grant diff read sensitive values; nothing they wrote may contain one.
   const hidden = all.flatMap((c) => [...sensitiveLeaves(c.before), ...sensitiveLeaves(c.after)]);
+  // Gate item text repeats the reasons, but `text` also names raw parser/application fields.
+  // Scrub this field explicitly with the same leaves instead of broadening ANALYSIS_TEXT.
+  gate.items = gate.items.map((item) => ({ ...item, text: scrub(item.text, hidden) }));
   return { changes, ...scrubDeep({ findings, blast, cost, gate }, hidden) };
 }
 
@@ -64,16 +66,16 @@ function applyExceptions(findings: AnalysisResult['findings'], blast: AnalysisRe
 }
 
 function decideGate(findings: AnalysisResult['findings'], blast: AnalysisResult['blast'], blockOn: PolicyConfig['blockOn']): Gate {
-  const reasons: string[] = [];
+  const gate: Gate = { result: 'pass', reasons: [], items: [] };
   const blocking = blast.filter((b) => !b.accepted && blockOn?.includes(b.severity));
-  for (const b of blocking) reasons.push(`${b.severity}: ${b.resource}: ${b.reason}`);
-  if (blocking.length) return { result: 'block', reasons };
+  for (const b of blocking) addGateItem(gate, { kind: 'risk', level: 'block', rule: 'blast-radius', resource: b.resource, text: `${b.severity}: ${b.resource}: ${b.reason}` });
+  if (blocking.length) return { ...gate, result: 'block' };
 
   // CRITICAL rows that policy chose not to block are still reviewed, never passed.
   const highBlast = blast.filter((b) => (b.severity === 'HIGH' || b.severity === 'CRITICAL') && !b.accepted);
   const newFails = findings.filter((f) => f.status === 'FAIL' && !f.preExisting && !f.accepted);
-  for (const b of highBlast) reasons.push(`${b.severity}: ${b.resource}: ${b.reason}`);
-  for (const f of newFails) reasons.push(`FAIL ${f.ruleId}: ${f.resource}: ${f.detail}`);
-  return { result: reasons.length ? 'review' : 'pass', reasons };
+  for (const b of highBlast) addGateItem(gate, { kind: 'risk', level: 'review', rule: 'blast-radius', resource: b.resource, text: `${b.severity}: ${b.resource}: ${b.reason}` });
+  for (const f of newFails) addGateItem(gate, { kind: 'control', level: 'review', rule: f.ruleId, resource: f.resource, text: `FAIL ${f.ruleId}: ${f.resource}: ${f.detail}` });
+  return { ...gate, result: gate.reasons.length ? 'review' : 'pass' };
 }
 
