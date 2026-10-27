@@ -16,6 +16,13 @@ export interface Approvals {
   mergedBy?: string;
 }
 
+/** Contract section 1, shared/src/record.ts. */
+export interface Accepted {
+  reason?: string;
+  owner?: string;
+  expires?: string;
+}
+
 export interface ChangeRecord {
   schema: 'terratrust.change-record/v1';
   change: { commit: string; base: string; subject: string; author: string; date: string };
@@ -24,7 +31,7 @@ export interface ChangeRecord {
   roots: string[];
   gate: AnalysisResult['gate'];
   resources: Array<{ address: string; type: string; action: string; confidence: string; replacePaths?: string[][] }>;
-  risks: Array<{ resource: string; severity: string; reason: string; accepted?: unknown }>;
+  risks: Array<{ resource: string; severity: string; reason: string; accepted?: Accepted }>;
   controls: Array<{
     control: string;
     rule: string;
@@ -35,7 +42,7 @@ export interface ChangeRecord {
     category?: string;
     frameworks: FrameworkRefs;
     preExisting?: boolean;
-    accepted?: unknown;
+    accepted?: Accepted;
   }>;
   access: Array<{ status: string; callsite: string; actions: string[]; resource: string; detail: string }>;
   notes: string[];

@@ -59,3 +59,28 @@ test('trusted upload workflow has no analysis inputs and uses base Git settings 
   expect(text).not.toContain('inputs.');
   expect(text).not.toContain('readFileSync');
 });
+
+test('trusted settings ignore the working tree and reject output injection', async () => {
+  const fs = await import('node:fs'), os = await import('node:os'), path = await import('node:path');
+  const { spawnSync } = await import('node:child_process');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tt-trusted-settings-'));
+  const git = (...args: string[]) => {
+    const r = spawnSync('git', ['-C', dir, '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', ...args], { encoding: 'utf8' });
+    if (r.status) throw new Error(r.stderr); return r.stdout.trim();
+  };
+  try {
+    git('init', '-q');
+    fs.writeFileSync(path.join(dir, '.terratrust.json'), JSON.stringify({ replay: { rootsUnder: 'infra', policyFile: 'policy.json', moduleCache: 'cache' } }));
+    git('add', '.'); git('commit', '-qm', 'trusted settings'); const rev = git('rev-parse', 'HEAD');
+    fs.writeFileSync(path.join(dir, '.terratrust.json'), JSON.stringify({ replay: { rootsUnder: 'empty', policyFile: 'weakened.json' } }));
+    const run = workflow('upload').jobs.upload.steps[1].run!;
+    const script = run.slice(run.indexOf("<<'NODE'\n") + "<<'NODE'\n".length, run.lastIndexOf('NODE'));
+    const output = path.join(dir, 'outputs');
+    const execute = (revision: string) => spawnSync('node', ['--input-type=module', '-e', script], { cwd: dir, encoding: 'utf8', env: { ...process.env, SETTINGS_REV: revision, GITHUB_OUTPUT: output } });
+    expect(execute(rev).status).toBe(0);
+    expect(fs.readFileSync(output, 'utf8')).toBe('roots-under=infra\npolicy=policy.json\nmodule-cache=cache\n');
+    fs.writeFileSync(path.join(dir, '.terratrust.json'), JSON.stringify({ replay: { rootsUnder: 'infra\npolicy=weakened' } }));
+    git('add', '.terratrust.json'); git('commit', '-qm', 'invalid settings');
+    const invalid = execute(git('rev-parse', 'HEAD')); expect(invalid.status).toBe(1); expect(invalid.stderr).toContain('Invalid replay.rootsUnder');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
