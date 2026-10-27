@@ -69,3 +69,20 @@ test('exception comment is inserted before the footer only on BLOCK', async () =
   expect(uploadComment(md, 'pass', response)).toBe(md); expect(uploadComment(md, 'review', response)).toBe(md);
   const blocked = uploadComment(md, 'block', response); expect(blocked).toContain('An approver can accept these risks for this pull request: [Request an exception](https://api.terratrust.dev/a/org/exceptions/new).'); expect(blocked.indexOf('Request an exception')).toBeLessThan(blocked.indexOf('---'));
 });
+
+test('the Action job keeps its passing exit code when upload fails', async () => {
+  const fs = await import('node:fs'), path = await import('node:path'), os = await import('node:os');
+  const { spawnSync } = await import('node:child_process');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tt-upload-job-'));
+  try {
+    const git = (...args: string[]) => {
+      const r = spawnSync('git', ['-C', dir, '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', ...args], { encoding: 'utf8' });
+      if (r.status) throw new Error(r.stderr);
+    };
+    git('init', '-q'); git('commit', '--allow-empty', '-qm', 'base'); git('commit', '--allow-empty', '-qm', 'head');
+    fs.writeFileSync(path.join(dir, 'event.json'), '{}');
+    const r = spawnSync('node', ['--import', 'data:text/javascript,globalThis.fetch=async(url,init)=>{if(!init.method)return Response.json({value:"oidc"});throw new Error("offline upload failure")}', path.resolve(import.meta.dirname, '../../dist/action.js')], { cwd: dir, encoding: 'utf8', env: { ...process.env, INPUT_MODE: 'pr', INPUT_UPLOAD: 'true', INPUT_COMMENT: 'false', GITHUB_WORKSPACE: dir, GITHUB_EVENT_PATH: path.join(dir, 'event.json'), GITHUB_EVENT_NAME: 'push', GITHUB_OUTPUT: path.join(dir, 'outputs'), ACTIONS_ID_TOKEN_REQUEST_URL: 'https://token.example/token', ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'request-token' } });
+    expect(r.status).toBe(0); expect(r.stderr).toContain('upload network request failed');
+    expect(fs.readFileSync(path.join(dir, 'outputs'), 'utf8')).toBe('gate=pass\n');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

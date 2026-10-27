@@ -89,6 +89,7 @@ export async function uploadRun(o: UploadOptions): Promise<RunUploadResponse | u
         try {
           const exception = new URL(result.exceptionUrl);
           if (exception.host !== endpoint.host || exception.protocol !== endpoint.protocol || exception.username || exception.password) delete result.exceptionUrl;
+          else result.exceptionUrl = exception.href;
         } catch { delete result.exceptionUrl; }
       }
       return result;
