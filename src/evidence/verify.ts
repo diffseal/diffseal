@@ -17,15 +17,17 @@ export interface VerifyOptions { keys?: string; account?: string; period?: strin
 export interface VerifyResult { ok: boolean; failures: string[]; keyId?: string; account?: string; period?: string; files: number }
 export const CURRENT_KEYS_URL = 'https://terratrust.dev/.well-known/terratrust-keys.json';
 export function keySource(options: VerifyOptions): string[] {
-  const lines = [`Keys: bundled with this version (updatedAt ${bundledKeys.updatedAt}). Current list: ${CURRENT_KEYS_URL}`];
   if (options.keys) {
     let updatedAt = '(unavailable)';
     try { updatedAt = JSON.parse(fs.readFileSync(options.keys, 'utf8')).updatedAt ?? updatedAt; } catch { /* Verification reports an invalid list. */ }
-    lines.unshift(`Keys used: --keys ${options.keys} (updatedAt ${updatedAt}).`);
-    lines.push(`WARNING: keys from --keys ${options.keys} are not TerraTrust's published list.`);
+    return [
+      `Keys used: --keys ${options.keys} (updatedAt ${updatedAt}).`,
+      `WARNING: keys from --keys ${options.keys} are not TerraTrust's published list.`,
+    ];
   }
-  return lines;
+  return [`Keys: bundled with this version (updatedAt ${bundledKeys.updatedAt}). Current list: ${CURRENT_KEYS_URL}`];
 }
+
 const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 const reserved = new Set(['MANIFEST.sha256', 'signature.json']);
 

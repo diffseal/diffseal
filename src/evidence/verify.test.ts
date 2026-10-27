@@ -86,8 +86,8 @@ test('CLI JSON output is parseable, exit codes reflect verification and key prov
   const run = (...args: string[]) => spawnSync('bun', [cli, 'verify', f.folder, ...args], { encoding: 'utf8' });
   try {
     const valid = run('--keys', f.keys, '--json'); expect(valid.status).toBe(0); expect(JSON.parse(valid.stdout)).toEqual(f.verify());
-    expect(valid.stderr).toContain('WARNING: keys from --keys'); expect(valid.stderr).toContain('updatedAt 2026-10-27'); expect(valid.stderr).toContain('https://terratrust.dev/.well-known/terratrust-keys.json'); expect(valid.stderr).toContain('Account: example'); expect(valid.stderr).toContain(f.keyId);
-    const unknown = run('--json'); expect(unknown.status).toBe(1); expect(JSON.parse(unknown.stdout).failures[0]).toContain('Unknown key id'); expect(unknown.stderr).not.toContain('WARNING');
+    expect(valid.stderr).toContain('WARNING: keys from --keys'); expect(valid.stderr).toContain('updatedAt 2026-10-27'); expect(valid.stderr).toContain(`Keys used: --keys ${f.keys}`); expect(valid.stderr).not.toContain('bundled with this version'); expect(valid.stderr).toContain('Account: example'); expect(valid.stderr).toContain(f.keyId);
+    const unknown = run('--json'); expect(unknown.status).toBe(1); expect(JSON.parse(unknown.stdout).failures[0]).toContain('Unknown key id'); expect(unknown.stderr).not.toContain('WARNING'); expect(unknown.stderr).toContain('Keys: bundled with this version'); expect(unknown.stderr).toContain('https://terratrust.dev/.well-known/terratrust-keys.json');
     f.write('index.md', 'bad'); const invalid = run('--keys', f.keys); expect(invalid.status).toBe(1); expect(invalid.stderr).toContain('Changed file: index.md');
   } finally { f.done(); }
 });
@@ -102,4 +102,16 @@ test('terratrust evidence output verifies with allow-unsigned and both schemas a
     const result = verifyPack(outDir, { allowUnsigned: true }); expect(result.ok).toBe(true); expect(result.files).toBe(3);
     expect(verifyPack(outDir).failures).toContain('The files match the manifest, but the pack is not signed');
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+test('key provenance identifies only the list actually used', () => {
+  expect(keySource({})).toEqual(['Keys: bundled with this version (updatedAt 2026-10-27T00:00:00Z). Current list: https://terratrust.dev/.well-known/terratrust-keys.json']);
+  const f = fixture();
+  try {
+    f.list.updatedAt = '2026-10-26T12:00:00Z'; f.writeList();
+    expect(keySource({ keys: f.keys })).toEqual([
+      `Keys used: --keys ${f.keys} (updatedAt 2026-10-26T12:00:00Z).`,
+      `WARNING: keys from --keys ${f.keys} are not TerraTrust's published list.`,
+    ]);
+  } finally { f.done(); }
 });
