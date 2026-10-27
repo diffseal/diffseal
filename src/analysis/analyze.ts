@@ -1,4 +1,4 @@
-import { addGateItem, scrubDeep, sensitiveLeaves, type AnalysisResult, type Gate, type PolicyConfig, type PolicyException, type ResourceChange } from '../core/model.js';
+import { addGateItem, scrub, scrubDeep, sensitiveLeaves, type AnalysisResult, type Gate, type PolicyConfig, type PolicyException, type ResourceChange } from '../core/model.js';
 import { DEFAULT_POLICY, evaluatePolicies } from '../policy/engine.js';
 import { analyzeBlastRadius } from './blastRadius.js';
 import { estimateCost } from './cost.js';
@@ -27,6 +27,9 @@ export function analyze(all: ResourceChange[], opts: { policy?: PolicyConfig; no
   if (expired.length && gate.result === 'pass') gate.result = 'review';
   // Rules and the grant diff read sensitive values; nothing they wrote may contain one.
   const hidden = all.flatMap((c) => [...sensitiveLeaves(c.before), ...sensitiveLeaves(c.after)]);
+  // Gate item text repeats the reasons, but `text` also names raw parser/application fields.
+  // Scrub this field explicitly with the same leaves instead of broadening ANALYSIS_TEXT.
+  gate.items = gate.items.map((item) => ({ ...item, text: scrub(item.text, hidden) }));
   return { changes, ...scrubDeep({ findings, blast, cost, gate }, hidden) };
 }
 

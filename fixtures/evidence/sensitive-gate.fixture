@@ -1,0 +1,66 @@
+{
+  "description": "Synthetic sensitive gate text in a blocking blast reason and a new FAIL finding. No real secrets.",
+  "hidden": [
+    "arn:aws:s3:::fixture-private-before/*",
+    "arn:aws:s3:::fixture-private-after/*",
+    "0.0.0.0/0"
+  ],
+  "base": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_policy\" \"p\" {\n  name = \"p\"\n  policy = sensitive(\"{\\\"Statement\\\":[{\\\"Effect\\\":\\\"Allow\\\",\\\"Action\\\":\\\"s3:GetObject\\\",\\\"Resource\\\":\\\"arn:aws:s3:::fixture-private-before/*\\\"}]}\")\n}\n",
+  "head": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_policy\" \"p\" {\n  name = \"p\"\n  policy = sensitive(\"{\\\"Statement\\\":[{\\\"Effect\\\":\\\"Allow\\\",\\\"Action\\\":\\\"s3:GetObject\\\",\\\"Resource\\\":\\\"arn:aws:s3:::fixture-private-after/*\\\"}]}\")\n}\nresource \"aws_security_group_rule\" \"ssh\" {\n  type = \"ingress\"\n  security_group_id = \"sg-fixture\"\n  from_port = 22\n  to_port = 22\n  protocol = \"tcp\"\n  cidr_blocks = sensitive([\"0.0.0.0/0\"])\n}\n",
+  "plan": {
+    "format_version": "1.2",
+    "resource_changes": [
+      {
+        "address": "aws_iam_policy.p",
+        "mode": "managed",
+        "type": "aws_iam_policy",
+        "name": "p",
+        "change": {
+          "actions": [
+            "update"
+          ],
+          "before": {
+            "name": "p",
+            "policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"s3:GetObject\",\"Resource\":\"arn:aws:s3:::fixture-private-before/*\"}]}"
+          },
+          "after": {
+            "name": "p",
+            "policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"s3:GetObject\",\"Resource\":\"arn:aws:s3:::fixture-private-after/*\"}]}"
+          },
+          "before_sensitive": {
+            "policy": true
+          },
+          "after_sensitive": {
+            "policy": true
+          }
+        }
+      },
+      {
+        "address": "aws_security_group_rule.ssh",
+        "mode": "managed",
+        "type": "aws_security_group_rule",
+        "name": "ssh",
+        "change": {
+          "actions": [
+            "create"
+          ],
+          "before": null,
+          "after": {
+            "type": "ingress",
+            "security_group_id": "sg-fixture",
+            "from_port": 22,
+            "to_port": 22,
+            "protocol": "tcp",
+            "cidr_blocks": [
+              "0.0.0.0/0"
+            ]
+          },
+          "before_sensitive": false,
+          "after_sensitive": {
+            "cidr_blocks": true
+          }
+        }
+      }
+    ]
+  }
+}
