@@ -58,7 +58,7 @@ TerraTrust checks sensitive values without ever printing them.
 
 ## What are the known limits?
 
-TerraTrust is a `v0.3.0-beta` release. Current limitations are tracked in [`docs/STATUS.md`](../STATUS.md):
+TerraTrust is a `v0.3.1-beta` release. Current limitations are tracked in [`docs/STATUS.md`](../STATUS.md):
 
 - **External modules and remote state.** Registry and git modules are not downloaded; they are evaluated as module calls whose inputs changed, with `confidence: "unknown"`. Data sources resolve to symbolic references rather than live AWS values.
 - **Inputs outside the root.** `terragrunt.hcl` files and `.tfvars` files that are not auto-loaded as `terraform.tfvars` or `*.auto.tfvars` are not evaluated during static replay. When a commit modifies them, TerraTrust sets the gate to `review` and notes which files changed.
