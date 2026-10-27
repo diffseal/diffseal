@@ -11,6 +11,8 @@
 - Verify signed and unsigned evidence packs offline with `terratrust verify`. Check file coverage, hashes, Ed25519 signatures, key validity and optional account and period scope. Bundle an empty public key list until signing keys are published.
 - Document upload permissions, required check source settings, fork limits and offline verification.
 
+## 0.3.1-beta, 2026-10-27
+
 ### Changed
 
 - The report footer is one short line: the version, the two commits compared and a link to the FAQ. A change whose action is likely rather than proven says so in its own row, as `update (likely)` or `update (unknown)`, also when one row stands for several roots. The note about ISO/IEC 27001 control IDs moved to the FAQ.
