@@ -54,7 +54,7 @@ test('insecure URLs are refused, localhost URLs are accepted', async () => {
 test('network errors and 5xx retry once, 4xx do not retry; failures keep the passing exit code', async () => {
   for (const status of [0, 503, 400, 403]) {
     const s = setup([status, status]); expect(await uploadRun(s.options)).toBeUndefined();
-    expect(s.calls).toHaveLength(status === 0 || status === 503 ? 3 : 2); expect(s.warnings).toHaveLength(1);
+    expect(s.calls).toHaveLength(status === 0 || status === 503 ? 4 : 2); expect(s.warnings).toHaveLength(1);
     expect(actionExitCode('pass', { advisory: false, strict: false })).toBe(0);
   }
   const s = setup([503, 200]); expect((await uploadRun(s.options))?.id).toBe('run-1');
@@ -86,3 +86,28 @@ test('the Action job keeps its passing exit code when upload fails', async () =>
     expect(fs.readFileSync(path.join(dir, 'outputs'), 'utf8')).toBe('gate=pass\n');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+for (const firstFailure of ['500', 'network']) {
+  test(`upload retries ${firstFailure} with a fresh single-use token and identical body bytes`, async () => {
+    const s = setup();
+    const consumed = new Set<string>(), bodies: string[] = [], tokens: string[] = [];
+    let issued = 0;
+    s.options.fetchFn = (async (_url, init) => {
+      if (!init?.method) return Response.json({ value: `single-use-${++issued}` });
+      const token = new Headers(init.headers).get('authorization')!;
+      bodies.push(String(init.body)); tokens.push(token);
+      if (consumed.has(token)) return Response.json({ error: 'token already used' }, { status: 401 });
+      consumed.add(token);
+      if (bodies.length === 1) {
+        if (firstFailure === 'network') throw new Error('response lost after token consumption');
+        return Response.json({ error: 'temporary server error' }, { status: 500 });
+      }
+      return Response.json({ id: 'retried-run', pageUrl: 'https://api.terratrust.dev/retried-run' }, { status: 201 });
+    }) as typeof fetch;
+    const response = await uploadRun(s.options);
+    expect(response?.id).toBe('retried-run');
+    expect(issued).toBe(2); expect(new Set(tokens).size).toBe(2);
+    expect(bodies).toHaveLength(2); expect(bodies[1] === bodies[0]).toBe(true);
+    expect(s.warnings).toHaveLength(0);
+  });
+}

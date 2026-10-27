@@ -69,11 +69,12 @@ export async function uploadRun(o: UploadOptions): Promise<RunUploadResponse | u
     const f = o.fetchFn ?? fetch;
     const tokenUrl = new URL(env.ACTIONS_ID_TOKEN_REQUEST_URL);
     tokenUrl.searchParams.set('audience', 'terratrust');
-    const tokenResponse = await f(tokenUrl.toString(), { headers: { authorization: `Bearer ${env.ACTIONS_ID_TOKEN_REQUEST_TOKEN}` }, signal: AbortSignal.timeout(15_000) });
-    if (!tokenResponse.ok) throw new Error(`OIDC token request failed (${tokenResponse.status})`);
-    const token = await tokenResponse.json() as { value?: string };
-    if (typeof token.value !== 'string' || !token.value) throw new Error('OIDC token response has no token');
     for (let attempt = 0; attempt < 2; attempt++) {
+      // The service consumes each OIDC jti before idempotency, even if a response is lost.
+      const tokenResponse = await f(tokenUrl.toString(), { headers: { authorization: `Bearer ${env.ACTIONS_ID_TOKEN_REQUEST_TOKEN}` }, signal: AbortSignal.timeout(15_000) });
+      if (!tokenResponse.ok) throw new Error(`OIDC token request failed (${tokenResponse.status})`);
+      const token = await tokenResponse.json() as { value?: string };
+      if (typeof token.value !== 'string' || !token.value) throw new Error('OIDC token response has no token');
       let response: Response;
       try {
         response = await f(new URL('v1/runs', endpoint.href.endsWith('/') ? endpoint : `${endpoint.href}/`).toString(), { method: 'POST', headers: { authorization: `Bearer ${token.value}`, 'content-type': 'application/json' }, body: serialized, signal: AbortSignal.timeout(15_000), redirect: 'error' });
