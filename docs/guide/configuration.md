@@ -6,6 +6,7 @@ TerraTrust reads repository configuration from `.terratrust.json` at the root of
 
 A `.terratrust.json` file can hold these groups of settings:
 
+- `replay`: Analysis paths for the trusted upload workflow.
 - `policy`: Thresholds and blocking severities for infrastructure policy checks and blast radius.
 - `exceptions`: Time-limited acceptances for specific policy findings or destructive changes.
 - `infra`, `roles`, and `env`: Link settings that tell `check-app` where to find Terraform and how the application runs in AWS.
