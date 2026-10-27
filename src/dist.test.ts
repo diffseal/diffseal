@@ -53,3 +53,20 @@ test('dist/action.js is built from the current source', () => {
   expect(fs.readFileSync(path.join(out, 'outputs'), 'utf8')).toContain('gate=pass');
   fs.rmSync(out, { recursive: true, force: true });
 }, 30_000);
+
+test('dist/cli.js bundles the offline key list and verifies without dependencies or network', () => {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'tt-cli-dist-'));
+  try {
+    const built = spawnSync('bun', ['build', 'src/cli.ts', '--target=node', '--minify-syntax', '--minify-whitespace', '--outdir', out], { cwd: path.resolve(import.meta.dirname, '..'), encoding: 'utf8' });
+    expect(built.status).toBe(0);
+    expect(fs.readFileSync(path.join(out, 'cli.js')).equals(fs.readFileSync(path.resolve(import.meta.dirname, '../dist/cli.js')))).toBe(true);
+    const pack = path.join(out, 'pack'); fs.mkdirSync(pack);
+    const metadata = '{"schema":"terratrust.evidence-pack/v1","since":"2026-10-01","until":"2027-01-01"}\n';
+    fs.writeFileSync(path.join(pack, 'pack.json'), metadata);
+    const { createHash } = require('node:crypto');
+    fs.writeFileSync(path.join(pack, 'MANIFEST.sha256'), `${createHash('sha256').update(metadata).digest('hex')}  pack.json\n`);
+    const r = spawnSync('node', ['--import', 'data:text/javascript,globalThis.fetch=()=>{throw new Error("network forbidden")}', path.join(out, 'cli.js'), 'verify', pack, '--allow-unsigned', '--json'], { cwd: out, encoding: 'utf8' });
+    expect(r.status).toBe(0); expect(JSON.parse(r.stdout)).toMatchObject({ ok: true, failures: [], files: 1 });
+    expect(r.stderr).toContain('Keys: bundled with this version'); expect(r.stderr).not.toContain('network forbidden');
+  } finally { fs.rmSync(out, { recursive: true, force: true }); }
+});

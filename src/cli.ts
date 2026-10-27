@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { fetchModules } from './terraform/modulesFetch.js';
+import { verifyPack, keySource, verificationSummary } from './evidence/verify.js';
 import { evidencePack } from './evidence/pack.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -25,6 +26,7 @@ Usage:
   terratrust check-app --app <path> [--rev <rev> | --worktree] [--base <rev>] [--infra <path>] [--infra-rev <rev>]
                        [--roots-under <dir>] [--role <name,...>] [--entry <dir,...>] [--out <report.md>] [--json <file>] [--strict]
   terratrust evidence --since <date> --until <date> --repo <path> [--approvals <file.json>] [--out-dir <folder>]
+  terratrust verify <folder> [--keys <file>] [--account <login>] [--period <label>] [--allow-unsigned] [--json]
   terratrust modules fetch [--repo <path>] [--cache <dir>]
   terratrust demo
 
@@ -39,6 +41,7 @@ Commands:
              With --base, only calls added since that commit are checked.
   evidence   Export an unsigned audit period, inclusive since and exclusive until in UTC.
              Replays every first-parent commit in that period. An incomplete export exits 1; historic gates do not fail export.
+  verify     Verify manifest, file set, Ed25519 signature, key validity and optional scope offline.
   modules    Fetch public module packages and write a verified lock file. This command uses the network.
              replay and check-app accept --module-cache <dir> and never fetch implicitly.
   demo       Run review and check-app on the bundled examples.
@@ -51,7 +54,7 @@ interface Args {
   flags: Map<string, string | true>;
 }
 
-const BOOLEAN_FLAGS = new Set(['--strict', '--help', '-h', '--worktree']);
+const BOOLEAN_FLAGS = new Set(['--strict', '--help', '-h', '--worktree', '--allow-unsigned']);
 
 function parseArgs(argv: string[]): Args {
   const out: Args = { _: [], flags: new Map() };
@@ -61,7 +64,7 @@ function parseArgs(argv: string[]): Args {
       out._.push(a);
       continue;
     }
-    if (BOOLEAN_FLAGS.has(a)) {
+    if (BOOLEAN_FLAGS.has(a) || (argv[0] === 'verify' && a === '--json')) {
       out.flags.set(a, true);
       continue;
     }
@@ -264,6 +267,18 @@ export async function main(argv: string[]): Promise<number> {
       const lock = await fetchModules({ repo: str(args, '--repo'), cache: str(args, '--cache') });
       console.log(`Locked ${lock.modules.length} module packages`);
       return 0;
+    }
+    if (cmd === 'verify') {
+      const folder = args._[1];
+      if (!folder) throw new Error('verify needs <folder>');
+      const options = { keys: str(args, '--keys'), account: str(args, '--account'), period: str(args, '--period'), allowUnsigned: args.flags.has('--allow-unsigned') };
+      const result = verifyPack(folder, options);
+      for (const line of keySource(options)) console.error(line);
+      console.error(verificationSummary(result));
+      if (args.flags.has('--json')) process.stdout.write(json(result));
+      else if (result.ok) console.log('Verified.');
+      else for (const failure of result.failures) console.error(failure);
+      return result.ok ? 0 : 1;
     }
     if (cmd === 'review') return runReview(args);
     if (cmd === 'replay') return await runReplay(args);
