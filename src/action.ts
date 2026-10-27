@@ -1,3 +1,4 @@
+import { addGateItem, type Gate } from './core/model.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { analyze } from './analysis/analyze.js';
@@ -115,9 +116,9 @@ async function main(): Promise<number> {
 }
 
 /** Replay mode adds its own reason for a changed policy file; plan and app mode get it here, before rendering. */
-function reviewPolicyChange(gate: { result: 'pass' | 'review' | 'block'; reasons: string[] }, policyPath: string): void {
+function reviewPolicyChange(gate: Gate, policyPath: string): void {
   if (gate.result === 'pass') gate.result = 'review';
-  gate.reasons.push(`${policyPath} changed in this pull request. TerraTrust applied the version on the base branch. The new version applies once this pull request is merged.`);
+  addGateItem(gate, { kind: 'policy', level: 'review', text: `${policyPath} changed in this pull request. TerraTrust applied the version on the base branch. The new version applies once this pull request is merged.` });
 }
 
 main().then(
