@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { renderMarkdown } from '../report/markdown.js';
 import { combineRoots, replayCommit, shortRootLabels } from './replay.js';
 
 describe('combineRoots', () => {
@@ -32,6 +33,16 @@ describe('combineRoots', () => {
     expect(warn.map((f) => f.resource)).toEqual(['prod, sandbox: module.svc.aws_sns_topic.t']);
     expect(merged.blast.map((b) => b.resource)).toEqual(['prod, sandbox: module.svc.aws_sns_topic.t']);
     expect(merged.changes.length).toBe(2);
+  });
+
+  test('a merged row keeps the confidence of its change (review of the footer change)', async () => {
+    const likely = () => analyze(readPlan(plan([rc('module.svc.aws_sns_topic.t', 'aws_sns_topic', ['create'], { name: 't' })])).map((c) => ({ ...c, confidence: 'likely' as const })));
+    const merged = combineRoots([
+      { root: 'infra/envs/prod/svc', changes: [], result: likely(), diagnostics: [] },
+      { root: 'infra/envs/sandbox/svc', changes: [], result: likely(), diagnostics: [] },
+    ]);
+    expect(merged.blast.map((b) => [b.resource, b.confidence])).toEqual([['prod, sandbox: module.svc.aws_sns_topic.t', 'likely']]);
+    expect(renderMarkdown(merged, { title: 'x' })).toContain('| `prod, sandbox: module.svc.aws_sns_topic.t` | create (likely) |');
   });
 });
 

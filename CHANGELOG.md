@@ -4,7 +4,7 @@
 
 ### Changed
 
-- The report footer is one short line: the version, the two commits compared and a link to the FAQ. A change whose action is likely rather than proven says so in its own row, as `update (likely)`. The note about ISO/IEC 27001 control IDs moved to the FAQ.
+- The report footer is one short line: the version, the two commits compared and a link to the FAQ. A change whose action is likely rather than proven says so in its own row, as `update (likely)` or `update (unknown)`, also when one row stands for several roots. The note about ISO/IEC 27001 control IDs moved to the FAQ.
 
 ## 0.3.0-beta, 2026-10-26
 

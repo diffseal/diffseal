@@ -101,6 +101,9 @@ describe('report layout', () => {
     const md = renderMarkdown(analyze(changes.map((c) => ({ ...c, confidence: 'likely' as const }))), { title: 'x' });
     expect(md).toContain('| `aws_lambda_function.f` | update (likely) |');
     expect(renderMarkdown(analyze(changes), { title: 'x' })).toContain('| `aws_lambda_function.f` | update |');
+    // FAQ: unknown is not likely; the action could not be established.
+    const unknown = renderMarkdown(analyze(changes.map((c) => ({ ...c, confidence: 'unknown' as const }))), { title: 'x' });
+    expect(unknown).toContain('| `aws_lambda_function.f` | update (unknown) |');
   });
 });
 

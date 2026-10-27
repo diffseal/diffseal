@@ -255,6 +255,11 @@ export function analyzeBlastRadius(changes: ResourceChange[]): BlastFinding[] {
       out.push({ severity: c.action === 'forget' ? 'LOW' : 'INFO', resource: c.address, type: c.type, action: c.action, reason, dataLoss: false, downtime: 'no' });
     }
   }
+  const confidence = new Map(changes.map((c) => [c.address, c.confidence]));
+  for (const b of out) {
+    const k = confidence.get(b.resource);
+    if (k && k !== 'proven') b.confidence = k;
+  }
   const rank: Record<Severity, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, INFO: 4 };
   return out.sort((a, b) => rank[a.severity] - rank[b.severity]);
 }

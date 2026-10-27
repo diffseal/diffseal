@@ -245,7 +245,7 @@ export function combineRoots(roots: RootReplay[]): AnalysisResult {
       else findings.set(k, { roots: [root], f });
     }
     for (const b of result.blast) {
-      const k = JSON.stringify([b.resource, b.severity, b.action, b.reason]);
+      const k = JSON.stringify([b.resource, b.severity, b.action, b.reason, b.confidence]);
       const e = blast.get(k);
       if (e) e.roots.push(root);
       else blast.set(k, { roots: [root], b });

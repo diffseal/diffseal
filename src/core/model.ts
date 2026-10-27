@@ -212,6 +212,8 @@ export interface BlastFinding {
   dataLoss: boolean;
   downtime: 'yes' | 'possible' | 'no';
   accepted?: Acceptance;
+  /** The confidence of the change behind this row, absent when proven. */
+  confidence?: 'likely' | 'unknown';
 }
 
 export interface CostItem {

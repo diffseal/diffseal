@@ -93,8 +93,7 @@ export function renderMarkdown(result: AnalysisResult, meta: ReportMeta): string
   if (result.blast.length) {
     out.push('', '### Resources', '', '| Risk | Resource | Action | Why |', '| :-- | :-- | :-- | :-- |');
     const rows = [...notable, ...result.blast.filter((b) => !notable.includes(b))];
-    const likely = new Set(result.changes.filter((c) => c.confidence !== 'proven').map((c) => c.address));
-    for (const b of rows.slice(0, MAX_ROWS)) out.push(blastRow(b, likely.has(b.resource)));
+    for (const b of rows.slice(0, MAX_ROWS)) out.push(blastRow(b));
     if (rows.length > MAX_ROWS) out.push(`| | ...and ${rows.length - MAX_ROWS} more | | |`);
   }
 
@@ -236,10 +235,10 @@ function evidenceSummary(fs: Finding[]): string {
 
 const acceptedNote = (a: { reason: string; owner?: string; expires: string }) => `accepted until ${a.expires}${a.owner ? ` by ${a.owner}` : ''}: ${a.reason}`;
 
-function blastRow(b: BlastFinding, likely: boolean): string {
+function blastRow(b: BlastFinding): string {
   const severity = b.accepted ? `${b.severity} (accepted)` : b.severity;
   const reason = b.accepted ? `${b.reason}. ${acceptedNote(b.accepted)}` : b.reason;
-  return `| ${severity} | ${codeCell(b.resource)} | ${b.action}${likely ? ' (likely)' : ''} | ${cell(reason)} |`;
+  return `| ${severity} | ${codeCell(b.resource)} | ${b.action}${b.confidence ? ` (${b.confidence})` : ''} | ${cell(reason)} |`;
 }
 
 function findingRow(f: Finding): string {
