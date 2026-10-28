@@ -12,7 +12,7 @@ export interface RunUpload {
   action: { version: string; mode: 'pr'; advisory: boolean };
   record: ChangeRecord;
 }
-export interface RunUploadResponse { id: string; pageUrl: string; exceptionUrl?: string }
+export interface RunUploadResponse { id: string; pageUrl: string; exceptionUrl?: string; stale?: boolean }
 export interface UploadOptions {
   upload?: string;
   mode: string;
@@ -83,9 +83,13 @@ export async function uploadRun(o: UploadOptions): Promise<RunUploadResponse | u
         throw new Error('upload network request failed or timed out');
       }
       if (response.status >= 500 && attempt === 0) continue;
-      if (!response.ok) throw new Error(`upload failed (${response.status})`);
+      if (!response.ok) throw new Error(`upload failed (${response.status})${await serviceReason(response)}`);
       const result = await response.json() as RunUploadResponse;
       if (!result || typeof result.id !== 'string' || !result.id || /[\r\n]/.test(result.id) || typeof result.pageUrl !== 'string' || (result.exceptionUrl !== undefined && typeof result.exceptionUrl !== 'string')) throw new Error('invalid upload response');
+      if (result.stale === true) {
+        delete result.exceptionUrl;
+        warn('TerraTrust stored this record as stale: the pull request or its base branch changed after this run started, so the TerraTrust evidence check was not updated. Push a commit to refresh it. Re-running this job does not help, because GitHub reuses the original event.');
+      } else delete result.stale;
       if (result.exceptionUrl) {
         try {
           const exception = new URL(result.exceptionUrl);
@@ -96,6 +100,16 @@ export async function uploadRun(o: UploadOptions): Promise<RunUploadResponse | u
       return result;
     }
   } catch (e) { warn(`Upload skipped: ${(e as Error).message}`); }
+}
+
+/** The service's error and field path as one short line, or nothing when the body is not the documented error shape. */
+async function serviceReason(response: Response): Promise<string> {
+  try {
+    const body = await response.json() as { error?: unknown; path?: unknown };
+    if (typeof body?.error !== 'string') return '';
+    const reason = `${body.error}${typeof body.path === 'string' ? ` (${body.path})` : ''}`.replace(/[\x00-\x1f\x7f]+/g, ' ');
+    return `: ${reason.slice(0, 200)}`;
+  } catch { return ''; }
 }
 
 export function uploadComment(markdown: string, gate: string, response?: RunUploadResponse): string {

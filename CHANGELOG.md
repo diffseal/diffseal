@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+
+- A rejected upload shows the service's reason and the failing field, not only the status code.
+- When the service stores a record as stale, because the pull request or its base branch changed after the run started, the Action says so and explains that a new push refreshes the check. It shows no exception link for that record.
+
 ## 0.4.0-beta, 2026-10-28
 
 ### Added
