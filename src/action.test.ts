@@ -37,6 +37,14 @@ describe('upsertComment', () => {
     expect(gh.calls.filter((c) => c.method !== 'GET').map((c) => [c.method, c.url.endsWith('/comments/140')])).toEqual([['PATCH', true]]);
   });
 
+  test('updates a report comment written before the rename to Diffseal, and rewrites its marker', async () => {
+    const gh = fakeGitHub([{ id: 5, body: '<!-- terratrust-report -->\nGate: BLOCK', user: { login: 'github-actions[bot]' } }]);
+    await upsertComment('report', { ...ctx, onlyUpdate: true, fetchFn: gh.fetchFn });
+    const patch = gh.calls.find((c) => c.method === 'PATCH');
+    expect(patch?.url.endsWith('/comments/5')).toBe(true);
+    expect(JSON.parse(patch!.body!).body).toStartWith(MARKER);
+  });
+
   test('posts a new comment when updating fails', async () => {
     const gh = fakeGitHub([{ id: 3, body: `${MARKER} old`, user: { login: 'github-actions[bot]' } }], true);
     await upsertComment('report', { ...ctx, fetchFn: gh.fetchFn });

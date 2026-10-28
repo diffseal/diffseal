@@ -51,11 +51,14 @@ test('trusted upload workflow has no analysis inputs and uses base Git settings 
   const steps = w.jobs.upload.steps;
   expect(steps[0].uses).toMatch(/^actions\/checkout@[a-f0-9]{40}$/);
   expect(steps[0].with).toEqual({ 'fetch-depth': 0, 'persist-credentials': false });
-  expect(steps[2].uses).toBe('diffseal/diffseal@v0.4.1-beta');
+  // The trusted workflow runs the Action from its own release, never an older one.
+  const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  expect(steps[2].uses).toBe(`diffseal/diffseal@v${version}`);
   expect(steps[2].with).toMatchObject({ mode: 'pr', upload: 'true', advisory: 'true' });
   const text = readFileSync(new URL('../.github/workflows/upload.yml', import.meta.url), 'utf8');
   expect(text).toContain('github.event.pull_request.base.sha || github.sha');
-  expect(text).toContain("['show', `${rev}:.diffseal.json`]");
+  expect(text).toContain("['show', `${rev}:${file}`]");
+  expect(text).toContain("['.diffseal.json', '.terratrust.json']");
   expect(text).not.toContain('inputs.');
   expect(text).not.toContain('readFileSync');
 });

@@ -12,6 +12,7 @@ import { isAppFile, scanApp } from '../app/scan.js';
 import { InfraIndex } from '../reconcile/infraIndex.js';
 import { reconcile, type AppLink } from '../reconcile/reconcile.js';
 import type { RootEvaluation } from '../terraform/expand.js';
+import { CONFIG_FILE, LEGACY_CONFIG_FILE, readConfigFile } from '../configFile.js';
 
 export interface ReplayOptions {
   repo: string;
@@ -70,7 +71,7 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   // Policy and exceptions come from the base commit: a change must not be able to accept its own findings.
   const policyFileAtBase = opts.policyFile ? parsePolicyFile(baseSource.readFile(opts.policyFile)) : {};
   const policy = { ...repoPolicy(baseSource), ...policyFileAtBase, ...opts.policy };
-  const changedConfig = ['.diffseal.json', ...(opts.policyFile ? [opts.policyFile] : [])].filter(
+  const changedConfig = [CONFIG_FILE, LEGACY_CONFIG_FILE, ...(opts.policyFile ? [opts.policyFile] : [])].filter(
     (f) => baseSource.readFile(f) !== headSource.readFile(f)
   );
   // Files a configuration may read with file() or templatefile(), application code included
@@ -165,7 +166,7 @@ function parsePolicyFile(text: string | undefined): PolicyConfig {
 
 /** Policy and exceptions from `.diffseal.json` at a commit, so they are versioned with the code. */
 function repoPolicy(source: GitSource): PolicyConfig {
-  const text = source.readFile('.diffseal.json');
+  const text = readConfigFile(source);
   if (!text) return {};
   try {
     const cfg = JSON.parse(text) as { policy?: PolicyConfig; exceptions?: PolicyConfig['exceptions'] };

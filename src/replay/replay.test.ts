@@ -76,6 +76,16 @@ describe('replayCommit', () => {
     r.done();
   });
 
+  test('a commit from before the rename to Diffseal still reads its .terratrust.json exceptions', async () => {
+    const r = repo();
+    r.commit({ 'main.tf': 'terraform {\n  backend "s3" {}\n}\n', '.terratrust.json': EXCEPTION }, 'base with exception under the old name');
+    r.commit({ 'main.tf': 'terraform {\n  backend "s3" {}\n}\n' + OPEN_PORT }, 'open port');
+    const result = await replayCommit({ repo: r.dir, head: 'HEAD' });
+    expect(result.combined.findings.find((f) => f.ruleId === 'network.open-ingress')?.accepted?.reason).toBe('devices');
+    expect(result.combined.gate.result).toBe('pass');
+    r.done();
+  });
+
   test('a change cannot accept its own findings: exceptions it adds apply only after merge, and the change is reviewed', async () => {
     const r = repo();
     r.commit({ 'main.tf': 'terraform {\n  backend "s3" {}\n}\n' }, 'base');

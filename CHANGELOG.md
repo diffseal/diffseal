@@ -5,7 +5,7 @@
 ### Changed
 
 - TerraTrust is now Diffseal. The repository is `diffseal/diffseal`, the CLI is `diffseal` and `diffseal-mcp`, the service is `api.diffseal.com` and the public key list is `https://diffseal.com/.well-known/diffseal-keys.json`.
-- Every format id starts with `diffseal.` (for example `diffseal.pack/v2` and `diffseal.change-record/v1`), the config file is `.diffseal.json`, the module lock is `diffseal.modules.lock.json`, environment variables start with `DIFFSEAL_` and the MCP tools start with `diffseal_`. Rename these files and variables when you upgrade. Packs and locks written by TerraTrust are not read by this version.
+- Every format id starts with `diffseal.` (for example `diffseal.pack/v2` and `diffseal.change-record/v1`), the config file is `.diffseal.json`, the module lock is `diffseal.modules.lock.json`, environment variables start with `DIFFSEAL_` and the MCP tools start with `diffseal_`. Rename these files and variables when you upgrade. `.terratrust.json` is still read when `.diffseal.json` is missing, so replays of older commits keep their policy and exceptions, and a PR comment written by TerraTrust is updated in place. Packs and module locks written by TerraTrust are not read by this version.
 
 ## 0.4.1-beta, 2026-10-28
 

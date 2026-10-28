@@ -1,4 +1,5 @@
 import type { FileSource } from '../terraform/source.js';
+import { configFileIn, readConfigFile } from '../configFile.js';
 
 /**
  * How an application repository links to the Terraform that provisions it. Read from `.diffseal.json`
@@ -32,13 +33,13 @@ const TASKDEF = /(^|\/)([^/]*task-?def[^/]*|[^/]*task-definition[^/]*)\.json$/i;
  */
 export function discoverLink(app: FileSource, configFrom: FileSource = app): DiscoveredLink {
   const out: DiscoveredLink = { roles: [], env: [], sources: [] };
-  const cfgText = configFrom.readFile('.diffseal.json');
+  const cfgText = readConfigFile(configFrom);
   if (cfgText) {
     const cfg = JSON.parse(cfgText) as AppLinkConfig;
     out.infra = cfg.infra;
     out.roles!.push(...(cfg.roles ?? []));
     out.env!.push(...(cfg.env ?? []));
-    out.sources.push('.diffseal.json');
+    out.sources.push(configFileIn(configFrom));
   }
   for (const p of app.allFiles().filter((f) => TASKDEF.test(f) && !/node_modules\//.test(f))) {
     let def: { taskRoleArn?: unknown; containerDefinitions?: Array<{ environment?: Array<{ name?: string }>; secrets?: Array<{ name?: string }> }> };
