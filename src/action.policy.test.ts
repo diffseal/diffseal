@@ -30,7 +30,7 @@ test('in plan mode, a policy file changed by the pull request raises the heading
     expect(r.status).toBe(0);
     expect(fs.readFileSync(output, 'utf8')).toContain('gate=review');
     const md = fs.readFileSync(summary, 'utf8');
-    expect(md.split('\n')[0]).toBe('## TerraTrust: REVIEW');
+    expect(md.split('\n')[0]).toBe('## Diffseal: REVIEW');
     expect(md).toContain('> - policy.json changed in this pull request.');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

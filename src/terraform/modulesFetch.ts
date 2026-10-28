@@ -137,7 +137,7 @@ export async function fetchModules(opts: { repo?: string; cache?: string }): Pro
     modules.push({ ...call, ...(result.commit ? { commit: result.commit } : {}), ...(result.version ? { version: result.version } : {}), sha256, subdir: result.subdir });
   }
   modules.sort((a, b) => { const x = JSON.stringify([a.source, a.constraint]), y = JSON.stringify([b.source, b.constraint]); return x < y ? -1 : x > y ? 1 : 0; });
-  const lock: ModuleLock = { format: 'terratrust.modules/v1', modules };
+  const lock: ModuleLock = { format: 'diffseal.modules/v1', modules };
   atomicWrite(path.join(repo, MODULE_LOCK), Buffer.from(JSON.stringify(lock, null, 2) + '\n'));
   return lock;
 }

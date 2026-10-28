@@ -70,7 +70,7 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   // Policy and exceptions come from the base commit: a change must not be able to accept its own findings.
   const policyFileAtBase = opts.policyFile ? parsePolicyFile(baseSource.readFile(opts.policyFile)) : {};
   const policy = { ...repoPolicy(baseSource), ...policyFileAtBase, ...opts.policy };
-  const changedConfig = ['.terratrust.json', ...(opts.policyFile ? [opts.policyFile] : [])].filter(
+  const changedConfig = ['.diffseal.json', ...(opts.policyFile ? [opts.policyFile] : [])].filter(
     (f) => baseSource.readFile(f) !== headSource.readFile(f)
   );
   // Files a configuration may read with file() or templatefile(), application code included
@@ -163,9 +163,9 @@ function parsePolicyFile(text: string | undefined): PolicyConfig {
   }
 }
 
-/** Policy and exceptions from `.terratrust.json` at a commit, so they are versioned with the code. */
+/** Policy and exceptions from `.diffseal.json` at a commit, so they are versioned with the code. */
 function repoPolicy(source: GitSource): PolicyConfig {
-  const text = source.readFile('.terratrust.json');
+  const text = source.readFile('.diffseal.json');
   if (!text) return {};
   try {
     const cfg = JSON.parse(text) as { policy?: PolicyConfig; exceptions?: PolicyConfig['exceptions'] };

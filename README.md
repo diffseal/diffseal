@@ -1,8 +1,8 @@
-# TerraTrust
+# Diffseal
 
-> **Beta status, v0.4.1-beta.** TerraTrust reviews Terraform changes on AWS, checks that application code has the IAM permissions it needs, and writes audit change records. It is a beta validated on one production monorepo. Run the GitHub Action in advisory mode first, with `advisory: 'true'`, and report issues in the [GitHub issue tracker](https://github.com/TerraTrust/terratrust/issues).
+> **Beta status, v0.4.1-beta.** Diffseal reviews Terraform changes on AWS, checks that application code has the IAM permissions it needs, and writes audit change records. It is a beta validated on one production monorepo. Run the GitHub Action in advisory mode first, with `advisory: 'true'`, and report issues in the [GitHub issue tracker](https://github.com/diffseal/diffseal/issues).
 
-TerraTrust reviews Terraform changes on AWS and checks that application code has the IAM permissions it needs. It works from source code and git history. It never asks for cloud credentials and never runs `terraform`.
+Diffseal reviews Terraform changes on AWS and checks that application code has the IAM permissions it needs. It works from source code and git history. It never asks for cloud credentials and never runs `terraform`.
 
 It answers four questions about a change:
 
@@ -23,16 +23,16 @@ bun run demo        # a risky plan, and an app whose role is missing dynamodb:Qu
 
 ```bash
 # Review a plan (terraform show -json plan.tfplan > plan.json)
-terratrust review --plan plan.json [--strict]
+diffseal review --plan plan.json [--strict]
 
 # Replay commits of a local clone, without credentials. Reports go to ./dry-runs.
-terratrust replay --repo ../infra --commit 1a2b3c4
-terratrust replay --repo ../infra --since 2026-09-01
+diffseal replay --repo ../infra --commit 1a2b3c4
+diffseal replay --repo ../infra --since 2026-09-01
 
 # Check what an application needs from AWS against the IAM in Terraform
-terratrust check-app --app . --worktree
-terratrust check-app --app ../orders-api --infra ../infra --base origin/main
-terratrust check-app --app ../infra --entry services/worker/cmd/worker --role worker-task
+diffseal check-app --app . --worktree
+diffseal check-app --app ../orders-api --infra ../infra --base origin/main
+diffseal check-app --app ../infra --entry services/worker/cmd/worker --role worker-task
 ```
 
 Exit codes: `0` pass, `1` error, `2` the gate failed.
@@ -46,7 +46,7 @@ Exit codes: `0` pass, `1` error, `2` the gate failed.
 - compares the two, honouring `moved`, `removed` and `import` blocks
 - classifies replacements using a catalogue of the arguments that force a new resource, extracted from the AWS provider's source (`scripts/extract-forcenew.ts`, stamped with the provider commit)
 
-Replay also writes a change record per commit (`records/<sha>.json`, schema `terratrust.change-record/v1`): what changed, the gate, the findings with the controls they relate to, and, with `--approvals`, who approved the change. `summary.csv` is the change population an auditor samples from, and `MANIFEST.sha256` covers every file written. The approvals file maps commit to approvals and can be exported read-only with the GitHub CLI; TerraTrust itself makes no network calls.
+Replay also writes a change record per commit (`records/<sha>.json`, schema `diffseal.change-record/v1`): what changed, the gate, the findings with the controls they relate to, and, with `--approvals`, who approved the change. `summary.csv` is the change population an auditor samples from, and `MANIFEST.sha256` covers every file written. The approvals file maps commit to approvals and can be exported read-only with the GitHub CLI; Diffseal itself makes no network calls.
 
 Without state or provider calls, some values are only known after apply. Changes that depend on them are reported as `likely` rather than `proven`. Data sources resolve to references, not values. Registry and git modules are shown as module calls whose inputs changed, because their source is not available offline.
 
@@ -54,7 +54,7 @@ Without state or provider calls, some values are only known after apply. Changes
 
 1. **By environment variable.** The code reads `ORDERS_TABLE`, and a Lambda or ECS task definition in Terraform sets `ORDERS_TABLE`, so that compute's role runs the code. When several computes match, the one whose environment best matches the package wins.
 2. **By deployment files.** An application repository that deploys its own ECS task definition (`taskdef*.json`) names its role in `taskRoleArn`; on EKS, a ServiceAccount manifest or Helm values name it in the `eks.amazonaws.com/role-arn` annotation. Env vars set in those files count as set. A role ARN only matches Terraform roots whose provider targets that account. A policy in another root counts for a role only when both roots' accounts are known statically (a literal `assume_role.role_arn` or `allowed_account_ids`) and match; otherwise it can make the result `UNRESOLVED`, never `GRANTED`, so a policy added in staging does not hide a missing one in production.
-3. **By configuration.** Add `.terratrust.json` to the application repository:
+3. **By configuration.** Add `.diffseal.json` to the application repository:
 
 ```json
 {
@@ -84,7 +84,7 @@ ISO 27001 certifies a management system, not a bucket, and it does not require c
 
 ### Accepted exceptions
 
-A finding that is intended, such as a port devices connect to from the internet, can be accepted in `.terratrust.json` at the repository root:
+A finding that is intended, such as a port devices connect to from the internet, can be accepted in `.diffseal.json` at the repository root:
 
 ```json
 {
@@ -100,7 +100,7 @@ A finding that is intended, such as a port devices connect to from the internet,
 }
 ```
 
-An accepted finding stays in the report and no longer fails the gate. Every exception needs an expiry date; once it passes, the finding counts again and the gate says so. Exceptions are read from the base of a change, so a pull request cannot accept its own findings, and a change to `.terratrust.json` is itself a reason for review. `rule: "blast-radius"` accepts a destructive change.
+An accepted finding stays in the report and no longer fails the gate. Every exception needs an expiry date; once it passes, the finding counts again and the gate says so. Exceptions are read from the base of a change, so a pull request cannot accept its own findings, and a change to `.diffseal.json` is itself a reason for review. `rule: "blast-radius"` accepts a destructive change.
 
 ## GitHub Action
 
@@ -110,13 +110,13 @@ permissions:
   contents: read
   pull-requests: write
 jobs:
-  terratrust:
+  diffseal:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: your-org/terratrust@v0.2
+      - uses: your-org/diffseal@v0.2
         with:
           mode: pr            # or: plan, app
           roots-under: infra/envs/prod
@@ -124,7 +124,7 @@ jobs:
 
 The Action runs bundled JavaScript (`dist/action.js`) on the runner and downloads nothing at run time. It writes the step summary before setting the exit code and updates a single PR comment. `strict: true` also fails the job on `REVIEW`; `advisory: true` never fails the job, even on `BLOCK`.
 
-A pull request is compared with the commit it branched from (the merge base of `HEAD` and the pull request's base), whether the job checks out the merge commit or the head. Settings that judge the change come from that base: the `policy` file, exceptions, and in `app` mode the roles, env vars and infrastructure named in `.terratrust.json`. Changing any of them makes the gate `REVIEW`, and the new version applies once merged. The policy file must be inside the repository.
+A pull request is compared with the commit it branched from (the merge base of `HEAD` and the pull request's base), whether the job checks out the merge commit or the head. Settings that judge the change come from that base: the `policy` file, exceptions, and in `app` mode the roles, env vars and infrastructure named in `.diffseal.json`. Changing any of them makes the gate `REVIEW`, and the new version applies once merged. The policy file must be inside the repository.
 
 To check an application repository against an infrastructure repository, check the infrastructure repository out into a path with a token that can read it, and set `mode: app` and `infra-path`.
 
@@ -133,18 +133,18 @@ To check an application repository against an infrastructure repository, check t
 ```json
 {
   "mcpServers": {
-    "terratrust": { "command": "bun", "args": ["run", "/path/to/terratrust/src/mcp.ts"] }
+    "diffseal": { "command": "bun", "args": ["run", "/path/to/diffseal/src/mcp.ts"] }
   }
 }
 ```
 
 Tools:
 
-- `terratrust_check_app`: after writing code that calls AWS, check that the role allows it.
-- `terratrust_review_plan`
-- `terratrust_replay_commit`
+- `diffseal_check_app`: after writing code that calls AWS, check that the role allows it.
+- `diffseal_review_plan`
+- `diffseal_replay_commit`
 
-All three are read-only. HashiCorp's Terraform MCP server complements this one: it supplies registry documentation and provider schemas. TerraTrust does not call it.
+All three are read-only. HashiCorp's Terraform MCP server complements this one: it supplies registry documentation and provider schemas. Diffseal does not call it.
 
 ## Layout
 
@@ -164,4 +164,4 @@ All three are read-only. HashiCorp's Terraform MCP server complements this one: 
 
 ## License
 
-[FSL-1.1-ALv2](LICENSE). TerraTrust is free to use, including in your company's CI. Offering a competing commercial product or service is not allowed. Each release becomes Apache 2.0 two years after it is published.
+[FSL-1.1-ALv2](LICENSE). Diffseal is free to use, including in your company's CI. Offering a competing commercial product or service is not allowed. Each release becomes Apache 2.0 two years after it is published.

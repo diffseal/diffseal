@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+
+- TerraTrust is now Diffseal. The repository is `diffseal/diffseal`, the CLI is `diffseal` and `diffseal-mcp`, the service is `api.diffseal.com` and the public key list is `https://diffseal.com/.well-known/diffseal-keys.json`.
+- Every format id starts with `diffseal.` (for example `diffseal.pack/v2` and `diffseal.change-record/v1`), the config file is `.diffseal.json`, the module lock is `diffseal.modules.lock.json`, environment variables start with `DIFFSEAL_` and the MCP tools start with `diffseal_`. Rename these files and variables when you upgrade. Packs and locks written by TerraTrust are not read by this version.
+
 ## 0.4.1-beta, 2026-10-28
 
 ### Fixed
@@ -17,7 +22,7 @@
 - Upload scrubbed Action change records with opt-in GitHub OIDC authentication. Retry network and server failures once, keep failures advisory and expose `upload-id`.
 - Link blocked pull request comments to exception requests on the upload host.
 - Add a trusted reusable upload workflow. Read `replay` settings from the base branch and run the release Action in advisory mode.
-- Verify signed and unsigned evidence packs offline with `terratrust verify`. Check file coverage, hashes, Ed25519 signatures, key validity and optional account and period scope. Bundle TerraTrust's public key list with the first pack signing key, `ac566f5ee309c7e6`.
+- Verify signed and unsigned evidence packs offline with `diffseal verify`. Check file coverage, hashes, Ed25519 signatures, key validity and optional account and period scope. Bundle Diffseal's public key list with the first pack signing key, `ac566f5ee309c7e6`.
 - Document upload permissions, required check source settings, fork limits and offline verification.
 
 ## 0.3.1-beta, 2026-10-27
@@ -33,8 +38,8 @@
 - Parse application code with vendored tree-sitter grammars. Add Java SDK v2, Java v2 calls from Kotlin and AWS SDK for .NET alongside Go, TypeScript and Python.
 - Generate AWS operation-to-IAM mappings from pinned AWS models and authorization data. Select common S3 optional and version permissions from request arguments.
 - Index rendered Kubernetes workloads, IRSA service accounts, EKS Pod Identity associations, ConfigMap environment values, ko import images and a limited GitHub Actions ECS deployment pattern.
-- Export unsigned audit periods with `terratrust evidence`, including change records, an auditor index, approvals coverage, CSV and a SHA-256 manifest.
-- Fetch public registry and Git modules explicitly with `terratrust modules fetch`. Record exact versions, commits and hashes in a lock, then analyze verified cached contents offline.
+- Export unsigned audit periods with `diffseal evidence`, including change records, an auditor index, approvals coverage, CSV and a SHA-256 manifest.
+- Fetch public registry and Git modules explicitly with `diffseal modules fetch`. Record exact versions, commits and hashes in a lock, then analyze verified cached contents offline.
 - Add repository CI, a tag-triggered release workflow, issue templates, contribution guidance and a security reporting policy.
 - Add a reproducible advisory pilot package and end-to-end tests for the three synthetic demo changes.
 

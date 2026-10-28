@@ -12,11 +12,11 @@ test('the vendored pilot workflow and isolated package review all three demo sce
     const packed = spawnSync('bun', [path.join(root, 'scripts/prepare-pilot.ts'), out], { encoding: 'utf8' });
     expect(packed.status).toBe(0);
     expect(fs.readFileSync(path.join(out, 'VERSION'), 'utf8').trim()).toBe('0.4.1-beta');
-    const workflow = parse(fs.readFileSync(path.join(out, '.github/workflows/terratrust.yml'), 'utf8'));
-    const step = workflow.jobs.terratrust.steps.find((s: { uses?: string }) => s.uses === './.github/actions/terratrust');
+    const workflow = parse(fs.readFileSync(path.join(out, '.github/workflows/diffseal.yml'), 'utf8'));
+    const step = workflow.jobs.diffseal.steps.find((s: { uses?: string }) => s.uses === './.github/actions/diffseal');
     expect(step['continue-on-error']).toBe(true);
     expect(step.with).toEqual({ mode: 'pr', advisory: 'true', strict: 'false' });
-    const tool = path.join(out, '.github/actions/terratrust');
+    const tool = path.join(out, '.github/actions/diffseal');
     expect(fs.readdirSync(path.join(tool, 'dist')).filter((name) => /\.wasm(?:-[^.]+\.gz)?$/.test(name)).length).toBe(8);
     expect(fs.existsSync(path.join(tool, 'LICENSE'))).toBe(true);
     expect(fs.existsSync(path.join(tool, 'dist/licenses/web-tree-sitter.LICENSE'))).toBe(true);

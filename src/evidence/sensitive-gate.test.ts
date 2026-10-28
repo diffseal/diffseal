@@ -66,7 +66,7 @@ for (const mode of ['plan', 'replay']) for (const blocking of [true, false]) {
         expect(privateText(String(init.body))).toBe(true);
         const body = JSON.parse(String(init.body));
         expect(aligned(body.record.gate)).toBe(true);
-        return Response.json({ id: 'test-run', pageUrl: 'https://api.terratrust.dev/test-run' });
+        return Response.json({ id: 'test-run', pageUrl: 'https://api.diffseal.com/test-run' });
       }) as typeof fetch });
       expect(uploaded).toBe(true); expect(response?.id).toBe('test-run');
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }

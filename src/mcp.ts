@@ -17,7 +17,7 @@ import { replayCommit } from './replay/replay.js';
  * returns a report. Nothing is written, nothing leaves the machine.
  */
 
-const server = new McpServer({ name: 'terratrust', version: VERSION });
+const server = new McpServer({ name: 'diffseal', version: VERSION });
 
 type ToolResult = { content: Array<{ type: 'text'; text: string }>; structuredContent?: Record<string, unknown>; isError?: boolean };
 
@@ -25,12 +25,12 @@ async function run(fn: () => ToolResult | Promise<ToolResult>): Promise<ToolResu
   try {
     return await fn();
   } catch (e) {
-    return { isError: true, content: [{ type: 'text', text: `TerraTrust could not complete this check: ${(e as Error).message}` }] };
+    return { isError: true, content: [{ type: 'text', text: `Diffseal could not complete this check: ${(e as Error).message}` }] };
   }
 }
 
 server.registerTool(
-  'terratrust_check_app',
+  'diffseal_check_app',
   {
     title: 'Check what code needs from AWS',
     description:
@@ -71,7 +71,7 @@ server.registerTool(
 );
 
 server.registerTool(
-  'terratrust_review_plan',
+  'diffseal_review_plan',
   {
     title: 'Review a Terraform plan',
     description:
@@ -90,7 +90,7 @@ server.registerTool(
 );
 
 server.registerTool(
-  'terratrust_replay_commit',
+  'diffseal_replay_commit',
   {
     title: 'Replay a commit',
     description:

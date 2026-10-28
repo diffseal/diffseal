@@ -2,7 +2,7 @@ import { isUnknown, reveal, type Attrs, type CostItem, type CostSummary, type Re
 import { typed } from '../policy/values.js';
 
 /*
- * TerraTrust does not try to be Infracost. It reports fixed monthly charges that appear or disappear,
+ * Diffseal does not try to be Infracost. It reports fixed monthly charges that appear or disappear,
  * changes to pricing dimensions (instance size, memory), and labels everything else usage-based.
  * Prices are approximate us-east-1 on-demand list prices; other regions differ by a few percent.
  */

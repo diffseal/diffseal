@@ -94,7 +94,7 @@ async function main(): Promise<number> {
     throw new Error(`Unknown mode "${mode}". Use pr, plan or app.`);
   }
 
-  const uploaded = await uploadRun({ upload: input('upload'), url: input('upload-url', 'https://api.terratrust.dev'), mode, eventName: process.env.GITHUB_EVENT_NAME, event: process.env.GITHUB_EVENT_PATH ? JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8')) : undefined, advisory: input('advisory', 'false') === 'true', replay });
+  const uploaded = await uploadRun({ upload: input('upload'), url: input('upload-url', 'https://api.diffseal.com'), mode, eventName: process.env.GITHUB_EVENT_NAME, event: process.env.GITHUB_EVENT_PATH ? JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8')) : undefined, advisory: input('advisory', 'false') === 'true', replay });
   if (uploaded) setOutput('upload-id', uploaded.id);
   markdown = uploadComment(markdown, gate, uploaded);
   if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, markdown + '\n');
@@ -113,10 +113,10 @@ async function main(): Promise<number> {
         });
       }
     } catch (e) {
-      console.warn(`TerraTrust: ${(e as Error).message}. Give the job pull-requests: write, or set comment: false.`);
+      console.warn(`Diffseal: ${(e as Error).message}. Give the job pull-requests: write, or set comment: false.`);
     }
   }
-  console.log(`TerraTrust gate: ${gate}`);
+  console.log(`Diffseal gate: ${gate}`);
   const strict = input('strict', 'false') === 'true';
   const advisory = input('advisory', 'false') === 'true';
   return actionExitCode(gate, { strict, advisory });
@@ -125,13 +125,13 @@ async function main(): Promise<number> {
 /** Replay mode adds its own reason for a changed policy file; plan and app mode get it here, before rendering. */
 function reviewPolicyChange(gate: Gate, policyPath: string): void {
   if (gate.result === 'pass') gate.result = 'review';
-  addGateItem(gate, { kind: 'policy', level: 'review', text: `${policyPath} changed in this pull request. TerraTrust applied the version on the base branch. The new version applies once this pull request is merged.` });
+  addGateItem(gate, { kind: 'policy', level: 'review', text: `${policyPath} changed in this pull request. Diffseal applied the version on the base branch. The new version applies once this pull request is merged.` });
 }
 
 main().then(
   (code) => process.exit(code),
   (e) => {
-    console.error(`TerraTrust: ${(e as Error).message}`);
+    console.error(`Diffseal: ${(e as Error).message}`);
     process.exit(1);
   }
 );

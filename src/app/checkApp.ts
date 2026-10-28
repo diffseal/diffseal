@@ -21,7 +21,7 @@ export interface CheckAppOptions {
   base?: string;
   /** Read the app's working tree instead of a commit (local development). */
   worktree?: boolean;
-  /** Infrastructure repository; defaults to .terratrust.json, then the app repository itself. */
+  /** Infrastructure repository; defaults to .diffseal.json, then the app repository itself. */
   infra?: string;
   infraRev?: string;
   rootsUnder?: string;
@@ -49,8 +49,8 @@ export async function checkApp(opts: CheckAppOptions): Promise<CheckAppResult> {
   // With a base, link settings come from the base: a change cannot choose the role or env it is judged by.
   const baseSource = opts.base ? new GitSource(opts.app, resolveCommit(opts.app, opts.base)) : undefined;
   const link = discoverLink(appSource, baseSource);
-  const linkChanged = baseSource !== undefined && baseSource.readFile('.terratrust.json') !== appSource.readFile('.terratrust.json');
-  if (linkChanged) notes.push('.terratrust.json changed in this change. The base version was applied; the change applies after it is reviewed and merged.');
+  const linkChanged = baseSource !== undefined && baseSource.readFile('.diffseal.json') !== appSource.readFile('.diffseal.json');
+  if (linkChanged) notes.push('.diffseal.json changed in this change. The base version was applied; the change applies after it is reviewed and merged.');
 
   let addedLines;
   if (opts.base) {
@@ -85,7 +85,7 @@ export async function checkApp(opts: CheckAppOptions): Promise<CheckAppResult> {
   index.computes.push(...deployments.computes);
   notes.push(...deployments.notes);
 
-  const explicitRoles = Boolean(opts.roles?.length || JSON.parse((baseSource ?? appSource).readFile('.terratrust.json') ?? '{}').roles?.length);
+  const explicitRoles = Boolean(opts.roles?.length || JSON.parse((baseSource ?? appSource).readFile('.diffseal.json') ?? '{}').roles?.length);
   const roles = opts.roles?.length ? opts.roles : link.roles ?? [];
   for (const r of roles) {
     if (!index.rolesNamed(r).length) notes.push(`Role ${r} is not defined in ${roots.length} Terraform root(s) of ${infraRepo}.`);
@@ -111,8 +111,8 @@ export async function checkApp(opts: CheckAppOptions): Promise<CheckAppResult> {
     ...(deployments.mappings.length ? {deployments:deployments.mappings} : {}),
     gate: {
       result: attention.length || linkChanged ? 'review' : 'pass',
-      items: [...attention.map((l) => ({ kind: 'access' as const, level: 'review' as const, rule: l.status, resource: l.callsite, text: `${l.status}: ${l.callsite}: ${l.access}` })), ...(linkChanged ? [{ kind: 'policy' as const, level: 'review' as const, text: '.terratrust.json changed' }] : [])],
-      reasons: [...attention.map((l) => `${l.status}: ${l.callsite}: ${l.access}`), ...(linkChanged ? ['.terratrust.json changed'] : [])],
+      items: [...attention.map((l) => ({ kind: 'access' as const, level: 'review' as const, rule: l.status, resource: l.callsite, text: `${l.status}: ${l.callsite}: ${l.access}` })), ...(linkChanged ? [{ kind: 'policy' as const, level: 'review' as const, text: '.diffseal.json changed' }] : [])],
+      reasons: [...attention.map((l) => `${l.status}: ${l.callsite}: ${l.access}`), ...(linkChanged ? ['.diffseal.json changed'] : [])],
     },
     notes,
   };

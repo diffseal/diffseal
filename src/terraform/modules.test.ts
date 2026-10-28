@@ -32,7 +32,7 @@ test('modules fetch pins a git ref and the evaluator reads only verified cached 
     f.write(f.source);
     const r = await f.run('modules', 'fetch', '--repo', f.repo, '--cache', f.cache);
     expect(r.exit).toBe(0);
-    const lock = JSON.parse(fs.readFileSync(path.join(f.repo, 'terratrust.modules.lock.json'), 'utf8'));
+    const lock = JSON.parse(fs.readFileSync(path.join(f.repo, 'diffseal.modules.lock.json'), 'utf8'));
     expect(lock.modules[0].commit).toBe(f.git(['rev-parse', 'HEAD']));
     expect(lock.modules[0].sha256).toMatch(/^[a-f0-9]{64}$/);
     const result = evaluateRoot(new FsSource(f.repo, f.cache), '.');
@@ -55,7 +55,7 @@ test('modules fetch follows registry discovery and selects an exact matching ver
     f.write(source, '~> 1.2.0');
     const result = await f.run('modules', 'fetch', '--repo', f.repo, '--cache', f.cache);
     expect(result.exit).toBe(0);
-    const lock = JSON.parse(fs.readFileSync(path.join(f.repo, 'terratrust.modules.lock.json'), 'utf8'));
+    const lock = JSON.parse(fs.readFileSync(path.join(f.repo, 'diffseal.modules.lock.json'), 'utf8'));
     expect(lock.modules[0].source).toBe(source);
     expect(lock.modules[0].version).toBe('1.2.0');
     expect(calls).toEqual(['/.well-known/terraform.json', '/v1/modules/example/bucket/aws/versions', '/v1/modules/example/bucket/aws/1.2.0/download']);
@@ -94,7 +94,7 @@ test('modules fetch locks external dependencies reached through local child modu
     f.write(f.source.replace('v1.2.0', 'parent'));
     const result = await f.run('modules', 'fetch', '--repo', f.repo, '--cache', f.cache);
     expect(result.exit).toBe(0);
-    const lock = JSON.parse(fs.readFileSync(path.join(f.repo, 'terratrust.modules.lock.json'), 'utf8'));
+    const lock = JSON.parse(fs.readFileSync(path.join(f.repo, 'diffseal.modules.lock.json'), 'utf8'));
     expect(lock.modules.length).toBe(2);
     expect(evaluateRoot(new FsSource(f.repo, f.cache), '.').instances.map((i) => i.attrs.bucket)).toEqual(['logs', 'nested']);
   } finally { fs.rmSync(f.dir, { recursive: true, force: true }); }
@@ -139,7 +139,7 @@ test('fetch reuses an existing lock when a git branch advances', async () => {
   try {
     f.write(f.source.replace('?ref=v1.2.0', ''));
     expect((await f.run('modules', 'fetch', '--repo', f.repo, '--cache', f.cache)).exit).toBe(0);
-    const lockFile = path.join(f.repo, 'terratrust.modules.lock.json'), before = fs.readFileSync(lockFile, 'utf8');
+    const lockFile = path.join(f.repo, 'diffseal.modules.lock.json'), before = fs.readFileSync(lockFile, 'utf8');
     fs.appendFileSync(path.join(f.remote, 'main.tf'), '\n# branch advanced\n'); f.git(['add', '.']); f.git(['commit', '-qm', 'advance']);
     fs.rmSync(f.cache, { recursive: true, force: true });
     expect((await f.run('modules', 'fetch', '--repo', f.repo, '--cache', f.cache)).exit).toBe(0);
@@ -153,7 +153,7 @@ test('missing caches and changed constraints stay opaque, while tampering fails 
   try {
     f.write(f.source); expect((await f.run('modules', 'fetch', '--repo', f.repo, '--cache', f.cache)).exit).toBe(0);
     expect(evaluateRoot(new FsSource(f.repo, path.join(f.dir, 'absent')), '.').instances[0].type).toBe('terraform_module_call');
-    const lock = JSON.parse(fs.readFileSync(path.join(f.repo, 'terratrust.modules.lock.json'), 'utf8'));
+    const lock = JSON.parse(fs.readFileSync(path.join(f.repo, 'diffseal.modules.lock.json'), 'utf8'));
     fs.writeFileSync(path.join(f.cache, 'objects', lock.modules[0].sha256 + '.json'), '{}\n');
     expect(() => evaluateRoot(new FsSource(f.repo, f.cache), '.')).toThrow('SHA-256 mismatch');
     f.write(f.source.replace('v1.2.0', 'different-ref'));
@@ -192,7 +192,7 @@ test('a lock-only change compares the old and new pinned contents for nested roo
     expect((await f.run('modules', 'fetch', '--repo', f.repo, '--cache', f.cache)).exit).toBe(0);
     git(['init', '-q']); git(['add', '.']); git(['commit', '-qm', 'base']); const base = git(['rev-parse', 'HEAD']);
     fs.writeFileSync(path.join(f.remote, 'main.tf'), fixture.module.replace('bucket=var.name', 'bucket="other"')); f.git(['add', '.']); f.git(['commit', '-qm', 'new contents']);
-    fs.rmSync(path.join(f.repo, 'terratrust.modules.lock.json'));
+    fs.rmSync(path.join(f.repo, 'diffseal.modules.lock.json'));
     expect((await f.run('modules', 'fetch', '--repo', f.repo, '--cache', f.cache)).exit).toBe(0);
     git(['add', '.']); git(['commit', '-qm', 'update module lock']);
     const { GitSource } = await import('./source.js');
@@ -232,7 +232,7 @@ for (const [constraint, expected] of [['~> 1.2.0', '1.2.9'], ['~> 1.2', '1.3.0']
   try {
     f.write(`127.0.0.1:${server.port}/example/bucket/aws`, constraint);
     expect((await f.run('modules', 'fetch', '--repo', f.repo, '--cache', f.cache)).exit).toBe(0);
-    expect(JSON.parse(fs.readFileSync(path.join(f.repo, 'terratrust.modules.lock.json'), 'utf8')).modules[0].version).toBe(expected);
+    expect(JSON.parse(fs.readFileSync(path.join(f.repo, 'diffseal.modules.lock.json'), 'utf8')).modules[0].version).toBe(expected);
   } finally { server.stop(true); fs.rmSync(f.dir, { recursive: true, force: true }); }
 });
 
@@ -251,7 +251,7 @@ test('unsafe registry archives fail without writing a lock or extracting files',
     f.write(`127.0.0.1:${server.port}/example/bucket/aws`);
     const result = await f.run('modules', 'fetch', '--repo', f.repo, '--cache', f.cache);
     expect(result.exit).toBe(1); expect(result.stderr).toContain('links and special files');
-    expect(fs.existsSync(path.join(f.repo, 'terratrust.modules.lock.json'))).toBe(false);
+    expect(fs.existsSync(path.join(f.repo, 'diffseal.modules.lock.json'))).toBe(false);
     expect(fs.existsSync(path.join(f.dir, 'outside'))).toBe(false);
   } finally { server.stop(true); fs.rmSync(f.dir, { recursive: true, force: true }); }
 });
@@ -262,7 +262,7 @@ test('fetch rejects nonliteral module sources rather than writing an empty lock'
     fs.writeFileSync(path.join(f.repo, 'main.tf'), 'module "dynamic" { source=var.module_source }');
     const result = await f.run('modules', 'fetch', '--repo', f.repo, '--cache', f.cache);
     expect(result.exit).toBe(1); expect(result.stderr).toContain('literal module source');
-    expect(fs.existsSync(path.join(f.repo, 'terratrust.modules.lock.json'))).toBe(false);
+    expect(fs.existsSync(path.join(f.repo, 'diffseal.modules.lock.json'))).toBe(false);
   } finally { fs.rmSync(f.dir, { recursive: true, force: true }); }
 });
 
@@ -297,7 +297,7 @@ test('a locked registry version must satisfy the declared constraint', async () 
   try {
     f.write(`127.0.0.1:${server.port}/example/bucket/aws`, '~> 1.2.0');
     expect((await f.run('modules', 'fetch', '--repo', f.repo, '--cache', f.cache)).exit).toBe(0);
-    const file = path.join(f.repo, 'terratrust.modules.lock.json'), lock = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const file = path.join(f.repo, 'diffseal.modules.lock.json'), lock = JSON.parse(fs.readFileSync(file, 'utf8'));
     lock.modules[0].version = '2.0.0'; fs.writeFileSync(file, JSON.stringify(lock));
     expect(() => evaluateRoot(new FsSource(f.repo, f.cache), '.')).toThrow('No module version matches');
   } finally { server.stop(true); fs.rmSync(f.dir, { recursive: true, force: true }); }
@@ -306,8 +306,8 @@ test('a locked registry version must satisfy the declared constraint', async () 
 test('an ordinary local module directory can use the cache namespace name without a cache', () => {
   const f = setup();
   try {
-    const module = path.join(f.repo, '__terratrust_modules/local'); fs.mkdirSync(module, { recursive: true }); fs.writeFileSync(path.join(module, 'main.tf'), fixture.module);
-    f.write('./__terratrust_modules/local');
+    const module = path.join(f.repo, '__diffseal_modules/local'); fs.mkdirSync(module, { recursive: true }); fs.writeFileSync(path.join(module, 'main.tf'), fixture.module);
+    f.write('./__diffseal_modules/local');
     expect(evaluateRoot(new FsSource(f.repo), '.').instances[0].attrs.bucket).toBe('logs');
   } finally { fs.rmSync(f.dir, { recursive: true, force: true }); }
 });
@@ -322,7 +322,7 @@ test('local child paths in cached modules cannot escape into the caller reposito
     const result = evaluateRoot(new FsSource(f.repo, f.cache), '.');
     expect(result.instances.filter((i) => i.type === 'aws_sqs_queue').map((i) => i.address)).toEqual(['aws_sqs_queue.outside']);
     expect(result.instances.find((i) => i.address === 'module.bucket.module.escape')?.type).toBe('terraform_module_call');
-    const lockFile = path.join(f.repo, 'terratrust.modules.lock.json'), lock = JSON.parse(fs.readFileSync(lockFile, 'utf8'));
+    const lockFile = path.join(f.repo, 'diffseal.modules.lock.json'), lock = JSON.parse(fs.readFileSync(lockFile, 'utf8'));
     lock.modules.push({ ...lock.modules[0], source: '../../', constraint: '' }); fs.writeFileSync(lockFile, JSON.stringify(lock));
     expect(evaluateRoot(new FsSource(f.repo, f.cache), '.').instances.find((i) => i.address === 'module.bucket.module.escape')?.type).toBe('terraform_module_call');
   } finally { fs.rmSync(f.dir, { recursive: true, force: true }); }

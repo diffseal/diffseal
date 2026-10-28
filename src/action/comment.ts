@@ -1,6 +1,6 @@
 /** The single PR comment the Action keeps up to date. */
 
-export const MARKER = '<!-- terratrust-report -->';
+export const MARKER = '<!-- diffseal-report -->';
 
 export interface CommentTarget {
   api: string;
@@ -20,7 +20,7 @@ export async function upsertComment(body: string, t: CommentTarget): Promise<voi
     authorization: `Bearer ${t.token}`,
     accept: 'application/vnd.github+json',
     'content-type': 'application/json',
-    'user-agent': 'terratrust-action',
+    'user-agent': 'diffseal-action',
   };
   let existing: { id: number } | undefined;
   for (let page = 1; page <= 50 && !existing; page++) {

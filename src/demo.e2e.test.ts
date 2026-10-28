@@ -87,14 +87,14 @@ for (const name of [
       expect(markdown).toContain(scenario.finding);
       // A PR comment names the verdict, not the temporary merge commit GitHub checks out.
       expect(markdown.split("\n")[0]).toBe(
-        `## TerraTrust: ${scenario.gate.toUpperCase()}`,
+        `## Diffseal: ${scenario.gate.toUpperCase()}`,
       );
       expect(markdown).not.toContain(scenario.name);
       // The footer carries only facts about this pull request; the explanations live in the FAQ.
       const footer = markdown.split("\n").filter((l) => l.startsWith("<sub>"));
       expect(footer).toHaveLength(1);
       expect(footer[0]).toMatch(
-        /^<sub>TerraTrust [0-9][^ ]*\. Compared `[0-9a-f]{9}` with `[0-9a-f]{9}`\. \[How it works\]\(https:\/\/github\.com\/TerraTrust\/terratrust\/blob\/main\/docs\/guide\/faq\.md\)<\/sub>$/,
+        /^<sub>Diffseal [0-9][^ ]*\. Compared `[0-9a-f]{9}` with `[0-9a-f]{9}`\. \[How it works\]\(https:\/\/github\.com\/diffseal\/diffseal\/blob\/main\/docs\/guide\/faq\.md\)<\/sub>$/,
       );
       if (name === "missing-iam-permission") {
         expect(markdown).toContain("dynamodb:Query");

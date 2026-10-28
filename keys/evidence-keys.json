@@ -1,5 +1,5 @@
 {
-  "schema": "terratrust.keys/v1",
+  "schema": "diffseal.keys/v1",
   "updatedAt": "2026-10-28T00:00:00Z",
   "keys": [
     {

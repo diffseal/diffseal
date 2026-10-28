@@ -84,7 +84,7 @@ export type Result = {
     status: 'equal' | 'different' | 'skipped';
     reason?: string;
     terraform?: Outcome;
-    terratrust?: Outcome;
+    diffseal?: Outcome;
 };
 function stable(x: unknown): string {
     function order(v: any): any { if (Array.isArray(v))
@@ -318,7 +318,7 @@ function sameValue(tf: any, ts: any): boolean {
     return stable(tf) === stable(ts);
 }
 function tsOutcome(c: Candidate): Outcome | string {
-    const files = { ...c.files, [path.posix.join(c.root, '__terratrust_oracle.tf')]: `resource "terraform_data" "__oracle" {\ninput = ${c.expression}\n}\n` };
+    const files = { ...c.files, [path.posix.join(c.root, '__diffseal_oracle.tf')]: `resource "terraform_data" "__oracle" {\ninput = ${c.expression}\n}\n` };
     const result = evaluateRoot(new MemorySource(files), c.root).instances.find(i => i.address === 'terraform_data.__oracle');
     if (!result)
         return 'synthetic output missing';
@@ -326,14 +326,14 @@ function tsOutcome(c: Candidate): Outcome | string {
     if (isUnknown(value) && value.reason.startsWith('error:'))
         return { kind: 'error', message: value.reason };
     if (containsUnknown(value))
-        return 'TerraTrust unknown: ' + (isUnknown(value) ? value.reason : 'partial unknown');
+        return 'Diffseal unknown: ' + (isUnknown(value) ? value.reason : 'partial unknown');
     return { kind: 'value', value };
 }
 function terraformOutcome(dir: string, configuration: string, expression: string, inputs: Record<string, string>): Outcome {
-    fs.writeFileSync(path.join(dir, 'main.tf'), configuration + `\nlocals {\n__terratrust_oracle_value = (\n${expression}\n)\n}\n`);
+    fs.writeFileSync(path.join(dir, 'main.tf'), configuration + `\nlocals {\n__diffseal_oracle_value = (\n${expression}\n)\n}\n`);
     fs.writeFileSync(path.join(dir, 'terraform.tfvars'), Object.entries(inputs).map(([name, expression]) => `${name} = ${expression}\n`).join(''));
     const env = { PATH: process.env.PATH!, HOME: dir, TF_IN_AUTOMATION: '1', CHECKPOINT_DISABLE: '1', TF_CLI_CONFIG_FILE: path.join(dir, 'terraform.rc') };
-    const run = spawnSync('terraform', [`-chdir=${dir}`, 'console', '-no-color'], { input: 'nonsensitive(jsonencode({result=local.__terratrust_oracle_value}))\n', env, encoding: 'utf8', timeout: 10000, maxBuffer: 4 * 1024 * 1024 });
+    const run = spawnSync('terraform', [`-chdir=${dir}`, 'console', '-no-color'], { input: 'nonsensitive(jsonencode({result=local.__diffseal_oracle_value}))\n', env, encoding: 'utf8', timeout: 10000, maxBuffer: 4 * 1024 * 1024 });
     if (run.error)
         throw run.error;
     if (run.status !== 0 || /^Error:/m.test(run.stderr))
@@ -349,7 +349,7 @@ function pretty(x: unknown): string { return JSON.stringify(x, null, 2); }
 function document(version: string, results: Result[], baseline?: Result[]): string {
     const counts = (rs: Result[]) => Object.fromEntries(['equal', 'different', 'skipped'].map(s => [s, rs.filter(r => r.status === s).length]));
     const c = counts(results);
-    let doc = `# Terraform console oracle\n\nReference: ${version}. Run with \`bun run scripts/oracle.ts --report dry-runs/oracle/current.md\`.\n\nCompared ${c.equal + c.different} cases: ${c.equal} equal, ${c.different} different. Skipped ${c.skipped}. Cases are deduplicated by expression and referenced variable/local configuration. The runner visits every module directory in each base/head snapshot, including variable defaults, module arguments, locals, outputs, and nested resource arguments. Object members are also extracted so a resource-dependent sibling does not hide a pure expression. Required child-module inputs are skipped when they are not available as defaults or tfvars in that module; caller expansion is outside this oracle. HCL tfvars expressions are passed to Terraform as source, not evaluated by TerraTrust first.\n\nThe oracle uses a fresh scratch directory, only needed variable and local declarations, and a sanitized environment with no inherited cloud credentials, Terraform CLI arguments, or workspace. It runs no init, no providers, no state operations, and no network requests. Results are transported through Terraform's jsonencode, preserving result strings literally. Sets travel as JSON arrays and compare by membership using TerraTrust's set marker. List order and JSON string bytes remain significant; errors compare by success versus failure, not diagnostic wording. Inputs and output are synthetic fixture data.\n\nResource/provider/data/instance references, unset variables, external files, nondeterministic functions, and TerraTrust unknowns are skipped with counts below. This checks values, not unknown identities, sensitivity labels, provider behavior, or a full plan. JSON numbers are parsed by JavaScript on both sides; this cannot certify arbitrary precision beyond JavaScript numbers.\n\n`;
+    let doc = `# Terraform console oracle\n\nReference: ${version}. Run with \`bun run scripts/oracle.ts --report dry-runs/oracle/current.md\`.\n\nCompared ${c.equal + c.different} cases: ${c.equal} equal, ${c.different} different. Skipped ${c.skipped}. Cases are deduplicated by expression and referenced variable/local configuration. The runner visits every module directory in each base/head snapshot, including variable defaults, module arguments, locals, outputs, and nested resource arguments. Object members are also extracted so a resource-dependent sibling does not hide a pure expression. Required child-module inputs are skipped when they are not available as defaults or tfvars in that module; caller expansion is outside this oracle. HCL tfvars expressions are passed to Terraform as source, not evaluated by Diffseal first.\n\nThe oracle uses a fresh scratch directory, only needed variable and local declarations, and a sanitized environment with no inherited cloud credentials, Terraform CLI arguments, or workspace. It runs no init, no providers, no state operations, and no network requests. Results are transported through Terraform's jsonencode, preserving result strings literally. Sets travel as JSON arrays and compare by membership using Diffseal's set marker. List order and JSON string bytes remain significant; errors compare by success versus failure, not diagnostic wording. Inputs and output are synthetic fixture data.\n\nResource/provider/data/instance references, unset variables, external files, nondeterministic functions, and Diffseal unknowns are skipped with counts below. This checks values, not unknown identities, sensitivity labels, provider behavior, or a full plan. JSON numbers are parsed by JavaScript on both sides; this cannot certify arbitrary precision beyond JavaScript numbers.\n\n`;
     if (baseline) {
         const b = counts(baseline);
         doc += `## Before fixes\n\nCompared ${b.equal + b.different}: ${b.equal} equal, ${b.different} different; ${b.skipped} skipped.\n\n`;
@@ -362,7 +362,7 @@ The initial experiment found and corrected eight families of evaluator behavior:
 
 | Area | Correction |
 |---|---|
-| jsonencode | Recursively sort keys, including integer-looking keys, and match HTML/Unicode separator escaping. Preserve partial unknown JSON for TerraTrust analysis. |
+| jsonencode | Recursively sort keys, including integer-looking keys, and match HTML/Unicode separator escaping. Preserve partial unknown JSON for Diffseal analysis. |
 | range | Reject a step that points away from the end. The old fixture incorrectly expected an empty list. |
 | regex/regexall | Translate POSIX ASCII classes, preserve null unmatched captures, and reject lookaround/backreferences unsupported by RE2. This is still a JavaScript adapter, not a full RE2 engine. |
 | cidrsubnet | Clear host bits, enforce subnet-number bounds, and calculate IPv6 subnets. |
@@ -397,12 +397,12 @@ The historical baseline below was obtained by running the same oracle and fixtur
         doc += 'None.\n';
     for (const [i, r] of differences.entries()) {
         const now = results.find(n => n.id === r.id);
-        doc += `### ${i + 1}. ${r.expression.replace(/\n/g, ' ')}\n\nSource: ${r.origins[0]}.\n\nExpression:\n\n\`\`\`hcl\n${r.expression}\n\`\`\`\n\nTerraform:\n\n\`\`\`json\n${pretty(r.terraform)}\n\`\`\`\n\nTerraTrust before fixes:\n\n\`\`\`json\n${pretty(r.terratrust)}\n\`\`\`\n\nTerraTrust after fixes:\n\n\`\`\`json\n${pretty(now?.terratrust ?? { skipped: now?.reason })}\n\`\`\`\n\nAssessment: ${now?.status === 'equal' ? 'TerraTrust was wrong. Fixed and checked against Terraform.' : now?.status === 'skipped' ? 'Comparison excluded after investigation: ' + now.reason : 'TerraTrust is wrong; unresolved.'}\n\n`;
+        doc += `### ${i + 1}. ${r.expression.replace(/\n/g, ' ')}\n\nSource: ${r.origins[0]}.\n\nExpression:\n\n\`\`\`hcl\n${r.expression}\n\`\`\`\n\nTerraform:\n\n\`\`\`json\n${pretty(r.terraform)}\n\`\`\`\n\nDiffseal before fixes:\n\n\`\`\`json\n${pretty(r.diffseal)}\n\`\`\`\n\nDiffseal after fixes:\n\n\`\`\`json\n${pretty(now?.diffseal ?? { skipped: now?.reason })}\n\`\`\`\n\nAssessment: ${now?.status === 'equal' ? 'Diffseal was wrong. Fixed and checked against Terraform.' : now?.status === 'skipped' ? 'Comparison excluded after investigation: ' + now.reason : 'Diffseal is wrong; unresolved.'}\n\n`;
     }
     doc += '## Skipped cases\n\n| Reason | Count |\n|---|---:|\n';
     const reasons = new Map<string, number>();
     for (const r of results.filter(r => r.status === 'skipped')) {
-        const reason = (r.reason ?? 'unknown').replace(/TerraTrust unknown:.*/, 'TerraTrust unknown (including deliberately unsupported functions)');
+        const reason = (r.reason ?? 'unknown').replace(/Diffseal unknown:.*/, 'Diffseal unknown (including deliberately unsupported functions)');
         reasons.set(reason, (reasons.get(reason) ?? 0) + 1);
     }
     for (const [r, n] of [...reasons].sort())
@@ -419,7 +419,7 @@ if (import.meta.main) {
     if (!/^1\.15\./.test(version))
         throw new Error('Expected Terraform 1.15.x, found ' + version);
     const all = candidates(), seen = new Map<string, Result>(), results: Result[] = [];
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'terratrust-oracle-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'diffseal-oracle-'));
     fs.writeFileSync(path.join(dir, 'terraform.rc'), 'disable_checkpoint = true\n');
     try {
         const control = terraformOutcome(dir, '', '{ a=1, b=[true, null] }', {});
@@ -452,7 +452,7 @@ if (import.meta.main) {
             }
             const tf = terraformOutcome(dir, context.configuration, c.expression, context.inputs);
             result.terraform = tf;
-            result.terratrust = ts;
+            result.diffseal = ts;
             result.status = tf.kind === ts.kind && (tf.kind === 'error' || sameValue(tf.value, (ts as {
                 kind: 'value';
                 value: unknown;

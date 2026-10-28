@@ -853,7 +853,7 @@ function callFunction(rawName: string, argExprs: Expr[], expandFinal: boolean, s
   if (name === 'sensitive') return redact(args[0]);
   if (name === 'nonsensitive') {
     const a = args[0];
-    return isRedacted(a) ? (a.revealed ? a.revealed.value : new Unknown('nonsensitive() of a value TerraTrust cannot see')) : a;
+    return isRedacted(a) ? (a.revealed ? a.revealed.value : new Unknown('nonsensitive() of a value Diffseal cannot see')) : a;
   }
   // A function of a sensitive value is sensitive, as in Terraform: compute on the value, hide the result.
   // ALWAYS_UNKNOWN functions are skipped because their reason prints the arguments.
@@ -1016,7 +1016,7 @@ function compareSetItems(a: unknown, b: unknown): number {
   return 0;
 }
 
-/** A format TerraTrust cannot render exactly; the value is then unknown, never a wrong string. */
+/** A format Diffseal cannot render exactly; the value is then unknown, never a wrong string. */
 class UnsupportedFormat extends Error {}
 
 function formatOrUnknown(name: string, f: string, args: unknown[]): unknown {
@@ -1226,7 +1226,7 @@ function cidrSubnet(prefix: string, newbits: number, netnum: number): string {
   return `${rendered}/${length}`;
 }
 
-const TEMPLATE_DELIMITER = '__TERRATRUST_TEMPLATE_END__';
+const TEMPLATE_DELIMITER = '__DIFFSEAL_TEMPLATE_END__';
 
 /** templatefile(): parse the file as an HCL template and evaluate it with only the given variables. */
 function renderTemplateFile(content: string, vars: unknown, scope: EvalScope): unknown {

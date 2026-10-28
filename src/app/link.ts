@@ -1,7 +1,7 @@
 import type { FileSource } from '../terraform/source.js';
 
 /**
- * How an application repository links to the Terraform that provisions it. Read from `.terratrust.json`
+ * How an application repository links to the Terraform that provisions it. Read from `.diffseal.json`
  * in the app repository, the ECS task definitions and Kubernetes service accounts (IRSA) it deploys,
  * and command-line flags (which win).
  */
@@ -26,19 +26,19 @@ export interface DiscoveredLink extends AppLinkConfig {
 const TASKDEF = /(^|\/)([^/]*task-?def[^/]*|[^/]*task-definition[^/]*)\.json$/i;
 
 /**
- * @param configFrom where to read `.terratrust.json`; a pull request reads it from its base, so it
+ * @param configFrom where to read `.diffseal.json`; a pull request reads it from its base, so it
  *   cannot pick its own role, infrastructure or env vars. Deployment files are read from `app`: they
  *   are what will run.
  */
 export function discoverLink(app: FileSource, configFrom: FileSource = app): DiscoveredLink {
   const out: DiscoveredLink = { roles: [], env: [], sources: [] };
-  const cfgText = configFrom.readFile('.terratrust.json');
+  const cfgText = configFrom.readFile('.diffseal.json');
   if (cfgText) {
     const cfg = JSON.parse(cfgText) as AppLinkConfig;
     out.infra = cfg.infra;
     out.roles!.push(...(cfg.roles ?? []));
     out.env!.push(...(cfg.env ?? []));
-    out.sources.push('.terratrust.json');
+    out.sources.push('.diffseal.json');
   }
   for (const p of app.allFiles().filter((f) => TASKDEF.test(f) && !/node_modules\//.test(f))) {
     let def: { taskRoleArn?: unknown; containerDefinitions?: Array<{ environment?: Array<{ name?: string }>; secrets?: Array<{ name?: string }> }> };

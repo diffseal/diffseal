@@ -1,5 +1,5 @@
 {
-  "format": "terratrust.aws-action-sources/v1",
+  "format": "diffseal.aws-action-sources/v1",
   "modelCommit": "3a4a3ae19d45692d5abdbb5d425aef3d9d842897",
   "snapshotDate": "2026-10-25",
   "services": {

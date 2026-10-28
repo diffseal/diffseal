@@ -68,7 +68,7 @@ describe('replayCommit', () => {
 
   test('exceptions already on the base branch apply to the change', async () => {
     const r = repo();
-    r.commit({ 'main.tf': 'terraform {\n  backend "s3" {}\n}\n', '.terratrust.json': EXCEPTION }, 'base with exception');
+    r.commit({ 'main.tf': 'terraform {\n  backend "s3" {}\n}\n', '.diffseal.json': EXCEPTION }, 'base with exception');
     r.commit({ 'main.tf': 'terraform {\n  backend "s3" {}\n}\n' + OPEN_PORT }, 'open port');
     const result = await replayCommit({ repo: r.dir, head: 'HEAD' });
     expect(result.combined.findings.find((f) => f.ruleId === 'network.open-ingress')?.accepted?.reason).toBe('devices');
@@ -79,11 +79,11 @@ describe('replayCommit', () => {
   test('a change cannot accept its own findings: exceptions it adds apply only after merge, and the change is reviewed', async () => {
     const r = repo();
     r.commit({ 'main.tf': 'terraform {\n  backend "s3" {}\n}\n' }, 'base');
-    r.commit({ 'main.tf': 'terraform {\n  backend "s3" {}\n}\n' + OPEN_PORT, '.terratrust.json': EXCEPTION }, 'open port and accept it');
+    r.commit({ 'main.tf': 'terraform {\n  backend "s3" {}\n}\n' + OPEN_PORT, '.diffseal.json': EXCEPTION }, 'open port and accept it');
     const result = await replayCommit({ repo: r.dir, head: 'HEAD' });
     expect(result.combined.findings.find((f) => f.ruleId === 'network.open-ingress')?.accepted).toBeUndefined();
     expect(result.combined.gate.result).toBe('review');
-    expect(result.combined.gate.reasons.join(' ')).toContain('.terratrust.json');
+    expect(result.combined.gate.reasons.join(' ')).toContain('.diffseal.json');
     r.done();
   });
 
@@ -139,7 +139,7 @@ describe('replayCommit', () => {
   test('exceptions are judged on the date of the replayed change, not today (round 2)', async () => {
     const r = repo();
     const exp = JSON.stringify({ exceptions: [{ rule: 'network.open-ingress', resource: 'aws_vpc_security_group_ingress_rule.devices', reason: 'devices', expires: '2000-06-01' }] });
-    r.commit({ 'main.tf': 'terraform {\n  backend "s3" {}\n}\n', '.terratrust.json': exp }, 'base');
+    r.commit({ 'main.tf': 'terraform {\n  backend "s3" {}\n}\n', '.diffseal.json': exp }, 'base');
     spawnSync('git', ['-C', r.dir, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '--allow-empty', '-qm', 'noop']);
     fs.writeFileSync(path.join(r.dir, 'main.tf'), 'terraform {\n  backend "s3" {}\n}\n' + OPEN_PORT);
     spawnSync('git', ['-C', r.dir, 'add', '-A']);
@@ -173,7 +173,7 @@ describe('replayCommit', () => {
   test('a live check judges exceptions now, not on the commit date (round 2 codex)', async () => {
     const r = repo();
     const exp = JSON.stringify({ exceptions: [{ rule: 'network.open-ingress', resource: 'aws_vpc_security_group_ingress_rule.devices', reason: 'devices', expires: '2026-06-01' }] });
-    r.commit({ 'main.tf': 'terraform {\n  backend "s3" {}\n}\n', '.terratrust.json': exp }, 'base');
+    r.commit({ 'main.tf': 'terraform {\n  backend "s3" {}\n}\n', '.diffseal.json': exp }, 'base');
     fs.writeFileSync(path.join(r.dir, 'main.tf'), 'terraform {\n  backend "s3" {}\n}\n' + OPEN_PORT);
     spawnSync('git', ['-C', r.dir, 'add', '-A']);
     // A backdated commit: judged on its own date the exception is live, judged now it has expired.

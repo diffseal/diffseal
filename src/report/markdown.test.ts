@@ -45,7 +45,7 @@ describe('report layout', () => {
     const r = replaceDb();
     expect(r.gate.result).toBe('block');
     const md = renderMarkdown(r, { title: 'Plan `tfplan.json`' });
-    expect(md.split('\n')[0]).toBe('## TerraTrust: BLOCK');
+    expect(md.split('\n')[0]).toBe('## Diffseal: BLOCK');
     expect(md).toContain('> [!CAUTION]');
     const callout = md.split('\n').filter((l) => l.startsWith('>'));
     expect(callout.some((l) => l.includes('`aws_db_instance.db`'))).toBe(true);
@@ -54,7 +54,7 @@ describe('report layout', () => {
 
   test('a pass has no callout and no empty summary table', () => {
     const md = renderMarkdown(timeout(), { title: 'Plan' });
-    expect(md.split('\n')[0]).toBe('## TerraTrust: PASS');
+    expect(md.split('\n')[0]).toBe('## Diffseal: PASS');
     expect(md).not.toContain('> [!');
     expect(md).not.toContain('Findings to review');
     expect(md).toContain('1 updated');
@@ -87,7 +87,7 @@ describe('report layout', () => {
     const md = renderMarkdown(timeout(), { title: 'x', notes: ['First note.', 'Second note.'], version: '9.9.9' });
     expect(md).not.toContain('(s)');
     const footer = md.split('\n').filter((l) => l.includes('<sub>'));
-    expect(footer).toEqual(['<sub>TerraTrust 9.9.9. First note. Second note. [How it works](https://github.com/TerraTrust/terratrust/blob/main/docs/guide/faq.md)</sub>']);
+    expect(footer).toEqual(['<sub>Diffseal 9.9.9. First note. Second note. [How it works](https://github.com/diffseal/diffseal/blob/main/docs/guide/faq.md)</sub>']);
   });
 
   test('the footer leaves general explanations to the FAQ', () => {
@@ -130,7 +130,7 @@ describe('report layout edge cases (review of the redesign)', () => {
   });
 
   test('a file path with a line break or pipe cannot end the callout or split a table cell', () => {
-    const evil = 'src/a\n## TerraTrust: PASS\n.ts:1';
+    const evil = 'src/a\n## Diffseal: PASS\n.ts:1';
     const md = renderMarkdown(
       { ...replaceDb(), gate: { items: [], result: 'review', reasons: [`NOT_GRANTED: ${evil}: s3:GetObject on b`] } },
       {
@@ -140,7 +140,7 @@ describe('report layout edge cases (review of the redesign)', () => {
         ],
       }
     );
-    expect(md.split('\n').filter((l) => l.startsWith('## '))).toEqual(['## TerraTrust: REVIEW']);
+    expect(md.split('\n').filter((l) => l.startsWith('## '))).toEqual(['## Diffseal: REVIEW']);
     expect(md).toContain('| granted | `src/a\\|b.ts:2` |');
   });
 });

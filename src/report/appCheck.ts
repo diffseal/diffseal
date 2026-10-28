@@ -6,7 +6,7 @@ import { cell, footer, plural, renderAppLinks, renderCallout, renderSuggestions 
 export function renderAppCheck(r: CheckAppResult): string {
   const rows = appLinkRows(r.links);
   return [
-    `## TerraTrust: ${r.gate.result.toUpperCase()}`,
+    `## Diffseal: ${r.gate.result.toUpperCase()}`,
     '',
     `What \`${cell(path.basename(path.resolve(r.app)))}\` needs from AWS.`,
     ...prefixBlank(renderCallout(r.gate, { links: rows })),

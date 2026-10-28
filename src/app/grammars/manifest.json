@@ -1,5 +1,5 @@
 {
-  "format": "terratrust.parser-assets/v1",
+  "format": "diffseal.parser-assets/v1",
   "packages": [
     {
       "package": "tree-sitter-java",

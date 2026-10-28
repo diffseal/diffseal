@@ -255,7 +255,7 @@ for (const service of Object.values(services)) {
 }
 services.cloudwatchevents = services.eventbridge;
 const output = {
-  format: 'terratrust.aws-actions/v1',
+  format: 'diffseal.aws-actions/v1',
   generator: 'scripts/generate-aws-actions.ts',
   snapshotDate: lock.snapshotDate,
   modelCommit: lock.modelCommit,

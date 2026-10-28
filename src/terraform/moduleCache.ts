@@ -5,8 +5,8 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { createHash } from 'node:crypto';
 import type { FileSource } from './source.js';
-export const MODULE_LOCK = 'terratrust.modules.lock.json';
-export const MODULE_PREFIX = '__terratrust_modules/';
+export const MODULE_LOCK = 'diffseal.modules.lock.json';
+export const MODULE_PREFIX = '__diffseal_modules/';
 export const MAX_MODULE_BYTES = 100 * 1024 * 1024;
 export interface ModuleLockEntry {
   source: string;
@@ -16,8 +16,8 @@ export interface ModuleLockEntry {
   sha256: string;
   subdir: string;
 }
-export interface ModuleLock { format: 'terratrust.modules/v1'; modules: ModuleLockEntry[] }
-export const defaultModuleCache = (): string => path.join(process.env.XDG_CACHE_HOME ?? path.join(os.homedir(), '.cache'), 'terratrust', 'modules');
+export interface ModuleLock { format: 'diffseal.modules/v1'; modules: ModuleLockEntry[] }
+export const defaultModuleCache = (): string => path.join(process.env.XDG_CACHE_HOME ?? path.join(os.homedir(), '.cache'), 'diffseal', 'modules');
 export const moduleDigest = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex');
 export const safeModulePath = (p: string): boolean => Boolean(p) && !p.includes('\\') && !p.includes('\0') && !p.startsWith('/') && !p.split('/').some((part) => part === '..' || part === '.' || part === '');
 export function moduleObject(files: Record<string, string>): Buffer {
@@ -27,8 +27,8 @@ export function moduleObject(files: Record<string, string>): Buffer {
   return bytes;
 }
 export function parseModuleLock(text: string | undefined): ModuleLock {
-  const lock: ModuleLock = text ? JSON.parse(text) : { format: 'terratrust.modules/v1', modules: [] };
-  if (lock.format !== 'terratrust.modules/v1' || !Array.isArray(lock.modules)) throw Error('Invalid module lock format');
+  const lock: ModuleLock = text ? JSON.parse(text) : { format: 'diffseal.modules/v1', modules: [] };
+  if (lock.format !== 'diffseal.modules/v1' || !Array.isArray(lock.modules)) throw Error('Invalid module lock format');
   const seen = new Set<string>();
   for (const entry of lock.modules) {
     if (typeof entry.source !== 'string' || typeof entry.constraint !== 'string' || typeof entry.subdir !== 'string' || !/^[a-f0-9]{64}$/.test(entry.sha256) || (entry.subdir && !safeModulePath(entry.subdir)) || (entry.version !== undefined && typeof entry.version !== 'string') || (entry.commit !== undefined && !/^[a-f0-9]{40,64}$/.test(entry.commit))) throw Error('Invalid module lock entry');

@@ -9,7 +9,7 @@ import {
 } from '../core/model.js';
 import { redact } from '../hcl/eval.js';
 
-/** The parts of `terraform show -json <planfile>` TerraTrust reads. */
+/** The parts of `terraform show -json <planfile>` Diffseal reads. */
 export interface PlanJson {
   format_version?: string;
   terraform_version?: string;

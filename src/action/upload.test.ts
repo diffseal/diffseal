@@ -12,7 +12,7 @@ function setup(statuses = [200]) {
     if (!init?.method) return Response.json({ value: 'oidc-token' });
     const status = statuses.shift() ?? 200;
     if (status === 0) throw new Error('network');
-    return Response.json({ id: 'run-1', pageUrl: 'https://api.terratrust.dev/a/org/runs/run-1', exceptionUrl: 'https://api.terratrust.dev/a/org/exceptions/new' }, { status });
+    return Response.json({ id: 'run-1', pageUrl: 'https://api.diffseal.com/a/org/runs/run-1', exceptionUrl: 'https://api.diffseal.com/a/org/exceptions/new' }, { status });
   }) as typeof fetch };
   return { options, calls, warnings, logs };
 }
@@ -26,13 +26,13 @@ test('OIDC audience and authorization, merge commit body and push body match the
   for (const eventName of ['pull_request', 'push']) {
     const s = setup(); const response = await uploadRun({ ...s.options, eventName });
     expect(response?.id).toBe('run-1');
-    expect(s.calls[0].url).toBe('https://token.example/token?other=1&audience=terratrust');
+    expect(s.calls[0].url).toBe('https://token.example/token?other=1&audience=diffseal');
     expect(s.calls[0].init?.headers).toEqual({ authorization: 'Bearer request-token' });
-    expect(s.calls[1].url).toBe('https://api.terratrust.dev/v1/runs');
+    expect(s.calls[1].url).toBe('https://api.diffseal.com/v1/runs');
     expect(s.calls[1].init?.signal).toBeInstanceOf(AbortSignal);
     expect(s.calls[1].init?.headers).toEqual({ authorization: 'Bearer oidc-token', 'content-type': 'application/json' });
     const body = JSON.parse(String(s.calls[1].init?.body)) as RunUpload;
-    expect(body).toMatchObject({ schema: 'terratrust.run/v1', event: eventName, commit: 'merge', action: { mode: 'pr', advisory: true }, record: { change: { commit: 'merge' }, approvals: null, gate: { items: [], reasons: [], result: 'pass' } } });
+    expect(body).toMatchObject({ schema: 'diffseal.run/v1', event: eventName, commit: 'merge', action: { mode: 'pr', advisory: true }, record: { change: { commit: 'merge' }, approvals: null, gate: { items: [], reasons: [], result: 'pass' } } });
     expect(body.record.notes.some((n) => n.startsWith('No approvals'))).toBe(false);
     expect(body.pullRequest).toEqual(eventName === 'pull_request' ? { number: 7, headSha: 'head', baseSha: 'base' } : undefined);
   }
@@ -67,7 +67,7 @@ test('another host exception URL is ignored', async () => {
 test('exception comment is inserted before the footer only on BLOCK', async () => {
   const s = setup(); const response = await uploadRun(s.options); const md = 'report\n\n---\nfooter';
   expect(uploadComment(md, 'pass', response)).toBe(md); expect(uploadComment(md, 'review', response)).toBe(md);
-  const blocked = uploadComment(md, 'block', response); expect(blocked).toContain('An approver can accept these risks for this pull request: [Request an exception](https://api.terratrust.dev/a/org/exceptions/new).'); expect(blocked.indexOf('Request an exception')).toBeLessThan(blocked.indexOf('---'));
+  const blocked = uploadComment(md, 'block', response); expect(blocked).toContain('An approver can accept these risks for this pull request: [Request an exception](https://api.diffseal.com/a/org/exceptions/new).'); expect(blocked.indexOf('Request an exception')).toBeLessThan(blocked.indexOf('---'));
 });
 
 test('the Action job keeps its passing exit code when upload fails', async () => {
@@ -102,7 +102,7 @@ for (const firstFailure of ['500', 'network']) {
         if (firstFailure === 'network') throw new Error('response lost after token consumption');
         return Response.json({ error: 'temporary server error' }, { status: 500 });
       }
-      return Response.json({ id: 'retried-run', pageUrl: 'https://api.terratrust.dev/retried-run' }, { status: 201 });
+      return Response.json({ id: 'retried-run', pageUrl: 'https://api.diffseal.com/retried-run' }, { status: 201 });
     }) as typeof fetch;
     const response = await uploadRun(s.options);
     expect(response?.id).toBe('retried-run');
@@ -134,5 +134,5 @@ test('a stale upload says how to refresh and offers no exception link', async ()
   const response = await uploadRun(s.options);
   expect(response?.stale).toBe(true);
   expect(response?.exceptionUrl).toBeUndefined();
-  expect(s.warnings).toEqual(['TerraTrust stored this record as stale: the pull request or its base branch changed after this run started, so the TerraTrust evidence check was not updated. Push a commit to refresh it. Re-running this job does not help, because GitHub reuses the original event.']);
+  expect(s.warnings).toEqual(['Diffseal stored this record as stale: the pull request or its base branch changed after this run started, so the Diffseal evidence check was not updated. Push a commit to refresh it. Re-running this job does not help, because GitHub reuses the original event.']);
 });
