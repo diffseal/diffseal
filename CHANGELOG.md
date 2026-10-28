@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- A replaced or deleted stateful resource now reads "applying it would lose the database" instead of "loses the database": the review describes a predicted effect, not something that happened.
+
 ## 0.5.0-beta, 2026-10-28
 
 ### Changed

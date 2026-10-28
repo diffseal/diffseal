@@ -29,7 +29,7 @@
             "action": "delete",
             "severity": "CRITICAL",
             "dataLoss": true,
-            "reasonContains": "Deletes aws_s3_bucket: loses the objects in the bucket"
+            "reasonContains": "Deletes aws_s3_bucket: applying it would lose the objects in the bucket"
           }
         ],
         "cost": {
@@ -38,7 +38,7 @@
         "gate": {
           "result": "block",
           "reasonsContain": [
-            "CRITICAL: aws_s3_bucket.b: Deletes aws_s3_bucket: loses the objects in the bucket"
+            "CRITICAL: aws_s3_bucket.b: Deletes aws_s3_bucket: applying it would lose the objects in the bucket"
           ]
         }
       }
@@ -70,7 +70,7 @@
             "action": "delete",
             "severity": "HIGH",
             "dataLoss": false,
-            "reasonContains": "Deletes aws_dynamodb_table: loses the items in the table. deletion_protection_enabled = true, so the apply will fail mid-way"
+            "reasonContains": "Deletes aws_dynamodb_table: applying it would lose the items in the table. deletion_protection_enabled = true, so the apply will fail mid-way"
           }
         ],
         "cost": {
@@ -79,7 +79,7 @@
         "gate": {
           "result": "review",
           "reasonsContain": [
-            "HIGH: aws_dynamodb_table.t: Deletes aws_dynamodb_table: loses the items in the table. deletion_protection_enabled = true, so the apply will fail mid-way"
+            "HIGH: aws_dynamodb_table.t: Deletes aws_dynamodb_table: applying it would lose the items in the table. deletion_protection_enabled = true, so the apply will fail mid-way"
           ]
         }
       }

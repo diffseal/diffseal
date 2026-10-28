@@ -77,7 +77,7 @@
             "action": "delete",
             "severity": "CRITICAL",
             "dataLoss": true,
-            "reasonContains": "Deletes aws_s3_bucket: loses the objects in the bucket"
+            "reasonContains": "Deletes aws_s3_bucket: applying it would lose the objects in the bucket"
           }
         ],
         "cost": {
@@ -86,7 +86,7 @@
         "gate": {
           "result": "block",
           "reasonsContain": [
-            "CRITICAL: aws_s3_bucket.b: Deletes aws_s3_bucket: loses the objects in the bucket"
+            "CRITICAL: aws_s3_bucket.b: Deletes aws_s3_bucket: applying it would lose the objects in the bucket"
           ]
         }
       }
@@ -209,7 +209,7 @@
             "action": "delete",
             "severity": "HIGH",
             "dataLoss": true,
-            "reasonContains": "Possibly deletes aws_dynamodb_table: loses the items in the table (count or for_each of aws_dynamodb_table.t was not known statically at base, so instances may already have been absent)"
+            "reasonContains": "Possibly deletes aws_dynamodb_table: applying it would lose the items in the table (count or for_each of aws_dynamodb_table.t was not known statically at base, so instances may already have been absent)"
           }
         ],
         "cost": {
@@ -218,7 +218,7 @@
         "gate": {
           "result": "review",
           "reasonsContain": [
-            "HIGH: aws_dynamodb_table.t[*]: Possibly deletes aws_dynamodb_table: loses the items in the table (count or for_each of aws_dynamodb_table.t was not known statically at base, so instances may already have been absent)"
+            "HIGH: aws_dynamodb_table.t[*]: Possibly deletes aws_dynamodb_table: applying it would lose the items in the table (count or for_each of aws_dynamodb_table.t was not known statically at base, so instances may already have been absent)"
           ]
         }
       }

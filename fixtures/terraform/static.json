@@ -170,7 +170,7 @@
             "action": "replace",
             "severity": "CRITICAL",
             "dataLoss": true,
-            "reasonContains": "Replaces aws_db_instance (forced by changing storage_encrypted): loses the database"
+            "reasonContains": "Replaces aws_db_instance (forced by changing storage_encrypted): applying it would lose the database"
           }
         ],
         "cost": {
@@ -179,7 +179,7 @@
         "gate": {
           "result": "block",
           "reasonsContain": [
-            "CRITICAL: module.svc.aws_db_instance.db: Replaces aws_db_instance (forced by changing storage_encrypted): loses the database"
+            "CRITICAL: module.svc.aws_db_instance.db: Replaces aws_db_instance (forced by changing storage_encrypted): applying it would lose the database"
           ]
         }
       }
@@ -387,7 +387,7 @@
             "action": "replace",
             "severity": "HIGH",
             "dataLoss": false,
-            "reasonContains": "Replaces aws_s3_bucket (forced by changing object_lock_enabled): loses the objects in the bucket. S3 refuses to delete a non-empty bucket without force_destroy, so the apply fails if it holds objects (changing object_lock_enabled can force replacement; the provider decides at plan time)"
+            "reasonContains": "Replaces aws_s3_bucket (forced by changing object_lock_enabled): applying it would lose the objects in the bucket. S3 refuses to delete a non-empty bucket without force_destroy, so the apply fails if it holds objects (changing object_lock_enabled can force replacement; the provider decides at plan time)"
           }
         ],
         "cost": {
@@ -396,7 +396,7 @@
         "gate": {
           "result": "review",
           "reasonsContain": [
-            "HIGH: module.svc.aws_s3_bucket.b: Replaces aws_s3_bucket (forced by changing object_lock_enabled): loses the objects in the bucket. S3 refuses to delete a non-empty bucket without force_destroy, so the apply fails if it holds objects (changing object_lock_enabled can force replacement; the provider decides at plan time)"
+            "HIGH: module.svc.aws_s3_bucket.b: Replaces aws_s3_bucket (forced by changing object_lock_enabled): applying it would lose the objects in the bucket. S3 refuses to delete a non-empty bucket without force_destroy, so the apply fails if it holds objects (changing object_lock_enabled can force replacement; the provider decides at plan time)"
           ]
         }
       }
@@ -467,7 +467,7 @@
             "action": "delete",
             "severity": "CRITICAL",
             "dataLoss": true,
-            "reasonContains": "Deletes aws_dynamodb_table: loses the items in the table"
+            "reasonContains": "Deletes aws_dynamodb_table: applying it would lose the items in the table"
           }
         ],
         "cost": {
@@ -476,7 +476,7 @@
         "gate": {
           "result": "block",
           "reasonsContain": [
-            "CRITICAL: module.svc.aws_dynamodb_table.ledger: Deletes aws_dynamodb_table: loses the items in the table"
+            "CRITICAL: module.svc.aws_dynamodb_table.ledger: Deletes aws_dynamodb_table: applying it would lose the items in the table"
           ]
         }
       }
@@ -1055,7 +1055,7 @@
             "action": "delete",
             "severity": "CRITICAL",
             "dataLoss": true,
-            "reasonContains": "Deletes aws_sqs_queue: loses messages still in the queue (looks like a rename to module.svc.aws_sqs_queue.renamed without a moved block; add moved { from = module.svc.aws_sqs_queue.unrelated, to = module.svc.aws_sqs_queue.renamed } to keep it)"
+            "reasonContains": "Deletes aws_sqs_queue: applying it would lose messages still in the queue (looks like a rename to module.svc.aws_sqs_queue.renamed without a moved block; add moved { from = module.svc.aws_sqs_queue.unrelated, to = module.svc.aws_sqs_queue.renamed } to keep it)"
           },
           {
             "resource": "module.svc.aws_sqs_queue.renamed",
@@ -1078,7 +1078,7 @@
         "gate": {
           "result": "block",
           "reasonsContain": [
-            "CRITICAL: module.svc.aws_sqs_queue.unrelated: Deletes aws_sqs_queue: loses messages still in the queue (looks like a rename to module.svc.aws_sqs_queue.renamed without a moved block; add moved { from = module.svc.aws_sqs_queue.unrelated, to = module.svc.aws_sqs_queue.renamed } to keep it)"
+            "CRITICAL: module.svc.aws_sqs_queue.unrelated: Deletes aws_sqs_queue: applying it would lose messages still in the queue (looks like a rename to module.svc.aws_sqs_queue.renamed without a moved block; add moved { from = module.svc.aws_sqs_queue.unrelated, to = module.svc.aws_sqs_queue.renamed } to keep it)"
           ]
         }
       }
@@ -1284,7 +1284,7 @@
             "action": "delete",
             "severity": "CRITICAL",
             "dataLoss": true,
-            "reasonContains": "Deletes aws_dynamodb_table: loses the items in the table"
+            "reasonContains": "Deletes aws_dynamodb_table: applying it would lose the items in the table"
           }
         ],
         "cost": {
@@ -1293,7 +1293,7 @@
         "gate": {
           "result": "block",
           "reasonsContain": [
-            "CRITICAL: module.svc.aws_dynamodb_table.ledger: Deletes aws_dynamodb_table: loses the items in the table"
+            "CRITICAL: module.svc.aws_dynamodb_table.ledger: Deletes aws_dynamodb_table: applying it would lose the items in the table"
           ]
         }
       }
@@ -1394,7 +1394,7 @@
             "action": "replace",
             "severity": "HIGH",
             "dataLoss": false,
-            "reasonContains": "Replaces aws_dynamodb_table (forced by changing name): loses the items in the table. lifecycle.prevent_destroy = true, so Terraform will refuse to plan this"
+            "reasonContains": "Replaces aws_dynamodb_table (forced by changing name): applying it would lose the items in the table. lifecycle.prevent_destroy = true, so Terraform will refuse to plan this"
           }
         ],
         "cost": {
@@ -1403,7 +1403,7 @@
         "gate": {
           "result": "review",
           "reasonsContain": [
-            "HIGH: module.svc.aws_dynamodb_table.ledger: Replaces aws_dynamodb_table (forced by changing name): loses the items in the table. lifecycle.prevent_destroy = true, so Terraform will refuse to plan this"
+            "HIGH: module.svc.aws_dynamodb_table.ledger: Replaces aws_dynamodb_table (forced by changing name): applying it would lose the items in the table. lifecycle.prevent_destroy = true, so Terraform will refuse to plan this"
           ]
         }
       }
@@ -1691,7 +1691,7 @@
             "action": "delete",
             "severity": "HIGH",
             "dataLoss": false,
-            "reasonContains": "Deletes aws_dynamodb_table: loses the items in the table. lifecycle.prevent_destroy = true, so Terraform will refuse to plan this"
+            "reasonContains": "Deletes aws_dynamodb_table: applying it would lose the items in the table. lifecycle.prevent_destroy = true, so Terraform will refuse to plan this"
           }
         ],
         "cost": {
@@ -1700,7 +1700,7 @@
         "gate": {
           "result": "review",
           "reasonsContain": [
-            "HIGH: aws_dynamodb_table.t[\"b\"]: Deletes aws_dynamodb_table: loses the items in the table. lifecycle.prevent_destroy = true, so Terraform will refuse to plan this"
+            "HIGH: aws_dynamodb_table.t[\"b\"]: Deletes aws_dynamodb_table: applying it would lose the items in the table. lifecycle.prevent_destroy = true, so Terraform will refuse to plan this"
           ]
         }
       }
@@ -2044,7 +2044,7 @@
             "action": "delete",
             "severity": "HIGH",
             "dataLoss": false,
-            "reasonContains": "Deletes aws_dynamodb_table: loses the items in the table. lifecycle.prevent_destroy = true, so Terraform will refuse to plan this"
+            "reasonContains": "Deletes aws_dynamodb_table: applying it would lose the items in the table. lifecycle.prevent_destroy = true, so Terraform will refuse to plan this"
           }
         ],
         "cost": {
@@ -2053,7 +2053,7 @@
         "gate": {
           "result": "review",
           "reasonsContain": [
-            "HIGH: aws_dynamodb_table.t[0]: Deletes aws_dynamodb_table: loses the items in the table. lifecycle.prevent_destroy = true, so Terraform will refuse to plan this"
+            "HIGH: aws_dynamodb_table.t[0]: Deletes aws_dynamodb_table: applying it would lose the items in the table. lifecycle.prevent_destroy = true, so Terraform will refuse to plan this"
           ]
         }
       }
@@ -2086,7 +2086,7 @@
             "action": "delete",
             "severity": "HIGH",
             "dataLoss": false,
-            "reasonContains": "Deletes aws_dynamodb_table: loses the items in the table. lifecycle.prevent_destroy = true, so Terraform will refuse to plan this"
+            "reasonContains": "Deletes aws_dynamodb_table: applying it would lose the items in the table. lifecycle.prevent_destroy = true, so Terraform will refuse to plan this"
           }
         ],
         "cost": {
@@ -2095,7 +2095,7 @@
         "gate": {
           "result": "review",
           "reasonsContain": [
-            "HIGH: aws_dynamodb_table.t[\"a\"]: Deletes aws_dynamodb_table: loses the items in the table. lifecycle.prevent_destroy = true, so Terraform will refuse to plan this"
+            "HIGH: aws_dynamodb_table.t[\"a\"]: Deletes aws_dynamodb_table: applying it would lose the items in the table. lifecycle.prevent_destroy = true, so Terraform will refuse to plan this"
           ]
         }
       }
