@@ -116,6 +116,7 @@ test('a rejected upload shows the service reason on one short line', async () =>
     [JSON.stringify({ error: 'Invalid field', path: 'pullRequest.headSha' }), 'Upload skipped: upload failed (400): Invalid field (pullRequest.headSha)'],
     [JSON.stringify({ error: `line one\nline two ${'x'.repeat(300)}` }), 'Upload skipped: upload failed (400): line one line two '],
     ['not json', 'Upload skipped: upload failed (400)'],
+    [JSON.stringify({ error: '##[set-output name=upload-id;]x ::add-mask::y', path: '::stop-commands::z' }), 'Upload skipped: upload failed (400): set-output name upload-id x add-mask y (stop-commands z)'],
   ];
   for (const [body, expected] of bodies) {
     const s = setup(); const original = s.options.fetchFn!;
@@ -123,6 +124,7 @@ test('a rejected upload shows the service reason on one short line', async () =>
     expect(await uploadRun(s.options)).toBeUndefined();
     expect(s.warnings[0]!.startsWith(expected)).toBe(true);
     expect(s.warnings[0]).not.toContain('\n');
+    expect(s.warnings[0]).not.toMatch(/##|::|\[/);
     expect(s.warnings[0]!.length).toBeLessThanOrEqual(260);
   }
 });

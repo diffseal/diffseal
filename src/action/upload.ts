@@ -107,8 +107,10 @@ async function serviceReason(response: Response): Promise<string> {
   try {
     const body = await response.json() as { error?: unknown; path?: unknown };
     if (typeof body?.error !== 'string') return '';
-    const reason = `${body.error}${typeof body.path === 'string' ? ` (${body.path})` : ''}`.replace(/[\x00-\x1f\x7f]+/g, ' ');
-    return `: ${reason.slice(0, 200)}`;
+    // Plain characters only, so a hostile endpoint cannot write a workflow command such as ##[...] or ::...:: into the log.
+    const clean = (s: string) => s.replace(/[^A-Za-z0-9 .,_-]+/g, ' ').replace(/ {2,}/g, ' ').trim();
+    const reason = `${clean(body.error)}${typeof body.path === 'string' ? ` (${clean(body.path)})` : ''}`;
+    return reason ? `: ${reason.slice(0, 200)}` : '';
   } catch { return ''; }
 }
 
