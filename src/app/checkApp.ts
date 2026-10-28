@@ -10,7 +10,7 @@ import { FsSource, GitSource, changedPaths, resolveCommit, unifiedDiff, worktree
 import { parseAddedLines } from './diff.js';
 import { discoverLink, type DiscoveredLink } from './link.js';
 import { isAppFile, scanApp } from './scan.js';
-import { readConfigFile } from '../configFile.js';
+import { configFileIn, readConfigFile } from '../configFile.js';
 
 export interface CheckAppOptions {
   /** Application repository (a local clone). */
@@ -51,7 +51,8 @@ export async function checkApp(opts: CheckAppOptions): Promise<CheckAppResult> {
   const baseSource = opts.base ? new GitSource(opts.app, resolveCommit(opts.app, opts.base)) : undefined;
   const link = discoverLink(appSource, baseSource);
   const linkChanged = baseSource !== undefined && readConfigFile(baseSource) !== readConfigFile(appSource);
-  if (linkChanged) notes.push('.diffseal.json changed in this change. The base version was applied; the change applies after it is reviewed and merged.');
+  const configChanged = `${configFileIn(appSource)} changed`;
+  if (linkChanged) notes.push(`${configChanged} in this change. The base version was applied; the change applies after it is reviewed and merged.`);
 
   let addedLines;
   if (opts.base) {
@@ -112,8 +113,8 @@ export async function checkApp(opts: CheckAppOptions): Promise<CheckAppResult> {
     ...(deployments.mappings.length ? {deployments:deployments.mappings} : {}),
     gate: {
       result: attention.length || linkChanged ? 'review' : 'pass',
-      items: [...attention.map((l) => ({ kind: 'access' as const, level: 'review' as const, rule: l.status, resource: l.callsite, text: `${l.status}: ${l.callsite}: ${l.access}` })), ...(linkChanged ? [{ kind: 'policy' as const, level: 'review' as const, text: '.diffseal.json changed' }] : [])],
-      reasons: [...attention.map((l) => `${l.status}: ${l.callsite}: ${l.access}`), ...(linkChanged ? ['.diffseal.json changed'] : [])],
+      items: [...attention.map((l) => ({ kind: 'access' as const, level: 'review' as const, rule: l.status, resource: l.callsite, text: `${l.status}: ${l.callsite}: ${l.access}` })), ...(linkChanged ? [{ kind: 'policy' as const, level: 'review' as const, text: configChanged }] : [])],
+      reasons: [...attention.map((l) => `${l.status}: ${l.callsite}: ${l.access}`), ...(linkChanged ? [configChanged] : [])],
     },
     notes,
   };

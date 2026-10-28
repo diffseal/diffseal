@@ -10,7 +10,7 @@ Verification runs offline. It checks the manifest format, the exact file set, ev
 
 The signing key id must match the public key and `pack.json`. Compromised keys always fail. A pack must have been generated at or after the key's `validFrom` and before its `revokedAt`, when set. `--account` checks the organisation login. `--period` checks the period label, such as `2026-Q4`.
 
-The output shows the account, period, key id and file count. With the default keys, it also identifies the bundled key list, its update date and the [current published list](https://diffseal.com/.well-known/diffseal-keys.json). Since v0.4.0-beta the bundled list holds Diffseal's first signing key, `ac566f5ee309c7e6`. A later key or a revocation reaches you in a new release, or through the published list with `--keys`.
+The output shows the account, period, key id and file count. With the default keys, it also identifies the bundled key list, its update date and the [current published list](https://diffseal.com/.well-known/diffseal-keys.json). Since v0.5.0-beta the bundled list holds Diffseal's signing key, `d6ceaf99517d3d38`. A later key or a revocation reaches you in a new release, or through the published list with `--keys`.
 
 You can provide a local list with `--keys public-keys.json`. The output identifies that file and its update date. It warns that this file is not Diffseal's published list. Obtain and authenticate it independently. The verifier never downloads keys.
 

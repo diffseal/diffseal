@@ -67,18 +67,18 @@ describe('checkApp', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  test('with a base, link settings in .diffseal.json come from the base, and a change to them is flagged (round 3)', async () => {
+  test.each(['.diffseal.json', '.terratrust.json'])('with a base, link settings in %s come from the base, and a change to them is flagged under that name (round 3)', async (file) => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tt-app-link-'));
     const git = (...args: string[]) => spawnSync('git', ['-C', dir, '-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { encoding: 'utf8' });
     git('init', '-q');
     fs.mkdirSync(path.join(dir, 'infra'));
     fs.writeFileSync(path.join(dir, 'infra/main.tf'), INFRA);
-    fs.writeFileSync(path.join(dir, '.diffseal.json'), JSON.stringify({ roles: ['r'] }));
+    fs.writeFileSync(path.join(dir, file), JSON.stringify({ roles: ['r'] }));
     fs.writeFileSync(path.join(dir, 'app.ts'), `import { GetQueueUrlCommand } from '@aws-sdk/client-sqs';\nexport const a = 1;\n`);
     git('add', '-A');
     git('commit', '-qm', 'base');
     // The pull request claims QUEUE_URL is set outside Terraform and switches to a role it likes.
-    fs.writeFileSync(path.join(dir, '.diffseal.json'), JSON.stringify({ roles: ['other'], env: ['QUEUE_URL'] }));
+    fs.writeFileSync(path.join(dir, file), JSON.stringify({ roles: ['other'], env: ['QUEUE_URL'] }));
     fs.appendFileSync(path.join(dir, 'app.ts'), `console.log(process.env.QUEUE_URL);\n`);
     git('add', '-A');
     git('commit', '-qm', 'pr');
@@ -86,7 +86,8 @@ describe('checkApp', () => {
     expect(r.link.roles).toEqual(['r']);
     expect(r.link.env).toEqual([]);
     expect(r.gate.result).toBe('review');
-    expect(r.notes.join(' ')).toContain('.diffseal.json changed');
+    expect(r.notes.join(' ')).toContain(`${file} changed`);
+    expect(r.gate.reasons).toContain(`${file} changed`);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 });
