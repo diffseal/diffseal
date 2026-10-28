@@ -37,7 +37,7 @@ jobs:
           NODE
       # Keep this release tag in sync with the reusable workflow's release.
       # Never run the Action from the customer's checkout.
-      - uses: TerraTrust/terratrust@v0.4.0-beta
+      - uses: TerraTrust/terratrust@v0.4.1-beta
         with:
           mode: pr
           upload: 'true'

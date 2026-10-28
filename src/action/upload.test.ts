@@ -111,3 +111,28 @@ for (const firstFailure of ['500', 'network']) {
     expect(s.warnings).toHaveLength(0);
   });
 }
+test('a rejected upload shows the service reason on one short line', async () => {
+  const bodies: Array<[BodyInit, string]> = [
+    [JSON.stringify({ error: 'Invalid field', path: 'pullRequest.headSha' }), 'Upload skipped: upload failed (400): Invalid field (pullRequest.headSha)'],
+    [JSON.stringify({ error: `line one\nline two ${'x'.repeat(300)}` }), 'Upload skipped: upload failed (400): line one line two '],
+    ['not json', 'Upload skipped: upload failed (400)'],
+    [JSON.stringify({ error: '##[set-output name=upload-id;]x ::add-mask::y', path: '::stop-commands::z' }), 'Upload skipped: upload failed (400): set-output name upload-id x add-mask y (stop-commands z)'],
+  ];
+  for (const [body, expected] of bodies) {
+    const s = setup(); const original = s.options.fetchFn!;
+    s.options.fetchFn = (async (...args: Parameters<typeof fetch>) => args[1]?.method ? new Response(body, { status: 400 }) : original(...args)) as typeof fetch;
+    expect(await uploadRun(s.options)).toBeUndefined();
+    expect(s.warnings[0]!.startsWith(expected)).toBe(true);
+    expect(s.warnings[0]).not.toContain('\n');
+    expect(s.warnings[0]).not.toMatch(/##|::|\[/);
+    expect(s.warnings[0]!.length).toBeLessThanOrEqual(260);
+  }
+});
+test('a stale upload says how to refresh and offers no exception link', async () => {
+  const s = setup(); const original = s.options.fetchFn!;
+  s.options.fetchFn = (async (...args: Parameters<typeof fetch>) => { const r = await original(...args); return args[1]?.method ? Response.json({ ...await r.json() as object, stale: true }, { status: 201 }) : r; }) as typeof fetch;
+  const response = await uploadRun(s.options);
+  expect(response?.stale).toBe(true);
+  expect(response?.exceptionUrl).toBeUndefined();
+  expect(s.warnings).toEqual(['TerraTrust stored this record as stale: the pull request or its base branch changed after this run started, so the TerraTrust evidence check was not updated. Push a commit to refresh it. Re-running this job does not help, because GitHub reuses the original event.']);
+});
