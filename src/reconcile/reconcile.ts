@@ -532,7 +532,7 @@ export function reconcile(facts: AccessFact[], envReads: EnvRead[], index: Infra
       links.push(link(base, fact.actions, 'UNRESOLVED',
         resource.kind === 'env'
           ? `No Lambda or ECS task in the analyzed Terraform sets ${resource.name}, so the role running this code is unknown`
-          : 'Cannot tell which Lambda or ECS task runs this code. Link the app to its role (--role or .terratrust.json)'));
+          : 'Cannot tell which Lambda or ECS task runs this code. Link the app to its role (--role or .diffseal.json)'));
       continue;
     }
     for (const t of targets) {

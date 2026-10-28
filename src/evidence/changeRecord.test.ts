@@ -25,7 +25,7 @@ describe('changeRecord', () => {
       approvals: { pr: 42, approvedBy: [{ login: 'reviewer', at: '2026-10-01T09:00:00Z' }], mergedBy: 'reviewer' },
       engine: { version: 'test', replaceCatalog: 'x@1' },
     });
-    expect(r.schema).toBe('terratrust.change-record/v1');
+    expect(r.schema).toBe('diffseal.change-record/v1');
     expect(r.change.commit).toBe(commit.sha);
     expect(r.gate.result).toBe('block');
     expect(r.resources.map((x) => [x.address, x.action])).toEqual([

@@ -8,7 +8,7 @@ import * as os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { loadModule, isConfigFile } from './config.js';
 import { MemorySource, FsSource } from './source.js';
-import { MODULE_LOCK, parseModuleLock, defaultModuleCache, moduleDigest, moduleObject, safeModulePath, type ModuleLock, type ModuleLockEntry } from './moduleCache.js';
+import { MODULE_LOCK, parseModuleLock, readModuleLock, defaultModuleCache, moduleDigest, moduleObject, safeModulePath, type ModuleLock, type ModuleLockEntry } from './moduleCache.js';
 function git(args: string[]): Buffer {
   const r = spawnSync('git', ['-c', 'core.hooksPath=/dev/null', '-c', 'credential.helper=', '-c', 'protocol.ext.allow=never', ...args], { env: { PATH: process.env.PATH, HOME: os.tmpdir(), GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_TERMINAL_PROMPT: '0' }, timeout: 120_000, maxBuffer: 100 * 1024 * 1024 });
   if (r.error || r.status) throw Error(`Module git failed: ${r.error?.message ?? r.stderr.toString().slice(0, 1000)}`);
@@ -104,7 +104,7 @@ async function resolveDownload(source: string, constraint: string, locked?: Modu
 }
 export async function fetchModules(opts: { repo?: string; cache?: string }): Promise<ModuleLock> {
   const repo = path.resolve(opts.repo ?? '.'), cache = path.resolve(opts.cache ?? defaultModuleCache());
-  const source = new FsSource(repo), oldLock = parseModuleLock(source.readFile(MODULE_LOCK)), queue: Array<{ source: string; constraint: string }> = [];
+  const source = new FsSource(repo), oldLock = parseModuleLock(readModuleLock(source)), queue: Array<{ source: string; constraint: string }> = [];
   for (const dir of new Set(source.allFiles().filter(isConfigFile).map((file) => path.posix.dirname(file)))) {
     for (const call of loadModule(source, dir)?.moduleCalls.values() ?? []) {
       if (!call.source) throw Error(`Fetch requires a literal module source in ${call.file}`);
@@ -137,7 +137,7 @@ export async function fetchModules(opts: { repo?: string; cache?: string }): Pro
     modules.push({ ...call, ...(result.commit ? { commit: result.commit } : {}), ...(result.version ? { version: result.version } : {}), sha256, subdir: result.subdir });
   }
   modules.sort((a, b) => { const x = JSON.stringify([a.source, a.constraint]), y = JSON.stringify([b.source, b.constraint]); return x < y ? -1 : x > y ? 1 : 0; });
-  const lock: ModuleLock = { format: 'terratrust.modules/v1', modules };
+  const lock: ModuleLock = { format: 'diffseal.modules/v1', modules };
   atomicWrite(path.join(repo, MODULE_LOCK), Buffer.from(JSON.stringify(lock, null, 2) + '\n'));
   return lock;
 }

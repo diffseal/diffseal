@@ -12,17 +12,17 @@ export interface PublicKeyEntry {
   revokedAt: string | null;
   compromised: boolean;
 }
-export interface KeyList { schema: 'terratrust.keys/v1'; updatedAt: string; keys: PublicKeyEntry[] }
+export interface KeyList { schema: 'diffseal.keys/v1'; updatedAt: string; keys: PublicKeyEntry[] }
 export interface VerifyOptions { keys?: string; account?: string; period?: string; allowUnsigned?: boolean }
 export interface VerifyResult { ok: boolean; failures: string[]; keyId?: string; account?: string; period?: string; files: number }
-export const CURRENT_KEYS_URL = 'https://terratrust.dev/.well-known/terratrust-keys.json';
+export const CURRENT_KEYS_URL = 'https://diffseal.com/.well-known/diffseal-keys.json';
 export function keySource(options: VerifyOptions): string[] {
   if (options.keys) {
     let updatedAt = '(unavailable)';
     try { updatedAt = JSON.parse(fs.readFileSync(options.keys, 'utf8')).updatedAt ?? updatedAt; } catch { /* Verification reports an invalid list. */ }
     return [
       `Keys used: --keys ${options.keys} (updatedAt ${updatedAt}).`,
-      `WARNING: keys from --keys ${options.keys} are not TerraTrust's published list.`,
+      `WARNING: keys from --keys ${options.keys} are not Diffseal's published list.`,
     ];
   }
   return [`Keys: bundled with this version (updatedAt ${bundledKeys.updatedAt}). Current list: ${CURRENT_KEYS_URL}`];
@@ -84,7 +84,7 @@ export function verifyPack(folder: string, options: VerifyOptions = {}): VerifyR
     let pack: { schema?: string; generatedAt?: string; account?: { login?: string }; period?: { label?: string }; since?: string; until?: string; signing?: { keyId?: string; alg?: string; payload?: string } };
     try { pack = JSON.parse(fs.readFileSync(path.join(folder, 'pack.json'), 'utf8')); if (!pack || typeof pack !== 'object') throw new Error(); }
     catch { fail('Malformed pack.json'); return result; }
-    if (!['terratrust.pack/v2', 'terratrust.evidence-pack/v1'].includes(pack.schema ?? '')) fail('Unsupported pack.json schema');
+    if (!['diffseal.pack/v2', 'diffseal.evidence-pack/v1'].includes(pack.schema ?? '')) fail('Unsupported pack.json schema');
     result.account = typeof pack.account?.login === 'string' ? pack.account.login : undefined;
     result.period = typeof pack.period?.label === 'string' ? pack.period.label : pack.since && pack.until ? `${pack.since} to ${pack.until}` : undefined;
     if (options.account !== undefined && options.account !== result.account) fail(`Account mismatch: expected ${options.account}, found ${result.account ?? '(not supplied)'}`);
@@ -104,7 +104,7 @@ export function verifyPack(folder: string, options: VerifyOptions = {}): VerifyR
     let list: KeyList;
     try {
       list = options.keys ? JSON.parse(fs.readFileSync(options.keys, 'utf8')) as KeyList : bundledKeys as KeyList;
-      if (list.schema !== 'terratrust.keys/v1' || !Array.isArray(list.keys) || typeof list.updatedAt !== 'string') throw new Error();
+      if (list.schema !== 'diffseal.keys/v1' || !Array.isArray(list.keys) || typeof list.updatedAt !== 'string') throw new Error();
     } catch { fail('Invalid key list'); return result; }
     const matching = list.keys.filter((key) => key?.keyId === signature.keyId);
     const key = matching[0];

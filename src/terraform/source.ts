@@ -39,7 +39,7 @@ export class MemorySource implements FileSource {
 
 const SKIP_DIRS = new Set(['.git', 'node_modules', '.terraform', '.claude', '.worktrees', 'vendor', '.venv', 'venv', 'dist', 'build']);
 
-/** The working tree. Used by `terratrust scan` and local checks, never by historical replay. */
+/** The working tree. Used by `diffseal scan` and local checks, never by historical replay. */
 export class FsSource implements FileSource {
   readonly label: string;
   private modules?: OfflineModules;

@@ -1,4 +1,4 @@
-import { defaultModuleCache, MODULE_LOCK } from '../terraform/moduleCache.js';
+import { defaultModuleCache, readModuleLock } from '../terraform/moduleCache.js';
 import { deploymentIndex } from '../app/deployments.js';
 import * as path from 'node:path';
 import { analyze } from '../analysis/analyze.js';
@@ -12,6 +12,7 @@ import { isAppFile, scanApp } from '../app/scan.js';
 import { InfraIndex } from '../reconcile/infraIndex.js';
 import { reconcile, type AppLink } from '../reconcile/reconcile.js';
 import type { RootEvaluation } from '../terraform/expand.js';
+import { CONFIG_FILE, LEGACY_CONFIG_FILE, readConfigFile } from '../configFile.js';
 
 export interface ReplayOptions {
   repo: string;
@@ -63,14 +64,14 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   const headSource = new GitSource(opts.repo, commit.sha, opts.moduleCache ?? defaultModuleCache());
   const baseSource = new GitSource(opts.repo, baseRev, opts.moduleCache ?? defaultModuleCache());
   const changed = changedPaths(opts.repo, baseSource.sha, headSource.sha);
-  const moduleLockChanged = headSource.readFile(MODULE_LOCK) !== baseSource.readFile(MODULE_LOCK);
+  const moduleLockChanged = readModuleLock(headSource) !== readModuleLock(baseSource);
   const tfChanged = changed.filter((c) => TF_FILE.test(c.path) || (c.oldPath && TF_FILE.test(c.oldPath)));
   const changedDirs = new Set(tfChanged.flatMap((c) => [c.path, c.oldPath].filter((p): p is string => Boolean(p)).map((p) => path.posix.dirname(p))));
 
   // Policy and exceptions come from the base commit: a change must not be able to accept its own findings.
   const policyFileAtBase = opts.policyFile ? parsePolicyFile(baseSource.readFile(opts.policyFile)) : {};
   const policy = { ...repoPolicy(baseSource), ...policyFileAtBase, ...opts.policy };
-  const changedConfig = ['.terratrust.json', ...(opts.policyFile ? [opts.policyFile] : [])].filter(
+  const changedConfig = [CONFIG_FILE, LEGACY_CONFIG_FILE, ...(opts.policyFile ? [opts.policyFile] : [])].filter(
     (f) => baseSource.readFile(f) !== headSource.readFile(f)
   );
   // Files a configuration may read with file() or templatefile(), application code included
@@ -163,9 +164,9 @@ function parsePolicyFile(text: string | undefined): PolicyConfig {
   }
 }
 
-/** Policy and exceptions from `.terratrust.json` at a commit, so they are versioned with the code. */
+/** Policy and exceptions from `.diffseal.json` at a commit, so they are versioned with the code. */
 function repoPolicy(source: GitSource): PolicyConfig {
-  const text = source.readFile('.terratrust.json');
+  const text = readConfigFile(source);
   if (!text) return {};
   try {
     const cfg = JSON.parse(text) as { policy?: PolicyConfig; exceptions?: PolicyConfig['exceptions'] };

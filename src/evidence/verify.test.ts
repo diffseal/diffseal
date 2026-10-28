@@ -14,8 +14,8 @@ function fixture() {
   const pair = generateKeyPairSync('ed25519');
   const raw = pair.publicKey.export({ type: 'spki', format: 'der' }).subarray(-32);
   const keyId = createHash('sha256').update(raw).digest('hex').slice(0, 16);
-  const list: KeyList = { schema: 'terratrust.keys/v1', updatedAt: '2026-10-27T00:00:00Z', keys: [{ keyId, alg: 'Ed25519', publicKey: raw.toString('base64'), validFrom: '2026-10-01T00:00:00Z', revokedAt: null, compromised: false }] };
-  const pack = { schema: 'terratrust.pack/v2', account: { id: 7, login: 'example' }, period: { label: '2026-Q4', since: '2026-10-01T00:00:00Z', until: '2027-01-01T00:00:00Z' }, generatedAt: '2026-10-27T00:00:00Z', signing: { keyId, alg: 'Ed25519', payload: 'MANIFEST.sha256' } };
+  const list: KeyList = { schema: 'diffseal.keys/v1', updatedAt: '2026-10-27T00:00:00Z', keys: [{ keyId, alg: 'Ed25519', publicKey: raw.toString('base64'), validFrom: '2026-10-01T00:00:00Z', revokedAt: null, compromised: false }] };
+  const pack = { schema: 'diffseal.pack/v2', account: { id: 7, login: 'example' }, period: { label: '2026-Q4', since: '2026-10-01T00:00:00Z', until: '2027-01-01T00:00:00Z' }, generatedAt: '2026-10-27T00:00:00Z', signing: { keyId, alg: 'Ed25519', payload: 'MANIFEST.sha256' } };
   const files = { 'pack.json': JSON.stringify(pack), 'index.md': 'Evidence\n', 'changes/a.json': '{"change":1}\n' };
   const write = (name: string, text: string) => { fs.mkdirSync(path.dirname(path.join(folder, name)), { recursive: true }); fs.writeFileSync(path.join(folder, name), text); };
   let seal = manifest(files);
@@ -87,11 +87,11 @@ test('CLI JSON output is parseable, exit codes reflect verification and key prov
   try {
     const valid = run('--keys', f.keys, '--json'); expect(valid.status).toBe(0); expect(JSON.parse(valid.stdout)).toEqual(f.verify());
     expect(valid.stderr).toContain('WARNING: keys from --keys'); expect(valid.stderr).toContain('updatedAt 2026-10-27'); expect(valid.stderr).toContain(`Keys used: --keys ${f.keys}`); expect(valid.stderr).not.toContain('bundled with this version'); expect(valid.stderr).toContain('Account: example'); expect(valid.stderr).toContain(f.keyId);
-    const unknown = run('--json'); expect(unknown.status).toBe(1); expect(JSON.parse(unknown.stdout).failures[0]).toContain('Unknown key id'); expect(unknown.stderr).not.toContain('WARNING'); expect(unknown.stderr).toContain('Keys: bundled with this version'); expect(unknown.stderr).toContain('https://terratrust.dev/.well-known/terratrust-keys.json');
+    const unknown = run('--json'); expect(unknown.status).toBe(1); expect(JSON.parse(unknown.stdout).failures[0]).toContain('Unknown key id'); expect(unknown.stderr).not.toContain('WARNING'); expect(unknown.stderr).toContain('Keys: bundled with this version'); expect(unknown.stderr).toContain('https://diffseal.com/.well-known/diffseal-keys.json');
     f.write('index.md', 'bad'); const invalid = run('--keys', f.keys); expect(invalid.status).toBe(1); expect(invalid.stderr).toContain('Changed file: index.md');
   } finally { f.done(); }
 });
-test('terratrust evidence output verifies with allow-unsigned and both schemas are accepted', async () => {
+test('diffseal evidence output verifies with allow-unsigned and both schemas are accepted', async () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'tt-export-verify-')), repo = path.join(temp, 'repo'), outDir = path.join(temp, 'export');
   fs.mkdirSync(repo);
   const git = (...args: string[]) => { const r = spawnSync('git', ['-C', repo, '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', ...args], { encoding: 'utf8' }); if (r.status) throw new Error(r.stderr); };
@@ -105,13 +105,13 @@ test('terratrust evidence output verifies with allow-unsigned and both schemas a
 });
 
 test('key provenance identifies only the list actually used', () => {
-  expect(keySource({})).toEqual(['Keys: bundled with this version (updatedAt 2026-10-28T00:00:00Z). Current list: https://terratrust.dev/.well-known/terratrust-keys.json']);
+  expect(keySource({})).toEqual(['Keys: bundled with this version (updatedAt 2026-10-28T00:00:00Z). Current list: https://diffseal.com/.well-known/diffseal-keys.json']);
   const f = fixture();
   try {
     f.list.updatedAt = '2026-10-26T12:00:00Z'; f.writeList();
     expect(keySource({ keys: f.keys })).toEqual([
       `Keys used: --keys ${f.keys} (updatedAt 2026-10-26T12:00:00Z).`,
-      `WARNING: keys from --keys ${f.keys} are not TerraTrust's published list.`,
+      `WARNING: keys from --keys ${f.keys} are not Diffseal's published list.`,
     ]);
   } finally { f.done(); }
 });

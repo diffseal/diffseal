@@ -160,7 +160,7 @@ export async function evidencePack(opts: EvidenceOptions): Promise<EvidenceResul
     }
     const approvalPercent = commits.length ? Math.round((100 * approved) / commits.length) : 0;
     const scope = {
-      schema: 'terratrust.evidence-pack/v1',
+      schema: 'diffseal.evidence-pack/v1',
       repository: path.basename(path.resolve(opts.repo)),
       head,
       since: new Date(since).toISOString(),

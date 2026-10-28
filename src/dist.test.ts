@@ -61,7 +61,7 @@ test('dist/cli.js bundles the offline key list and verifies without dependencies
     expect(built.status).toBe(0);
     expect(fs.readFileSync(path.join(out, 'cli.js')).equals(fs.readFileSync(path.resolve(import.meta.dirname, '../dist/cli.js')))).toBe(true);
     const pack = path.join(out, 'pack'); fs.mkdirSync(pack);
-    const metadata = '{"schema":"terratrust.evidence-pack/v1","since":"2026-10-01","until":"2027-01-01"}\n';
+    const metadata = '{"schema":"diffseal.evidence-pack/v1","since":"2026-10-01","until":"2027-01-01"}\n';
     fs.writeFileSync(path.join(pack, 'pack.json'), metadata);
     const { createHash } = require('node:crypto');
     fs.writeFileSync(path.join(pack, 'MANIFEST.sha256'), `${createHash('sha256').update(metadata).digest('hex')}  pack.json\n`);

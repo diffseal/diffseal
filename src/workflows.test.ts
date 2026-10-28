@@ -51,11 +51,14 @@ test('trusted upload workflow has no analysis inputs and uses base Git settings 
   const steps = w.jobs.upload.steps;
   expect(steps[0].uses).toMatch(/^actions\/checkout@[a-f0-9]{40}$/);
   expect(steps[0].with).toEqual({ 'fetch-depth': 0, 'persist-credentials': false });
-  expect(steps[2].uses).toBe('TerraTrust/terratrust@v0.4.1-beta');
+  // The trusted workflow runs the Action from its own release, never an older one.
+  const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  expect(steps[2].uses).toBe(`diffseal/diffseal@v${version}`);
   expect(steps[2].with).toMatchObject({ mode: 'pr', upload: 'true', advisory: 'true' });
   const text = readFileSync(new URL('../.github/workflows/upload.yml', import.meta.url), 'utf8');
   expect(text).toContain('github.event.pull_request.base.sha || github.sha');
-  expect(text).toContain("['show', `${rev}:.terratrust.json`]");
+  expect(text).toContain("['show', `${rev}:${file}`]");
+  expect(text).toContain("['.diffseal.json', '.terratrust.json']");
   expect(text).not.toContain('inputs.');
   expect(text).not.toContain('readFileSync');
 });
@@ -70,17 +73,17 @@ test('trusted settings ignore the working tree and reject output injection', asy
   };
   try {
     git('init', '-q');
-    fs.writeFileSync(path.join(dir, '.terratrust.json'), JSON.stringify({ replay: { rootsUnder: 'infra', policyFile: 'policy.json', moduleCache: 'cache' } }));
+    fs.writeFileSync(path.join(dir, '.diffseal.json'), JSON.stringify({ replay: { rootsUnder: 'infra', policyFile: 'policy.json', moduleCache: 'cache' } }));
     git('add', '.'); git('commit', '-qm', 'trusted settings'); const rev = git('rev-parse', 'HEAD');
-    fs.writeFileSync(path.join(dir, '.terratrust.json'), JSON.stringify({ replay: { rootsUnder: 'empty', policyFile: 'weakened.json' } }));
+    fs.writeFileSync(path.join(dir, '.diffseal.json'), JSON.stringify({ replay: { rootsUnder: 'empty', policyFile: 'weakened.json' } }));
     const run = workflow('upload').jobs.upload.steps[1].run!;
     const script = run.slice(run.indexOf("<<'NODE'\n") + "<<'NODE'\n".length, run.lastIndexOf('NODE'));
     const output = path.join(dir, 'outputs');
     const execute = (revision: string) => spawnSync('node', ['--input-type=module', '-e', script], { cwd: dir, encoding: 'utf8', env: { ...process.env, SETTINGS_REV: revision, GITHUB_OUTPUT: output } });
     expect(execute(rev).status).toBe(0);
     expect(fs.readFileSync(output, 'utf8')).toBe('roots-under=infra\npolicy=policy.json\nmodule-cache=cache\n');
-    fs.writeFileSync(path.join(dir, '.terratrust.json'), JSON.stringify({ replay: { rootsUnder: 'infra\npolicy=weakened' } }));
-    git('add', '.terratrust.json'); git('commit', '-qm', 'invalid settings');
+    fs.writeFileSync(path.join(dir, '.diffseal.json'), JSON.stringify({ replay: { rootsUnder: 'infra\npolicy=weakened' } }));
+    git('add', '.diffseal.json'); git('commit', '-qm', 'invalid settings');
     const invalid = execute(git('rev-parse', 'HEAD')); expect(invalid.status).toBe(1); expect(invalid.stderr).toContain('Invalid replay.rootsUnder');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

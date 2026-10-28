@@ -36,7 +36,7 @@ export function assertOutsideRepo(target: string, protectedRoots: string[]): voi
   for (const root of protectedRoots) {
     const r = realAncestor(root);
     if (t === r || t.startsWith(r + path.sep)) {
-      throw new Error(`Refusing to write ${target}: it is inside ${root}, which TerraTrust only reads.`);
+      throw new Error(`Refusing to write ${target}: it is inside ${root}, which Diffseal only reads.`);
     }
   }
 }

@@ -11,7 +11,7 @@
       "DORA and its RTS apply only to the financial entities in DORA Art. 2(1)(a)-(t). Show those columns only when the customer declares itself a financial entity. The RTS Title II articles cited here apply to entities outside DORA Art. 16(1); Title III (Arts. 28-41) is the simplified framework.",
       "Implementing Regulation (EU) 2024/2690 covers only DNS service providers, TLD name registries, cloud computing, data centre, CDN, managed service and managed security service providers, online marketplaces, search engines, social networking platforms and trust service providers (Art. 1). Energy is not covered.",
       "Sweden: cybersäkerhetslag (2025:1506) 2 kap. 3 § points 1-10 mirror NIS2 Art. 21(2)(a)-(j). For non-digital sectors such as energy, the detailed security-measure rules are MCFFS 2026:11 (in force 2026-10-01). The framework keys in this file are fixed, so Swedish references are listed in the research doc only.",
-      "secure-deletion is mapped as deliberate, irretrievable deletion. If the TerraTrust rule actually checks deletion protection (deletion_protection, recovery_window_in_days, skip_final_snapshot), use the backup mapping instead.",
+      "secure-deletion is mapped as deliberate, irretrievable deletion. If the Diffseal rule actually checks deletion protection (deletion_protection, recovery_window_in_days, skip_final_snapshot), use the backup mapping instead.",
       "data-residency entries are all supporting. A region restriction alone does not show compliance with GDPR Chapter V or DORA Art. 30(2)(b), which is a contract clause."
     ]
   },

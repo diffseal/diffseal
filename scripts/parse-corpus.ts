@@ -1,5 +1,5 @@
 /**
- * Parses every `.tf` file under a directory with the TerraTrust HCL parser and reports totals.
+ * Parses every `.tf` file under a directory with the Diffseal HCL parser and reports totals.
  *
  *   bun run scripts/parse-corpus.ts <dir>
  *

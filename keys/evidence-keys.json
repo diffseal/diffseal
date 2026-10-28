@@ -1,12 +1,12 @@
 {
-  "schema": "terratrust.keys/v1",
+  "schema": "diffseal.keys/v1",
   "updatedAt": "2026-10-28T00:00:00Z",
   "keys": [
     {
-      "keyId": "ac566f5ee309c7e6",
+      "keyId": "d6ceaf99517d3d38",
       "alg": "Ed25519",
-      "publicKey": "c4p6lZPsQgu6f/0IIYMK1uAAFvxVRLWB2KsrryScQBE=",
-      "validFrom": "2026-10-28T10:14:29Z",
+      "publicKey": "NFnZeLx1VeV95G3sSR+g9oooLnMlkaLA39LPvPWLlF4=",
+      "validFrom": "2026-10-28T20:07:42Z",
       "revokedAt": null,
       "compromised": false
     }

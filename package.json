@@ -1,11 +1,11 @@
 {
-  "name": "terratrust",
-  "version": "0.4.1-beta",
+  "name": "diffseal",
+  "version": "0.5.0-beta",
   "description": "Change review for Terraform on AWS: blast radius, policy evidence, and the IAM that application code needs",
   "type": "module",
   "bin": {
-    "terratrust": "./dist/cli.js",
-    "terratrust-mcp": "./dist/mcp.js"
+    "diffseal": "./dist/cli.js",
+    "diffseal-mcp": "./dist/mcp.js"
   },
   "scripts": {
     "build": "bun build src/cli.ts --target=node --minify-syntax --minify-whitespace --outdir dist && bun build src/mcp.ts --target=node --minify-syntax --minify-whitespace --outdir dist && bun build src/action.ts --target=node --minify-syntax --minify-whitespace --outdir dist",

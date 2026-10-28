@@ -5,7 +5,7 @@
       "subject": "Baseline",
       "files": {
         "infra/prod/main.tf": "terraform {\n backend \"s3\" {}\n}\nresource \"aws_db_instance\" \"db\" {\n identifier=\"orders\"\n instance_class=\"db.t3.micro\"\n storage_encrypted=true\n}\nresource \"aws_security_group\" \"web\" {\n name=\"web\"\n ingress {\n  from_port=22\n  to_port=22\n  protocol=\"tcp\"\n  cidr_blocks=[\"10.0.0.0/8\"]\n }\n}\n",
-        ".terratrust.json": "{\"exceptions\": [{\"rule\": \"network.open-ingress\", \"resource\": \"aws_security_group.web\", \"reason\": \"Approved public endpoint\", \"owner\": \"Platform\", \"expires\": \"2026-11-01\"}]}"
+        ".diffseal.json": "{\"exceptions\": [{\"rule\": \"network.open-ingress\", \"resource\": \"aws_security_group.web\", \"reason\": \"Approved public endpoint\", \"owner\": \"Platform\", \"expires\": \"2026-11-01\"}]}"
       }
     },
     {

@@ -20,7 +20,7 @@ function fakeGitHub(comments: Array<{ id: number; body: string; user: { login: s
 }
 
 const ctx = { api: 'https://api.github.com', repo: 'o/r', pr: 7, token: 't', author: 'github-actions[bot]' };
-const MARKER = '<!-- terratrust-report -->';
+const MARKER = '<!-- diffseal-report -->';
 
 describe('upsertComment', () => {
   test('ignores a marker comment written by someone else and posts its own', async () => {
@@ -35,6 +35,14 @@ describe('upsertComment', () => {
     const gh = fakeGitHub(many);
     await upsertComment('report', { ...ctx, fetchFn: gh.fetchFn });
     expect(gh.calls.filter((c) => c.method !== 'GET').map((c) => [c.method, c.url.endsWith('/comments/140')])).toEqual([['PATCH', true]]);
+  });
+
+  test('updates a report comment written before the rename to Diffseal, and rewrites its marker', async () => {
+    const gh = fakeGitHub([{ id: 5, body: '<!-- terratrust-report -->\nGate: BLOCK', user: { login: 'github-actions[bot]' } }]);
+    await upsertComment('report', { ...ctx, onlyUpdate: true, fetchFn: gh.fetchFn });
+    const patch = gh.calls.find((c) => c.method === 'PATCH');
+    expect(patch?.url.endsWith('/comments/5')).toBe(true);
+    expect(JSON.parse(patch!.body!).body).toStartWith(MARKER);
   });
 
   test('posts a new comment when updating fails', async () => {

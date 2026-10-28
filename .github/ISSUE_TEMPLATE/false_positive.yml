@@ -16,7 +16,7 @@ body:
     id: finding
     attributes:
       label: Finding text
-      description: Paste the finding and include the TerraTrust version or Action commit.
+      description: Paste the finding and include the Diffseal version or Action commit.
       render: text
     validations:
       required: true

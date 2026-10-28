@@ -5,7 +5,7 @@ import { REPLACE_CATALOG_SOURCE } from '../terraform/replaceCatalog.js';
 
 /** Contract v1, section 2. Only the scrubbed change record leaves CI. */
 export interface RunUpload {
-  schema: 'terratrust.run/v1';
+  schema: 'diffseal.run/v1';
   event: 'pull_request' | 'push';
   commit: string;
   pullRequest?: { number: number; headSha: string; baseSha: string };
@@ -42,7 +42,7 @@ export async function uploadRun(o: UploadOptions): Promise<RunUploadResponse | u
   if (o.mode !== 'pr') { log('Upload skipped: only pr mode can upload.'); return; }
   if (o.eventName !== 'pull_request' && o.eventName !== 'push') { log(`Upload skipped: event ${o.eventName ?? '(unknown)'} is not pull_request or push.`); return; }
   try {
-    const endpoint = uploadUrl(o.url ?? 'https://api.terratrust.dev');
+    const endpoint = uploadUrl(o.url ?? 'https://api.diffseal.com');
     const env = o.env ?? process.env;
     if (!env.ACTIONS_ID_TOKEN_REQUEST_URL || !env.ACTIONS_ID_TOKEN_REQUEST_TOKEN) {
       warn('Upload skipped: give the job `permissions: id-token: write`. Pull requests from forks cannot upload.'); return;
@@ -63,12 +63,12 @@ export async function uploadRun(o: UploadOptions): Promise<RunUploadResponse | u
     }
     const record = changeRecord({ commit: r.commit, base: r.base, roots: r.roots.map((root) => root.root), result: r.combined, appLinks: r.appLinks, engine: { version: VERSION, replaceCatalog: REPLACE_CATALOG_SOURCE }, diagnostics: r.roots.flatMap((root) => root.diagnostics) });
     record.notes = record.notes.filter((note) => !note.startsWith('No approvals were supplied'));
-    const body: RunUpload = { schema: 'terratrust.run/v1', event: o.eventName, commit: r.commit.sha, ...(pullRequest ? { pullRequest } : {}), action: { version: VERSION, mode: 'pr', advisory: o.advisory }, record };
+    const body: RunUpload = { schema: 'diffseal.run/v1', event: o.eventName, commit: r.commit.sha, ...(pullRequest ? { pullRequest } : {}), action: { version: VERSION, mode: 'pr', advisory: o.advisory }, record };
     const serialized = JSON.stringify(body);
     if (Buffer.byteLength(serialized) > 1024 * 1024) throw new Error('change record exceeds the 1 MiB upload limit');
     const f = o.fetchFn ?? fetch;
     const tokenUrl = new URL(env.ACTIONS_ID_TOKEN_REQUEST_URL);
-    tokenUrl.searchParams.set('audience', 'terratrust');
+    tokenUrl.searchParams.set('audience', 'diffseal');
     for (let attempt = 0; attempt < 2; attempt++) {
       // The service consumes each OIDC jti before idempotency, even if a response is lost.
       const tokenResponse = await f(tokenUrl.toString(), { headers: { authorization: `Bearer ${env.ACTIONS_ID_TOKEN_REQUEST_TOKEN}` }, signal: AbortSignal.timeout(15_000) });
@@ -88,7 +88,7 @@ export async function uploadRun(o: UploadOptions): Promise<RunUploadResponse | u
       if (!result || typeof result.id !== 'string' || !result.id || /[\r\n]/.test(result.id) || typeof result.pageUrl !== 'string' || (result.exceptionUrl !== undefined && typeof result.exceptionUrl !== 'string')) throw new Error('invalid upload response');
       if (result.stale === true) {
         delete result.exceptionUrl;
-        warn('TerraTrust stored this record as stale: the pull request or its base branch changed after this run started, so the TerraTrust evidence check was not updated. Push a commit to refresh it. Re-running this job does not help, because GitHub reuses the original event.');
+        warn('Diffseal stored this record as stale: the pull request or its base branch changed after this run started, so the Diffseal evidence check was not updated. Push a commit to refresh it. Re-running this job does not help, because GitHub reuses the original event.');
       } else delete result.stale;
       if (result.exceptionUrl) {
         try {

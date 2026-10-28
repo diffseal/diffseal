@@ -79,7 +79,7 @@ export function renderMarkdown(result: AnalysisResult, meta: ReportMeta): string
   const out: string[] = [];
   const attention = result.findings.filter((f) => !f.preExisting && !f.accepted && (f.status === 'FAIL' || f.status === 'WARN' || f.status === 'UNKNOWN'));
 
-  out.push(`## TerraTrust: ${GATE_LABEL[result.gate.result]}`);
+  out.push(`## Diffseal: ${GATE_LABEL[result.gate.result]}`);
   if (meta.title) out.push('', meta.title);
   const callout = renderCallout(result.gate, { blast: result.blast, findings: result.findings, links: meta.appLinks ?? [] });
   if (callout.length) out.push('', ...callout);
@@ -132,12 +132,12 @@ export function renderMarkdown(result: AnalysisResult, meta: ReportMeta): string
 /** "1 change", "2 changes". */
 export const plural = (n: number, word: string, many = word + 's') => `${n} ${n === 1 ? word : many}`;
 
-/** Explains what the footer leaves out: how TerraTrust reads Terraform, proven and likely, the controls. */
-export const HOW_IT_WORKS = 'https://github.com/TerraTrust/terratrust/blob/main/docs/guide/faq.md';
+/** Explains what the footer leaves out: how Diffseal reads Terraform, proven and likely, the controls. */
+export const HOW_IT_WORKS = 'https://github.com/diffseal/diffseal/blob/main/docs/guide/faq.md';
 
 /** One line of facts about this report. Every comment repeats it, so general explanations live behind the link. */
 export function footer(version: string | undefined, notes: string[]): string {
-  return `<sub>${[`TerraTrust${version ? ' ' + version : ''}.`, ...notes.map(cell), `[How it works](${HOW_IT_WORKS})`].join(' ')}</sub>`;
+  return `<sub>${[`Diffseal${version ? ' ' + version : ''}.`, ...notes.map(cell), `[How it works](${HOW_IT_WORKS})`].join(' ')}</sub>`;
 }
 
 const CALLOUT: Record<'review' | 'block', [kind: string, lead: string]> = {

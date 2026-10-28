@@ -1,6 +1,8 @@
 /** The single PR comment the Action keeps up to date. */
 
-export const MARKER = '<!-- terratrust-report -->';
+export const MARKER = '<!-- diffseal-report -->';
+/** The marker before the rename to Diffseal; a report written then is still found and updated. */
+const LEGACY_MARKER = '<!-- terratrust-report -->';
 
 export interface CommentTarget {
   api: string;
@@ -20,14 +22,14 @@ export async function upsertComment(body: string, t: CommentTarget): Promise<voi
     authorization: `Bearer ${t.token}`,
     accept: 'application/vnd.github+json',
     'content-type': 'application/json',
-    'user-agent': 'terratrust-action',
+    'user-agent': 'diffseal-action',
   };
   let existing: { id: number } | undefined;
   for (let page = 1; page <= 50 && !existing; page++) {
     const res = await f(`${t.api}/repos/${t.repo}/issues/${t.pr}/comments?per_page=100&page=${page}`, { headers });
     if (!res.ok) throw new Error(`listing PR comments failed: ${res.status}`);
     const batch = (await res.json()) as Array<{ id: number; body?: string; user?: { login?: string } }>;
-    existing = batch.find((c) => c.body?.includes(MARKER) && c.user?.login === t.author);
+    existing = batch.find((c) => (c.body?.includes(MARKER) || c.body?.includes(LEGACY_MARKER)) && c.user?.login === t.author);
     if (batch.length < 100) break;
   }
   const payload = JSON.stringify({ body: `${MARKER}\n${body}` });

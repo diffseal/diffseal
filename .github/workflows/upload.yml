@@ -1,4 +1,4 @@
-name: TerraTrust upload
+name: Diffseal upload
 on:
   workflow_call:
 permissions:
@@ -25,8 +25,9 @@ jobs:
           import { appendFileSync } from 'node:fs';
           const rev = process.env.SETTINGS_REV;
           if (!/^[a-f0-9]{40,64}$/.test(rev ?? '')) throw new Error('Missing settings commit');
-          const exists = execFileSync('git', ['ls-tree', '--name-only', rev, '--', '.terratrust.json'], { encoding: 'utf8' }).trim();
-          const config = exists ? JSON.parse(execFileSync('git', ['show', `${rev}:.terratrust.json`], { encoding: 'utf8' })) : {};
+          // .terratrust.json is the file's name before the rename to Diffseal.
+          const file = ['.diffseal.json', '.terratrust.json'].find((f) => execFileSync('git', ['ls-tree', '--name-only', rev, '--', f], { encoding: 'utf8' }).trim());
+          const config = file ? JSON.parse(execFileSync('git', ['show', `${rev}:${file}`], { encoding: 'utf8' })) : {};
           const settings = config.replay ?? {};
           if (typeof settings !== 'object' || Array.isArray(settings)) throw new Error('replay must be an object');
           for (const [key, output] of [['rootsUnder', 'roots-under'], ['policyFile', 'policy'], ['moduleCache', 'module-cache']]) {
@@ -37,7 +38,7 @@ jobs:
           NODE
       # Keep this release tag in sync with the reusable workflow's release.
       # Never run the Action from the customer's checkout.
-      - uses: TerraTrust/terratrust@v0.4.1-beta
+      - uses: diffseal/diffseal@v0.5.0-beta
         with:
           mode: pr
           upload: 'true'

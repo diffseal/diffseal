@@ -17,18 +17,18 @@ import { changeRecord, loadApprovals, manifest } from './evidence/changeRecord.j
 import { REPLACE_CATALOG_SOURCE } from './terraform/replaceCatalog.js';
 import { renderAppCheck } from './report/appCheck.js';
 
-const HELP = `TerraTrust ${VERSION}: change review for Terraform on AWS
+const HELP = `Diffseal ${VERSION}: change review for Terraform on AWS
 
 Usage:
-  terratrust review    --plan <plan.json> [--out <report.md>] [--json <result.json>] [--policy <policy.json>] [--strict]
-  terratrust replay    --repo <path> (--commit <rev> | --range <a..b> | --since <date>) [--limit <n>]
+  diffseal review    --plan <plan.json> [--out <report.md>] [--json <result.json>] [--policy <policy.json>] [--strict]
+  diffseal replay    --repo <path> (--commit <rev> | --range <a..b> | --since <date>) [--limit <n>]
                        [--base <rev>] [--roots-under <dir>] [--out-dir <dir>] [--policy <policy.json>] [--approvals <file.json>]
-  terratrust check-app --app <path> [--rev <rev> | --worktree] [--base <rev>] [--infra <path>] [--infra-rev <rev>]
+  diffseal check-app --app <path> [--rev <rev> | --worktree] [--base <rev>] [--infra <path>] [--infra-rev <rev>]
                        [--roots-under <dir>] [--role <name,...>] [--entry <dir,...>] [--out <report.md>] [--json <file>] [--strict]
-  terratrust evidence --since <date> --until <date> --repo <path> [--approvals <file.json>] [--out-dir <folder>]
-  terratrust verify <folder> [--keys <file>] [--account <login>] [--period <label>] [--allow-unsigned] [--json]
-  terratrust modules fetch [--repo <path>] [--cache <dir>]
-  terratrust demo
+  diffseal evidence --since <date> --until <date> --repo <path> [--approvals <file.json>] [--out-dir <folder>]
+  diffseal verify <folder> [--keys <file>] [--account <login>] [--period <label>] [--allow-unsigned] [--json]
+  diffseal modules fetch [--repo <path>] [--cache <dir>]
+  diffseal demo
 
 Commands:
   review     Review the output of \`terraform show -json <planfile>\`: blast radius, policy checks, fixed-cost changes.
@@ -37,7 +37,7 @@ Commands:
              one Markdown report per commit, a change record per commit in records/ (ISO 27001 A.8.32 evidence),
              summary.csv (the change population) and MANIFEST.sha256. --approvals adds who approved each change.
   check-app  Check the AWS calls in an application against the IAM roles that run it. The application repository
-             needs no Terraform: point --infra at the repository that has it, or add .terratrust.json.
+             needs no Terraform: point --infra at the repository that has it, or add .diffseal.json.
              With --base, only calls added since that commit are checked.
   evidence   Export an unsigned audit period, inclusive since and exclusive until in UTC.
              Replays every first-parent commit in that period. An incomplete export exits 1; historic gates do not fail export.

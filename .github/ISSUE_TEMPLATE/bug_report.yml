@@ -7,7 +7,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: TerraTrust version
+      label: Diffseal version
       description: Include the version, Action commit or source commit you used.
     validations:
       required: true

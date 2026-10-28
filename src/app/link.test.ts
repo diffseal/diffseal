@@ -9,7 +9,7 @@ test('task definitions in the app repository name the role and the env vars set 
       taskRoleArn: 'arn:aws:iam::123:role/system/ecs/gw-task',
       containerDefinitions: [{ name: 'gw', environment: [{ name: 'APP_ENV', value: 'prod' }], secrets: [{ name: 'DB_PASSWORD', valueFrom: 'arn' }] }],
     }),
-    '.terratrust.json': JSON.stringify({ infra: { repo: '../infra', rootsUnder: 'envs/prod' }, roles: ['extra-role'] }),
+    '.diffseal.json': JSON.stringify({ infra: { repo: '../infra', rootsUnder: 'envs/prod' }, roles: ['extra-role'] }),
   });
   const link = discoverLink(app);
   expect(link.roles).toEqual(['extra-role', 'arn:aws:iam::123:role/system/ecs/gw-task']);

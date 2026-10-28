@@ -13,7 +13,7 @@ const dist = path.join(root, 'dist');
 // The pilot vendors only the Action, whose bundle and parser assets are committed, so this works from a fresh clone.
 const files = fs.readdirSync(dist).filter((file) => file === 'action.js' || /\.wasm(?:-[^.]+\.gz)?$/.test(file));
 if (files.filter((file) => /\.wasm(?:-[^.]+\.gz)?$/.test(file)).length !== 8 || !files.includes('action.js')) throw Error('dist/ is incomplete; the package needs action.js and eight parser assets');
-const tool = path.join(destination, '.github/actions/terratrust');
+const tool = path.join(destination, '.github/actions/diffseal');
 fs.mkdirSync(path.join(tool, 'dist/licenses'), { recursive: true });
 for (const file of files) fs.copyFileSync(path.join(dist, file), path.join(tool, 'dist', file));
 for (const file of fs.readdirSync(path.join(root, 'src/app/grammars')).filter((file) => file.endsWith('.LICENSE') || file === 'manifest.json')) fs.copyFileSync(path.join(root, 'src/app/grammars', file), path.join(tool, 'dist/licenses', file));
@@ -21,14 +21,14 @@ for (const file of ['action.yml', 'LICENSE']) fs.copyFileSync(path.join(root, fi
 fs.writeFileSync(path.join(destination, 'VERSION'), VERSION + '\n');
 fs.writeFileSync(path.join(tool, 'VERSION'), VERSION + '\n');
 fs.mkdirSync(path.join(destination, '.github/workflows'), { recursive: true });
-fs.writeFileSync(path.join(destination, '.github/workflows/terratrust.yml'), `name: TerraTrust advisory pilot
+fs.writeFileSync(path.join(destination, '.github/workflows/diffseal.yml'), `name: Diffseal advisory pilot
 on:
   pull_request:
 permissions:
   contents: read
   pull-requests: write
 jobs:
-  terratrust:
+  diffseal:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -36,7 +36,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Review changes
-        uses: ./.github/actions/terratrust
+        uses: ./.github/actions/diffseal
         continue-on-error: true
         with:
           mode: pr

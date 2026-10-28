@@ -32,12 +32,12 @@ jobs:
         run: |
           mkdir -p dist/licenses
           cp src/app/grammars/*.LICENSE dist/licenses/
-          tar -czf "$RUNNER_TEMP/terratrust-$GITHUB_REF_NAME.tgz" dist LICENSE README.md
+          tar -czf "$RUNNER_TEMP/diffseal-$GITHUB_REF_NAME.tgz" dist LICENSE README.md
       - name: Publish release with tag notes
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           flags=()
           if [[ "$GITHUB_REF_NAME" == *-* ]]; then flags+=(--prerelease); fi
-          gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP/terratrust-$GITHUB_REF_NAME.tgz" \
+          gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP/diffseal-$GITHUB_REF_NAME.tgz" \
             --verify-tag --notes-from-tag --title "$GITHUB_REF_NAME" "${flags[@]}"

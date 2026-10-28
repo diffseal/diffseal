@@ -24,7 +24,7 @@ export interface Accepted {
 }
 
 export interface ChangeRecord {
-  schema: 'terratrust.change-record/v1';
+  schema: 'diffseal.change-record/v1';
   change: { commit: string; base: string; subject: string; author: string; date: string };
   approvals: Approvals | null;
   engine: { version: string; replaceCatalog: string; mode: 'static-replay' };
@@ -67,7 +67,7 @@ export function changeRecord(input: {
   const likely = result.changes.filter((c) => c.confidence !== 'proven').length;
   if (likely) notes.push(`${likely} change(s) depend on values known only after apply; their action is likely, not proven.`);
   return {
-    schema: 'terratrust.change-record/v1',
+    schema: 'diffseal.change-record/v1',
     change: { commit: commit.sha, base: input.base, subject: commit.subject, author: commit.author, date: commit.date },
     approvals: input.approvals ?? null,
     engine: { ...input.engine, mode: 'static-replay' },
@@ -110,7 +110,7 @@ export function manifest(files: Record<string, string>): string {
 
 /**
  * Approvals per commit from a JSON export: { "<sha>": { "pr": 42, "approvedBy": [{ "login": "a", "at": "..." }], "mergedBy": "b" } }.
- * Produce it read-only with the GitHub CLI; TerraTrust makes no network calls itself.
+ * Produce it read-only with the GitHub CLI; Diffseal makes no network calls itself.
  */
 export function loadApprovals(text: string): Map<string, Approvals> {
   const data = JSON.parse(text) as Record<string, Approvals>;

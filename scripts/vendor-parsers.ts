@@ -80,5 +80,5 @@ const packages = pins.map((pin) => {
 });
 fs.writeFileSync(
   path.join(dest, 'manifest.json'),
-  JSON.stringify({ format: 'terratrust.parser-assets/v1', packages }, null, 2) + '\n',
+  JSON.stringify({ format: 'diffseal.parser-assets/v1', packages }, null, 2) + '\n',
 );
