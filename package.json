@@ -1,6 +1,6 @@
 {
   "name": "terratrust",
-  "version": "0.3.1-beta",
+  "version": "0.4.0-beta",
   "description": "Change review for Terraform on AWS: blast radius, policy evidence, and the IAM that application code needs",
   "type": "module",
   "bin": {

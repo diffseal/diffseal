@@ -98,7 +98,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: TerraTrust/terratrust@v0.3.1-beta
+      - uses: TerraTrust/terratrust@v0.4.0-beta
         with:
           mode: pr
           roots-under: infra/envs/prod
@@ -132,7 +132,7 @@ jobs:
           terraform plan -input=false -out=tfplan
           terraform show -json tfplan > tfplan.json
 
-      - uses: TerraTrust/terratrust@v0.3.1-beta
+      - uses: TerraTrust/terratrust@v0.4.0-beta
         with:
           mode: plan
           plan-json: tfplan.json
@@ -167,7 +167,7 @@ jobs:
           token: ${{ secrets.INFRA_READ_TOKEN }}
           path: infra
 
-      - uses: TerraTrust/terratrust@v0.3.1-beta
+      - uses: TerraTrust/terratrust@v0.4.0-beta
         with:
           mode: app
           infra-path: infra

@@ -2,13 +2,15 @@
 
 ## Unreleased
 
+## 0.4.0-beta, 2026-10-28
+
 ### Added
 
 - Add structured `gate.items` for risks, controls, access, exceptions, coverage and policy changes. Keep each item aligned with its reason text.
 - Upload scrubbed Action change records with opt-in GitHub OIDC authentication. Retry network and server failures once, keep failures advisory and expose `upload-id`.
 - Link blocked pull request comments to exception requests on the upload host.
 - Add a trusted reusable upload workflow. Read `replay` settings from the base branch and run the release Action in advisory mode.
-- Verify signed and unsigned evidence packs offline with `terratrust verify`. Check file coverage, hashes, Ed25519 signatures, key validity and optional account and period scope. Bundle an empty public key list until signing keys are published.
+- Verify signed and unsigned evidence packs offline with `terratrust verify`. Check file coverage, hashes, Ed25519 signatures, key validity and optional account and period scope. Bundle TerraTrust's public key list with the first pack signing key, `ac566f5ee309c7e6`.
 - Document upload permissions, required check source settings, fork limits and offline verification.
 
 ## 0.3.1-beta, 2026-10-27
