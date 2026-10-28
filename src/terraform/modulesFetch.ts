@@ -8,7 +8,7 @@ import * as os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { loadModule, isConfigFile } from './config.js';
 import { MemorySource, FsSource } from './source.js';
-import { MODULE_LOCK, parseModuleLock, defaultModuleCache, moduleDigest, moduleObject, safeModulePath, type ModuleLock, type ModuleLockEntry } from './moduleCache.js';
+import { MODULE_LOCK, parseModuleLock, readModuleLock, defaultModuleCache, moduleDigest, moduleObject, safeModulePath, type ModuleLock, type ModuleLockEntry } from './moduleCache.js';
 function git(args: string[]): Buffer {
   const r = spawnSync('git', ['-c', 'core.hooksPath=/dev/null', '-c', 'credential.helper=', '-c', 'protocol.ext.allow=never', ...args], { env: { PATH: process.env.PATH, HOME: os.tmpdir(), GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_TERMINAL_PROMPT: '0' }, timeout: 120_000, maxBuffer: 100 * 1024 * 1024 });
   if (r.error || r.status) throw Error(`Module git failed: ${r.error?.message ?? r.stderr.toString().slice(0, 1000)}`);
@@ -104,7 +104,7 @@ async function resolveDownload(source: string, constraint: string, locked?: Modu
 }
 export async function fetchModules(opts: { repo?: string; cache?: string }): Promise<ModuleLock> {
   const repo = path.resolve(opts.repo ?? '.'), cache = path.resolve(opts.cache ?? defaultModuleCache());
-  const source = new FsSource(repo), oldLock = parseModuleLock(source.readFile(MODULE_LOCK)), queue: Array<{ source: string; constraint: string }> = [];
+  const source = new FsSource(repo), oldLock = parseModuleLock(readModuleLock(source)), queue: Array<{ source: string; constraint: string }> = [];
   for (const dir of new Set(source.allFiles().filter(isConfigFile).map((file) => path.posix.dirname(file)))) {
     for (const call of loadModule(source, dir)?.moduleCalls.values() ?? []) {
       if (!call.source) throw Error(`Fetch requires a literal module source in ${call.file}`);

@@ -6,6 +6,12 @@ import * as os from 'node:os';
 import { createHash } from 'node:crypto';
 import type { FileSource } from './source.js';
 export const MODULE_LOCK = 'diffseal.modules.lock.json';
+/** The lock's name and format before the rename to Diffseal. Still read, so older commits keep their modules. */
+export const LEGACY_MODULE_LOCK = 'terratrust.modules.lock.json';
+const LEGACY_LOCK_FORMAT = 'terratrust.modules/v1';
+export function readModuleLock(source: Pick<FileSource, 'readFile'>): string | undefined {
+  return source.readFile(MODULE_LOCK) ?? source.readFile(LEGACY_MODULE_LOCK) ?? undefined;
+}
 export const MODULE_PREFIX = '__diffseal_modules/';
 export const MAX_MODULE_BYTES = 100 * 1024 * 1024;
 export interface ModuleLockEntry {
@@ -28,6 +34,7 @@ export function moduleObject(files: Record<string, string>): Buffer {
 }
 export function parseModuleLock(text: string | undefined): ModuleLock {
   const lock: ModuleLock = text ? JSON.parse(text) : { format: 'diffseal.modules/v1', modules: [] };
+  if ((lock.format as string) === LEGACY_LOCK_FORMAT) lock.format = 'diffseal.modules/v1';
   if (lock.format !== 'diffseal.modules/v1' || !Array.isArray(lock.modules)) throw Error('Invalid module lock format');
   const seen = new Set<string>();
   for (const entry of lock.modules) {
@@ -43,7 +50,7 @@ export class OfflineModules {
   private readonly sizes = new Map<string, number>();
   private bytes = 0;
   constructor(source: FileSource, private readonly cache: string) {
-    this.lock = parseModuleLock(source.readFile(MODULE_LOCK));
+    this.lock = parseModuleLock(readModuleLock(source));
   }
   resolve(source: string, constraint = ''): string | undefined {
     const entry = this.lock.modules.find((entry) => entry.source === source && entry.constraint === constraint);

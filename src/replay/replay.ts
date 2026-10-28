@@ -1,4 +1,4 @@
-import { defaultModuleCache, MODULE_LOCK } from '../terraform/moduleCache.js';
+import { defaultModuleCache, readModuleLock } from '../terraform/moduleCache.js';
 import { deploymentIndex } from '../app/deployments.js';
 import * as path from 'node:path';
 import { analyze } from '../analysis/analyze.js';
@@ -64,7 +64,7 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   const headSource = new GitSource(opts.repo, commit.sha, opts.moduleCache ?? defaultModuleCache());
   const baseSource = new GitSource(opts.repo, baseRev, opts.moduleCache ?? defaultModuleCache());
   const changed = changedPaths(opts.repo, baseSource.sha, headSource.sha);
-  const moduleLockChanged = headSource.readFile(MODULE_LOCK) !== baseSource.readFile(MODULE_LOCK);
+  const moduleLockChanged = readModuleLock(headSource) !== readModuleLock(baseSource);
   const tfChanged = changed.filter((c) => TF_FILE.test(c.path) || (c.oldPath && TF_FILE.test(c.oldPath)));
   const changedDirs = new Set(tfChanged.flatMap((c) => [c.path, c.oldPath].filter((p): p is string => Boolean(p)).map((p) => path.posix.dirname(p))));
 
