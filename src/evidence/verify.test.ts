@@ -105,7 +105,7 @@ test('terratrust evidence output verifies with allow-unsigned and both schemas a
 });
 
 test('key provenance identifies only the list actually used', () => {
-  expect(keySource({})).toEqual(['Keys: bundled with this version (updatedAt 2026-10-27T00:00:00Z). Current list: https://terratrust.dev/.well-known/terratrust-keys.json']);
+  expect(keySource({})).toEqual(['Keys: bundled with this version (updatedAt 2026-10-28T00:00:00Z). Current list: https://terratrust.dev/.well-known/terratrust-keys.json']);
   const f = fixture();
   try {
     f.list.updatedAt = '2026-10-26T12:00:00Z'; f.writeList();

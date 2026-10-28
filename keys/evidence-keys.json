@@ -1,5 +1,14 @@
 {
   "schema": "terratrust.keys/v1",
-  "updatedAt": "2026-10-27T00:00:00Z",
-  "keys": []
+  "updatedAt": "2026-10-28T00:00:00Z",
+  "keys": [
+    {
+      "keyId": "ac566f5ee309c7e6",
+      "alg": "Ed25519",
+      "publicKey": "c4p6lZPsQgu6f/0IIYMK1uAAFvxVRLWB2KsrryScQBE=",
+      "validFrom": "2026-10-28T10:14:29Z",
+      "revokedAt": null,
+      "compromised": false
+    }
+  ]
 }
