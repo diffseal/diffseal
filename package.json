@@ -8,7 +8,7 @@
     "diffseal-mcp": "./dist/mcp.js"
   },
   "scripts": {
-    "build": "bun build src/cli.ts --target=node --minify-syntax --minify-whitespace --outdir dist && bun build src/mcp.ts --target=node --minify-syntax --minify-whitespace --outdir dist && bun build src/action.ts --target=node --minify-syntax --minify-whitespace --outdir dist",
+    "build": "bun scripts/check-bun-version.ts && bun build src/cli.ts --target=node --minify-syntax --minify-whitespace --outdir dist && bun build src/mcp.ts --target=node --minify-syntax --minify-whitespace --outdir dist && bun build src/action.ts --target=node --minify-syntax --minify-whitespace --outdir dist",
     "dev": "bun run src/cli.ts",
     "demo": "bun run src/cli.ts demo",
     "typecheck": "tsc --noEmit -p .",
