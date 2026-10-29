@@ -14,8 +14,9 @@ test('the check-app report names the infrastructure repository without its local
       const run = spawnSync('git', ['-C', dir, ...args], { encoding: 'utf8' });
       if (run.status) throw new Error(run.stderr);
     }
-    const report = renderAppCheck(await checkApp({ app: dir, rev: 'HEAD' }));
+    const report = renderAppCheck(await checkApp({ app: dir, rev: 'HEAD', roles: ['absent-role'] }));
     expect(report).toContain(`Infrastructure: ${path.basename(dir)}@`);
+    expect(report).toContain(`Role absent-role is not defined in 1 Terraform root(s) of ${path.basename(dir)}.`);
     expect(report).not.toContain(path.dirname(dir));
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
