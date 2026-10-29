@@ -17,7 +17,7 @@ test('CI checks pull requests and main with read-only permissions and a frozen t
   expect(ci.permissions).toEqual({ contents: 'read' });
   const steps = ci.jobs.check.steps;
   for (const step of steps.filter((s) => s.uses)) expect(step.uses).toMatch(/@[a-f0-9]{40}$/);
-  expect(steps.find((s) => s.uses?.startsWith('oven-sh/setup-bun@'))?.with?.['bun-version']).toBe('1.3.14');
+  expect(steps.find((s) => s.uses?.startsWith('oven-sh/setup-bun@'))?.with?.['bun-version']).toBe('1.4.4');
   const runs = steps.map((s) => s.run ?? '').join('\n');
   for (const command of [
     'bun install --frozen-lockfile',
@@ -35,7 +35,7 @@ test('tag releases validate the build before publishing with tag notes', () => {
   expect(release.permissions).toEqual({ contents: 'write' });
   const steps = release.jobs.release.steps;
   for (const step of steps.filter((s) => s.uses)) expect(step.uses).toMatch(/@[a-f0-9]{40}$/);
-  expect(steps.find((s) => s.uses?.startsWith('oven-sh/setup-bun@'))?.with?.['bun-version']).toBe('1.3.14');
+  expect(steps.find((s) => s.uses?.startsWith('oven-sh/setup-bun@'))?.with?.['bun-version']).toBe('1.4.4');
   const runs = steps.map((s) => s.run ?? '').join('\n');
   expect(runs.indexOf('bun test')).toBeLessThan(runs.indexOf('gh release create'));
   expect(runs).toContain('git diff --exit-code -- dist/');

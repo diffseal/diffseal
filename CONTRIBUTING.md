@@ -6,6 +6,6 @@ Code contributions require a contributor license agreement. That agreement is no
 
 ## Releasing
 
-Use Bun 1.3.14. Update the version in `package.json`, run `bun install --frozen-lockfile`, `bun run typecheck`, `bun run build` and `bun test`, then commit the source and generated `dist/action.js` and WASM files. CI checks pull requests and pushes to main, including whether the committed bundle matches the source.
+Use Bun 1.4.4, the version CI pins. Update the version in `package.json`, run `bun install --frozen-lockfile`, `bun run typecheck`, `bun run build` and `bun test`, then commit the source and generated `dist/action.js` and WASM files. CI checks pull requests and pushes to main, including whether the committed bundle matches the source.
 
 Create an annotated `v*` tag on the reviewed commit with the release notes in its message, for example `git tag -a v0.2.1 -F release-notes.md`. Push that tag when ready to publish. The release workflow verifies the tagged build, runs the tests and publishes a GitHub release using the tag message. It attaches an archive containing the CLI, MCP server, Action, offline grammars and licence files. Tags with a hyphen are marked as prereleases. Lightweight tags are rejected.
