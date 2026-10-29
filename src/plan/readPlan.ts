@@ -13,6 +13,7 @@ import { redact } from '../hcl/eval.js';
 export interface PlanJson {
   format_version?: string;
   terraform_version?: string;
+  variables?: Record<string, { value: unknown }>;
   resource_changes?: PlanResourceChange[];
   prior_state?: { values?: { root_module?: StateModule } };
   configuration?: { root_module?: ConfigModule };
@@ -45,7 +46,12 @@ interface StateModule {
 
 interface ConfigModule {
   resources?: Array<{ address: string; provider_config_key?: string; expressions?: Record<string, unknown> }>;
-  module_calls?: Record<string, { module?: ConfigModule }>;
+  module_calls?: Record<string, { expressions?: Record<string, unknown>; module?: ConfigModule }>;
+}
+
+interface ConfiguredExpressions {
+  expressions: Record<string, unknown>;
+  nullReferences: Set<string>;
 }
 
 export function readPlan(input: unknown): ResourceChange[] {
@@ -59,8 +65,9 @@ export function readPlan(input: unknown): ResourceChange[] {
 
   const providers = new Map<string, string>();
   const configuredPaths = new Map<string, string[]>();
-  const configurations = new Map<string, Record<string, unknown>>();
-  const references = collectReferences(plan.configuration?.root_module, providers, configuredPaths, configurations);
+  const configurations = new Map<string, ConfiguredExpressions>();
+  const nullReferences = new Set(Object.entries(plan.variables ?? {}).filter(([, v]) => v.value === null).map(([name]) => `var.${name}`));
+  const references = collectReferences(plan.configuration?.root_module, providers, configuredPaths, configurations, nullReferences);
   const changes: ResourceChange[] = [];
   const seen = new Set<string>();
 
@@ -73,6 +80,7 @@ export function readPlan(input: unknown): ResourceChange[] {
     const before = rc.change.before === null || rc.change.before === undefined
       ? null
       : (overlay(rc.change.before, rc.change.before_sensitive, redactMarker) as Attrs);
+    const config = configurations.get(configAddress(rc.address));
 
     changes.push({
       address: rc.address,
@@ -89,7 +97,7 @@ export function readPlan(input: unknown): ResourceChange[] {
       actionReason: rc.action_reason,
       references: references.get(configAddress(rc.address)) ?? {},
       configuredPaths: configuredPaths.get(configAddress(rc.address)) ?? [],
-      configuredAfter: overlay(configuredValues(after ?? {}, configurations.get(configAddress(rc.address)) ?? {}), rc.change.after_sensitive, redactMarker) as Attrs,
+      configuredAfter: overlay(configuredValues(after ?? {}, config?.expressions ?? {}, config?.nullReferences ?? new Set()), rc.change.after_sensitive, redactMarker) as Attrs,
       previousAddress: rc.previous_address,
       confidence: 'proven',
     });
@@ -119,15 +127,22 @@ export function readPlan(input: unknown): ResourceChange[] {
 }
 
 /** Resolve configured expressions from literals or planned expression values, never computed-only fields. */
-function configuredValues(value: unknown, expression: unknown): unknown {
+function configuredValues(value: unknown, expression: unknown, nullReferences: Set<string>): unknown {
   if (!expression || typeof expression !== 'object') return undefined;
-  if ('constant_value' in expression) return expression.constant_value;
-  if ('references' in expression) return value;
+  if ('constant_value' in expression) return expression.constant_value ?? undefined;
+  // Plan expressions expose references, not their operators. A nullable input may have been
+  // omitted and replaced by the provider's value, so that planned value cannot attest configuration.
+  if ('references' in expression) return referencesNull(expression, nullReferences) ? undefined : value ?? undefined;
   if (isUnknown(value) || value instanceof Redacted) return value;
-  if (Array.isArray(expression)) return expression.map((expr, i) => configuredValues(Array.isArray(value) ? value[i] : undefined, expr));
+  if (Array.isArray(expression)) return expression.map((expr, i) => configuredValues(Array.isArray(value) ? value[i] : undefined, expr, nullReferences));
   return Object.fromEntries(Object.entries(expression).map(([key, expr]) => [key,
-    configuredValues(value && typeof value === 'object' ? (value as Attrs)[key] : undefined, expr),
+    configuredValues(value && typeof value === 'object' ? (value as Attrs)[key] : undefined, expr, nullReferences),
   ]));
+}
+
+function referencesNull(expression: object, nullReferences: Set<string>): boolean {
+  return 'references' in expression && Array.isArray(expression.references)
+    && expression.references.some((ref) => nullReferences.has(ref));
 }
 
 function mapAction(actions: string[], rc: PlanResourceChange): Action {
@@ -176,13 +191,13 @@ function* walkState(mod: StateModule | undefined): Generator<NonNullable<StateMo
 }
 
 /** configAddress -> attribute -> referenced resource addresses (module-qualified). */
-function collectReferences(root: ConfigModule | undefined, providers: Map<string, string>, configuredPaths: Map<string, string[]>, configurations: Map<string, Record<string, unknown>>): Map<string, Record<string, string[]>> {
+function collectReferences(root: ConfigModule | undefined, providers: Map<string, string>, configuredPaths: Map<string, string[]>, configurations: Map<string, ConfiguredExpressions>, nullReferences: Set<string>): Map<string, Record<string, string[]>> {
   const out = new Map<string, Record<string, string[]>>();
-  const visit = (mod: ConfigModule | undefined, prefix: string) => {
+  const visit = (mod: ConfigModule | undefined, prefix: string, nullReferences: Set<string>) => {
     if (!mod) return;
     for (const res of mod.resources ?? []) {
       if (res.provider_config_key) providers.set(prefix + res.address, res.provider_config_key);
-      configurations.set(prefix + res.address, res.expressions ?? {});
+      configurations.set(prefix + res.address, { expressions: res.expressions ?? {}, nullReferences });
       const paths: string[] = [];
       const visitLiteral = (value: unknown, path: string) => {
         if (value == null) return;
@@ -208,10 +223,12 @@ function collectReferences(root: ConfigModule | undefined, providers: Map<string
       out.set(prefix + res.address, byAttr);
     }
     for (const [name, call] of Object.entries(mod.module_calls ?? {})) {
-      visit(call.module, `${prefix}module.${name}.`);
+      const nullInputs = Object.entries(call.expressions ?? {}).filter(([, expr]) => expr && typeof expr === 'object'
+        && (('constant_value' in expr && expr.constant_value === null) || referencesNull(expr, nullReferences)));
+      visit(call.module, `${prefix}module.${name}.`, new Set(nullInputs.map(([name]) => `var.${name}`)));
     }
   };
-  visit(root, '');
+  visit(root, '', nullReferences);
   return out;
 }
 

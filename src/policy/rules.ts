@@ -184,9 +184,10 @@ const s3BucketPolicy: Rule = {
 
 // ---------------------------------------------------------------- Encryption configuration
 
-/** Shared encryption rule: explicit on passes; explicit off warns unless creation is enforced. */
+/** Shared encryption rule: explicit on passes; off warns only when enforcement/inheritance cannot override it. */
 function encryptionDecision(value: unknown, attr: string, description: string, options: {
   enforcedAtCreation?: boolean;
+  mayInheritEncryption?: boolean;
   passDetail?: string;
   warnDetail?: string;
   unknownDetail?: string;
@@ -195,7 +196,7 @@ function encryptionDecision(value: unknown, attr: string, description: string, o
   // ElastiCache's at_rest_encryption_enabled also accepts the string form in provider plans.
   const enabled = value === 'true' ? true : value === 'false' ? false : value;
   if (enabled === true) return { status: 'PASS', detail: options.passDetail ?? `${description} configured (${attr} = true)` };
-  if (enabled === false && !options.enforcedAtCreation) return {
+  if (enabled === false && !options.enforcedAtCreation && !options.mayInheritEncryption) return {
     status: 'WARN', detail: options.warnDetail ?? `${description} explicitly disabled (${attr}); effective AWS settings are not verified`,
     remediation: options.remediation ?? `Set ${attr} = true.`,
   };
@@ -230,8 +231,18 @@ const ebsEncryption: Rule = {
       }
       return d.enabled === true || d.enabled === 'true';
     });
+    const snapshots = ctx.all.filter((r) => ['aws_ebs_snapshot', 'aws_ebs_snapshot_copy', 'aws_ebs_snapshot_import'].includes(r.type)
+      && ctx.referrers(r, 'aws_ebs_volume', 'snapshot_id', ['id']).includes(res));
+    // A new snapshot's encrypted=false argument can itself be overridden by inheritance.
+    // Only observed snapshot metadata establishes that the source is unencrypted.
+    const unencryptedSnapshot = snapshots.length === 1 && (snapshots[0].mode === 'data'
+      || (snapshots[0].configuredPaths !== undefined && (ctx.side === 'before' || snapshots[0].action === 'no-op')))
+      && ctx.values(snapshots[0]).encrypted === false;
+    const mayInheritEncryption = isSet(v.snapshot_id) && !unencryptedSnapshot;
     return encryptionDecision(v.encrypted, 'encrypted', 'EBS volume encryption', {
       enforcedAtCreation: ctx.side === 'after' && (res.action === 'create' || res.action === 'replace') && enabled,
+      mayInheritEncryption,
+      unknownDetail: mayInheritEncryption ? 'EBS volume may inherit encryption from its snapshot; encrypted = false does not establish encryption disablement' : undefined,
     });
   },
 };
@@ -753,6 +764,7 @@ const dynamoEncryption: Rule = {
   types: ['aws_dynamodb_table'],
   evaluate: (v, res, ctx) => {
     const sse = block(v.server_side_encryption);
+    if (sse?.enabled === false) return cmkVerdict(ctx, 'aws-owned', 'Encrypted with an AWS-owned key');
     const result = encryptionDecision(sse?.enabled, 'server_side_encryption.enabled', 'DynamoDB KMS encryption');
     if (result.status !== 'PASS') return result;
     const kind = keyKind(sse?.kms_key_arn, res, 'server_side_encryption', ctx);
@@ -816,7 +828,14 @@ const rdsEncryption: Rule = {
   title: 'RDS storage encryption',
   controls: ['ISO27001:A.8.24'],
   types: ['aws_db_instance', 'aws_rds_cluster'],
-  evaluate: (v) => {
+  evaluate: (v, res) => {
+    // Cross-region replicas name their source by ARN. The provider ignores storage_encrypted;
+    // a destination key does not establish the source database's encryption configuration.
+    if (res.type === 'aws_db_instance' && typeof v.replicate_source_db === 'string' && v.replicate_source_db.startsWith('arn:')) {
+      return encryptionDecision(undefined, 'storage_encrypted', 'RDS storage encryption', {
+        unknownDetail: 'RDS replica source is an ARN; storage_encrypted is ignored for cross-region replicas and inherited encryption is not established',
+      });
+    }
     return encryptionDecision(v.storage_encrypted, 'storage_encrypted', 'RDS storage encryption', {
       passDetail: 'Storage encrypted',
       remediation: 'Set storage_encrypted = true (requires a new instance or snapshot restore for existing databases).',

@@ -41,6 +41,20 @@ test('every encryption flag requires explicit configuration for PASS or WARN', (
   }
 });
 
+test('RDS cross-region replicas ignore storage_encrypted even with a destination KMS key', () => {
+  const replica = { replicate_source_db: 'arn:aws:rds:us-east-1:123456789012:db:source' };
+  check('rds.encryption', 'aws_db_instance', 'CC6.1', [
+    ['off_with_key', { ...replica, storage_encrypted: false, kms_key_id: 'arn:aws:kms:us-west-2:123456789012:key/destination' }, 'UNKNOWN'],
+    ['off', { ...replica, storage_encrypted: false }, 'UNKNOWN'],
+    ['on', { ...replica, storage_encrypted: true }, 'UNKNOWN'],
+    ['omitted', replica, 'UNKNOWN'],
+    ['same_region_identifier', { replicate_source_db: 'source', storage_encrypted: false }, 'WARN'],
+    ['standalone_off', { storage_encrypted: false }, 'WARN'],
+    ['standalone_on', { storage_encrypted: true }, 'PASS'],
+  ]);
+  check('rds.encryption', 'aws_rds_cluster', 'CC6.1', [['off', { storage_encrypted: false }, 'WARN']]);
+});
+
 test('encryption checks never attest inferred service or nested-block defaults', () => {
   for (const [rule, type, attrs] of [
     ['s3.encryption', 'aws_s3_bucket', {}],
@@ -56,6 +70,32 @@ test('encryption checks never attest inferred service or nested-block defaults',
     expect(evaluatePolicies(readPlan(plan([rc(`${type}.example`, type, ['create'], attrs)])))
       .find((f) => f.ruleId === rule)?.status).toBe('UNKNOWN');
   }
+});
+
+test('DynamoDB explicit false selects an AWS-owned key and preserves the customer-managed-key policy', () => {
+  const changes = readPlan(plan([
+    rc('aws_dynamodb_table.aws_owned', 'aws_dynamodb_table', ['create'], { server_side_encryption: [{ enabled: false }] }),
+    rc('aws_dynamodb_table.aws_owned_with_key', 'aws_dynamodb_table', ['create'], { server_side_encryption: [{ enabled: 'false', kms_key_arn: 'arn:aws:kms:eu-west-1:123456789012:key/customer' }] }),
+    rc('aws_dynamodb_table.aws_managed', 'aws_dynamodb_table', ['create'], { server_side_encryption: [{ enabled: true }] }),
+    rc('aws_dynamodb_table.customer_managed', 'aws_dynamodb_table', ['create'], { server_side_encryption: [{ enabled: true, kms_key_arn: 'arn:aws:kms:eu-west-1:123456789012:key/customer' }] }),
+    rc('aws_dynamodb_table.omitted', 'aws_dynamodb_table', ['create'], {}),
+    rc('aws_dynamodb_table.null', 'aws_dynamodb_table', ['create'], { server_side_encryption: [{ enabled: null }] }),
+  ]));
+  const findings = evaluatePolicies(changes).filter((f) => f.ruleId === 'dynamodb.encryption');
+  expect(findings.map((f) => [f.resource, f.status])).toEqual([
+    ['aws_dynamodb_table.aws_owned', 'PASS'], ['aws_dynamodb_table.aws_owned_with_key', 'PASS'],
+    ['aws_dynamodb_table.aws_managed', 'PASS'], ['aws_dynamodb_table.customer_managed', 'PASS'],
+    ['aws_dynamodb_table.omitted', 'UNKNOWN'], ['aws_dynamodb_table.null', 'UNKNOWN'],
+  ]);
+  const strict = evaluatePolicies(changes, { requireCustomerManagedKeys: true }).filter((f) => f.ruleId === 'dynamodb.encryption');
+  expect(strict.map((f) => [f.resource, f.status])).toEqual([
+    ['aws_dynamodb_table.aws_owned', 'WARN'], ['aws_dynamodb_table.aws_owned_with_key', 'WARN'],
+    ['aws_dynamodb_table.aws_managed', 'WARN'], ['aws_dynamodb_table.customer_managed', 'PASS'],
+    ['aws_dynamodb_table.omitted', 'UNKNOWN'], ['aws_dynamodb_table.null', 'UNKNOWN'],
+  ]);
+  expect(strict[0].detail).toContain('AWS-owned key');
+  expect(strict[0].detail).toContain('policy requires a customer managed KMS key');
+  expect(strict[0].detail).not.toContain('disabled');
 });
 
 test('unrecognized KMS key values and omitted redirect protocols remain UNKNOWN', () => {
@@ -105,6 +145,76 @@ test('literal nulls stay omitted and explicit flags take precedence over provide
       ['aws_ebs_volume.omitted', 'UNKNOWN'], ['aws_ebs_volume.disabled', 'WARN'],
       ['aws_elasticache_replication_group.primary', 'WARN'], ['aws_elasticache_replication_group.primary', 'WARN'],
       ['aws_opensearch_domain.omitted', 'UNKNOWN'],
+    ]);
+});
+
+test('nullable expressions do not turn planned encryption defaults into configured evidence', () => {
+  const resources = [
+    { address: 'aws_efs_file_system.existing', expressions: { encrypted: { references: ['var.encrypt'] } } },
+    { address: 'aws_db_instance.example', expressions: { storage_encrypted: { references: ['var.encrypt'] } } },
+  ];
+  const changes = readPlan(plan([
+    rc(resources[0].address, 'aws_efs_file_system', ['update'], { encrypted: true }, { before: { encrypted: true } }),
+    rc(resources[1].address, 'aws_db_instance', ['create'], { storage_encrypted: false }),
+  ], [], {
+    variables: { encrypt: { value: null } },
+    configuration: { root_module: { resources } },
+  }));
+  expect(evaluatePolicies(changes).filter((f) => ['efs.encryption', 'rds.encryption'].includes(f.ruleId))
+    .map((f) => [f.resource, f.status])).toEqual([
+      ['aws_efs_file_system.existing', 'UNKNOWN'], ['aws_db_instance.example', 'UNKNOWN'],
+    ]);
+});
+
+test('null expression handling is shared across nested flags and module inputs without hiding explicit key choices', () => {
+  const changes = readPlan(plan([
+    rc('aws_opensearch_domain.example', 'aws_opensearch_domain', ['create'], { encrypt_at_rest: [{ enabled: true }] }),
+    rc('aws_sqs_queue.example', 'aws_sqs_queue', ['create'], { sqs_managed_sse_enabled: false, kms_master_key_id: 'alias/customer' }),
+    rc('aws_db_instance.null', 'aws_db_instance', ['create'], { storage_encrypted: null }),
+    rc('module.omitted.aws_efs_file_system.example', 'aws_efs_file_system', ['create'], { encrypted: true }),
+    rc('module.explicit.aws_efs_file_system.example', 'aws_efs_file_system', ['create'], { encrypted: false }),
+  ], [], {
+    variables: { encrypt: { value: null } },
+    configuration: { root_module: {
+      resources: [
+        { address: 'aws_opensearch_domain.example', expressions: { encrypt_at_rest: [{ enabled: { references: ['var.encrypt'] } }] } },
+        { address: 'aws_sqs_queue.example', expressions: { sqs_managed_sse_enabled: { references: ['var.encrypt'] }, kms_master_key_id: { constant_value: 'alias/customer' } } },
+        { address: 'aws_db_instance.null', expressions: { storage_encrypted: { references: ['var.other'] } } },
+      ],
+      module_calls: {
+        omitted: { expressions: { encrypt: { references: ['var.encrypt'] } }, module: { resources: [
+          { address: 'aws_efs_file_system.example', expressions: { encrypted: { references: ['var.encrypt'] } } },
+        ] } },
+        explicit: { expressions: { encrypt: { constant_value: false } }, module: { resources: [
+          { address: 'aws_efs_file_system.example', expressions: { encrypted: { references: ['var.encrypt'] } } },
+        ] } },
+      },
+    } },
+  }));
+  expect(changes[2].configuredAfter?.storage_encrypted).toBeUndefined();
+  expect(evaluatePolicies(changes).filter((f) => ['opensearch.encryption', 'sqs.encryption', 'rds.encryption', 'efs.encryption'].includes(f.ruleId))
+    .map((f) => [f.resource, f.status])).toEqual([
+      ['aws_opensearch_domain.example', 'UNKNOWN'], ['aws_sqs_queue.example', 'PASS'], ['aws_db_instance.null', 'UNKNOWN'],
+      ['module.omitted.aws_efs_file_system.example', 'UNKNOWN'], ['module.explicit.aws_efs_file_system.example', 'WARN'],
+    ]);
+});
+
+test('encryption omissions and snapshot inheritance agree when evaluating HCL directly', () => {
+  const source = new MemorySource({ 'main.tf': `
+    variable "encrypt" { default = null }
+    resource "aws_efs_file_system" "example" { encrypted = var.encrypt }
+    resource "aws_db_instance" "example" { storage_encrypted = var.encrypt }
+    resource "aws_ebs_snapshot_copy" "example" { encrypted = true }
+    resource "aws_ebs_volume" "example" {
+      encrypted = false
+      snapshot_id = aws_ebs_snapshot_copy.example.id
+    }
+  ` });
+  const evaluated = evaluateRoot(source, '.');
+  expect(evaluated.diagnostics).toEqual([]);
+  expect(evaluatePolicies(compareEvaluations(undefined, evaluated)).filter((f) => ['efs.encryption', 'rds.encryption', 'ebs.encryption'].includes(f.ruleId))
+    .map((f) => [f.resource, f.status])).toEqual([
+      ['aws_efs_file_system.example', 'UNKNOWN'], ['aws_db_instance.example', 'UNKNOWN'], ['aws_ebs_volume.example', 'UNKNOWN'],
     ]);
 });
 
@@ -238,6 +348,43 @@ test('EBS volumes warn only about explicitly disabled encryption and leave omitt
     ['unknown', { encrypted: new Unknown('computed') }, 'UNKNOWN'],
     ['redacted', { encrypted: new Redacted() }, 'UNKNOWN'],
   ]);
+});
+
+test('EBS explicit false cannot disable snapshot encryption unless the snapshot is known unencrypted', () => {
+  const changes = readPlan(plan([
+    rc('aws_ebs_snapshot_copy.encrypted', 'aws_ebs_snapshot_copy', ['create'], { id: 'snap-encrypted', encrypted: true }),
+    rc('data.aws_ebs_snapshot.unencrypted', 'aws_ebs_snapshot', ['read'], { id: 'snap-unencrypted', encrypted: false }, { mode: 'data' }),
+    rc('aws_ebs_volume.encrypted_snapshot', 'aws_ebs_volume', ['create'], { encrypted: false, snapshot_id: new Unknown('snapshot id') }),
+    rc('aws_ebs_volume.external_snapshot', 'aws_ebs_volume', ['create'], { encrypted: false, snapshot_id: 'snap-external' }),
+    rc('aws_ebs_volume.unencrypted_snapshot', 'aws_ebs_volume', ['create'], { encrypted: false, snapshot_id: 'snap-unencrypted' }),
+    rc('aws_ebs_volume.explicit_enablement', 'aws_ebs_volume', ['create'], { encrypted: true, snapshot_id: 'snap-external' }),
+    rc('aws_ebs_volume.null_snapshot', 'aws_ebs_volume', ['create'], { encrypted: false, snapshot_id: null }),
+  ], [cfg('aws_ebs_volume.encrypted_snapshot', { snapshot_id: ['aws_ebs_snapshot_copy.encrypted.id'] })]));
+  expect(evaluatePolicies(changes).filter((f) => f.ruleId === 'ebs.encryption').map((f) => [f.resource, f.status])).toEqual([
+    ['aws_ebs_volume.encrypted_snapshot', 'UNKNOWN'],
+    ['aws_ebs_volume.external_snapshot', 'UNKNOWN'],
+    ['aws_ebs_volume.unencrypted_snapshot', 'WARN'],
+    ['aws_ebs_volume.explicit_enablement', 'PASS'],
+    ['aws_ebs_volume.null_snapshot', 'WARN'],
+  ]);
+});
+
+test('unchanged snapshot-copy HCL cannot establish that an inherited snapshot is unencrypted', () => {
+  const source = (size: number) => new MemorySource({ 'main.tf': `
+    resource "aws_ebs_snapshot_copy" "example" {
+      source_snapshot_id = "snap-external"
+      source_region = "eu-west-1"
+      encrypted = false
+    }
+    resource "aws_ebs_volume" "example" {
+      snapshot_id = aws_ebs_snapshot_copy.example.id
+      encrypted = false
+      size = ${size}
+    }
+  ` });
+  const changes = compareEvaluations(evaluateRoot(source(10), '.'), evaluateRoot(source(20), '.'));
+  expect(changes.find((r) => r.type === 'aws_ebs_snapshot_copy')?.action).toBe('no-op');
+  expect(evaluatePolicies(changes).find((f) => f.ruleId === 'ebs.encryption')?.status).toBe('UNKNOWN');
 });
 
 test('EBS volumes with omitted encryption remain UNKNOWN even with a declared regional default', () => {
