@@ -106,7 +106,8 @@ export async function checkApp(opts: CheckAppOptions): Promise<CheckAppResult> {
   return {
     app: opts.app,
     infraPath: infraRepo,
-    infra: infraSource instanceof GitSource ? `${infraRepo}@${infraSource.sha.slice(0, 9)}` : `${infraRepo} (working tree)`,
+    // Reports name the repository, not where it sits on this machine.
+    infra: `${path.basename(path.resolve(infraRepo))}${infraSource instanceof GitSource ? `@${infraSource.sha.slice(0, 9)}` : ' (working tree)'}`,
     link,
     roots,
     links,
