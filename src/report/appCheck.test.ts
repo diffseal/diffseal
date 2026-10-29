@@ -20,3 +20,18 @@ test('the check-app report names the infrastructure repository without its local
     expect(report).not.toContain(path.dirname(dir));
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('a separate infrastructure repository read from its working tree is named, not located', async () => {
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'diffseal-infra-separate-'));
+  try {
+    const app = path.join(parent, 'app');
+    const infra = path.join(parent, 'platform-infra');
+    fs.mkdirSync(app);
+    fs.mkdirSync(infra);
+    fs.writeFileSync(path.join(infra, 'main.tf'), 'resource "aws_iam_role" "r" {\n  name = "r"\n  assume_role_policy = "{}"\n}\n');
+    const report = renderAppCheck(await checkApp({ app, infra, worktree: true, roles: ['absent-role'] }));
+    expect(report).toContain('Infrastructure: platform-infra (working tree)');
+    expect(report).toContain('Terraform root(s) of platform-infra.');
+    expect(report).not.toContain(parent);
+  } finally { fs.rmSync(parent, { recursive: true, force: true }); }
+});
