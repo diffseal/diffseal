@@ -40,7 +40,7 @@ A `.diffseal.json` file can hold these groups of settings:
 
 ## Policy settings
 
-In `diffseal replay` and the GitHub Action `pr` mode, policy settings are read from the `"policy"` object and top-level `"exceptions"` array in `.diffseal.json` and merged with any standalone policy JSON file passed via `--policy` or the Action `policy` input. When both `.diffseal.json` and a standalone policy file are present, fields in the standalone policy file override `.diffseal.json`. In `diffseal review --plan` and the GitHub Action `plan` mode, policy settings and exceptions are read from the standalone policy JSON file passed via `--policy` or `policy`.
+In `diffseal replay` and the GitHub Action `pr` mode, Diffseal reads policy settings from the `"policy"` object and top-level `"exceptions"` array in `.diffseal.json` and merges them with any standalone policy JSON file passed via `--policy` or the Action `policy` input. When both `.diffseal.json` and a standalone policy file are present, fields in the standalone policy file override `.diffseal.json`. In `diffseal review --plan` and the GitHub Action `plan` mode, Diffseal reads policy settings and exceptions from the standalone policy JSON file passed via `--policy` or `policy`.
 
 | Field | Type | Default | Description |
 | :-- | :-- | :-- | :-- |
@@ -50,7 +50,7 @@ In `diffseal replay` and the GitHub Action `pr` mode, policy settings are read f
 | `blockOn` | `Severity[]` | `["CRITICAL"]` | Blast-radius severities that set the gate to `block`. Allowed values are `"CRITICAL"`, `"HIGH"`, `"MEDIUM"`, `"LOW"`, and `"INFO"`. |
 | `exceptions` | `PolicyException[]` | `[]` | Accepted findings and blast-radius items. Can be set either at the top level of `.diffseal.json`, inside `"policy"` in `.diffseal.json`, or at the top level of a standalone policy JSON file. |
 
-If `CRITICAL` is removed from `blockOn`, unaccepted `CRITICAL` and `HIGH` blast-radius items still set the gate to `review` and never pass silently.
+If you remove `CRITICAL` from `blockOn`, unaccepted `CRITICAL` and `HIGH` blast-radius items still set the gate to `review` and never pass silently.
 
 ## Logging and security-service checks
 
@@ -70,11 +70,11 @@ These checks judge what Terraform declares on changed resources. They do not rea
 | `config.disabled` | `aws_config_configuration_recorder_status` | Change sets `is_enabled = false`, or deletes the status resource | `FAIL` (REVIEW) |
 | `securityhub.disabled` | `aws_securityhub_account` | Deletes the enrollment resource | `FAIL` (REVIEW) |
 
-Unknown settings produce `UNKNOWN`, never a proven pass or disablement. A likely or unknown deletion is still referred for review, with its uncertainty stated in the detail. Existing disabled settings are not reported as a new disablement on unrelated updates. Deletion findings remain new even if the resource was already disabled. No rule fails a repository for lacking a security service.
+Unknown settings produce `UNKNOWN`, never a proven pass or disablement. A likely or unknown deletion still asks for review, and the detail states its uncertainty. Diffseal does not report an existing disabled setting as a new disablement on an unrelated update. Deletion findings remain new even if the resource was already disabled. No rule fails a repository for lacking a security service.
 
 `WARN`, `UNKNOWN` and `INFO` are advisory in the existing gate. New, unaccepted `FAIL` findings set REVIEW, never BLOCK. `blockOn` controls blast-radius severities separately; there is no per-rule policy severity override. These change checks therefore cannot block by themselves.
 
-The flow-log rule skips subnet and ENI declarations without a `vpc_id`. It does not flag an `aws_vpc` for missing logs: the engine's best-effort reference matching cannot prove coverage across ambiguous count/for_each instances or unresolved values.
+The flow-log rule skips subnet and ENI declarations without a `vpc_id`. It does not flag an `aws_vpc` for missing logs, because the engine's best-effort reference matching cannot prove coverage across ambiguous count/for_each instances or unresolved values.
 
 All these rules carry only `SOC2:CC7.2`, confirmed on page 40 of the AICPA file cited in the [crosswalk research](../research/compliance-crosswalk.md#soc-2-aicpa-2017-trust-services-criteria-revised-points-of-focus-2022). ISO A.8.15 remains unverified and is not assigned.
 
@@ -92,10 +92,10 @@ An exception accepts a policy finding or a blast-radius item on matching resourc
 
 ### Expiry and validation rules
 
-Every exception is validated in `analyze` before it can accept a policy finding or blast-radius item:
+`analyze` validates every exception before it can accept a policy finding or blast-radius item:
 
-1. `resource` must be a string, and `expires` must match `YYYY-MM-DD` and parse as a valid date. Any exception missing `resource` or carrying an invalid `expires` date is treated as malformed and never applies.
-2. In live checks such as `diffseal review` and the GitHub Action `pr` and `plan` modes, `expires` is compared with the current UTC date. In `diffseal replay`, `expires` is compared with the commit date of each replayed commit so historical replays reproduce the gate verdict from when the commit was made.
+1. `resource` must be a string, and `expires` must match `YYYY-MM-DD` and parse as a valid date. Diffseal treats an exception without `resource`, or with an invalid `expires` date, as malformed, and it never applies.
+2. In live checks such as `diffseal review` and the GitHub Action `pr` and `plan` modes, Diffseal compares `expires` with the current UTC date. In `diffseal replay`, it compares `expires` with the commit date of each replayed commit, so historical replays reproduce the gate verdict from when the commit was made.
 3. If an expired or malformed exception matches a finding or blast-radius item in the current change, the finding is not accepted, the gate becomes at least `review`, and the gate reasons name the expired or malformed exception.
 
 ## Application link settings
@@ -114,9 +114,9 @@ When `diffseal check-app` or the GitHub Action in `mode: app` runs on an applica
 
 Diffseal prevents a change from relaxing the rules or link settings that judge it:
 
-- In `diffseal replay` and the GitHub Action `pr` mode, `.diffseal.json` and any repository `policy` file are read from the base commit, not the head commit.
-- In `diffseal check-app --base <rev>` and the GitHub Action `app` mode, `.diffseal.json` is read from the base commit when one is given.
-- In the GitHub Action, a `policy` file path must sit inside the repository without `..` path traversal so its base-commit version can be read.
+- In `diffseal replay` and the GitHub Action `pr` mode, Diffseal reads `.diffseal.json` and any repository `policy` file from the base commit, not the head commit.
+- In `diffseal check-app --base <rev>` and the GitHub Action `app` mode, Diffseal reads `.diffseal.json` from the base commit when one is given.
+- In the GitHub Action, a `policy` file path must sit inside the repository without `..` path traversal, so Diffseal can read its base-commit version.
 - Whenever `.diffseal.json` or the `policy` file differs between the base commit and the head commit, Diffseal raises the gate to at least `review` and notes that the updated configuration applies starting from the next change after this one is reviewed and merged.
 
 ## Trusted upload replay settings

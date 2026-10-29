@@ -35,7 +35,7 @@ For each AWS SDK call in application code:
 Many service repositories keep their ECS task definition JSON in the application repository rather than in Terraform. When scanning the application repository, `discoverLink` reads any file outside `node_modules/` whose name matches `*taskdef*.json`, `*task-def*.json`, or `*task-definition*.json`:
 
 - If the JSON has a top-level `taskRoleArn` string that does not contain an unresolved `${` template placeholder, Diffseal adds that role ARN to the list of roles the application runs as.
-- For each entry in `containerDefinitions`, Diffseal collects the `name` of every item in `environment` and `secrets` and marks those environment variables as defined outside Terraform so they are not flagged as `MISSING`.
+- For each entry in `containerDefinitions`, Diffseal collects the `name` of every item in `environment` and `secrets` and marks those environment variables as defined outside Terraform, so Diffseal does not report them as `MISSING`.
 
 ### 3. Kubernetes manifests and Helm values for EKS IRSA
 
@@ -51,13 +51,13 @@ You can specify roles and external environment variables directly:
 - In `.diffseal.json`, set `"roles": ["orders-api-task"]` and `"env": ["EXTERNAL_VAR"]`.
 - On the command line, pass `--role <name,...>` as a comma-separated list. In the GitHub Action, pass `role: orders-api-task` as a comma-separated list.
 
-When `--role` or `role` is provided, it overrides the roles discovered from `.diffseal.json`, task definitions, and Kubernetes manifests. Even when the role is given by name or ARN, Diffseal still looks up any Lambda or ECS compute in Terraform that runs as that role to resolve the values of environment variables used by the code.
+When you pass `--role` or `role`, it overrides the roles discovered from `.diffseal.json`, task definitions, and Kubernetes manifests. Even when you give the role by name or ARN, Diffseal still looks up any Lambda or ECS compute in Terraform that runs as that role to resolve the values of environment variables used by the code.
 
 ### Cross-root and multi-account safety
 
 When matching a role by name or ARN across multiple Terraform roots:
 
-- A role ARN containing a 12-digit AWS account ID only matches Terraform roots whose provider targets that account, or roots where the account is not fixed statically. If a root configures providers for multiple AWS accounts, a role matched by ARN in that root is marked account-uncertain, which caps findings at `UNRESOLVED` so a namesake role in another account cannot produce a false `GRANTED` or `NOT GRANTED`.
+- A role ARN containing a 12-digit AWS account ID only matches Terraform roots whose provider targets that account, or roots where the account is not fixed statically. If a root configures providers for multiple AWS accounts, Diffseal marks a role matched by ARN in that root as account-uncertain, which caps findings at `UNRESOLVED` so a namesake role in another account cannot produce a false `GRANTED` or `NOT GRANTED`.
 - Policies defined in another Terraform root only grant access to a role when both roots target the same single, statically known AWS account. If either root's account is unknown or multi-account, a policy in the other root can turn a result into `UNRESOLVED`, never `GRANTED`.
 
 ## Result statuses
@@ -69,7 +69,7 @@ Every reconciled call site or environment variable read receives one of four sta
 | `GRANTED` | `pass` | The role's identity policies allow every required action on the target resource, no statement explicitly denies it, the role's `permissions_boundary` allows it when present, and any customer-managed KMS key configured on the target resource permits the required cryptographic actions. |
 | `NOT GRANTED` | `review` | At least one required action is not allowed by the role's policies, is blocked by an explicit `Deny` statement or `permissions_boundary`, or requires a customer-managed KMS key that the role or key policy does not permit. In JSON output and gate reasons, this status is written `NOT_GRANTED`. |
 | `MISSING` | `review` | Application code reads an environment variable that names an AWS resource, has no fallback default in code, and is not set by any Lambda or ECS task definition in Terraform, any ECS task definition or Kubernetes manifest in the application repository, or the `env` list in `.diffseal.json`. |
-| `UNRESOLVED` | `pass` | Static analysis cannot prove that the call succeeds or fails. Reported in the table for visibility without failing the gate. |
+| `UNRESOLVED` | `pass` | Static analysis cannot prove that the call succeeds or fails. Listed in the table, but does not fail the gate. |
 
 ### Suggested Terraform statements on `NOT GRANTED`
 
@@ -89,10 +89,10 @@ Application code often reads environment variables for log levels, ports, or fea
 
 ### Common causes of `UNRESOLVED`
 
-A call is marked `UNRESOLVED` rather than `NOT GRANTED` whenever static analysis lacks enough information to prove an `AccessDenied`:
+Diffseal marks a call `UNRESOLVED` rather than `NOT GRANTED` when static analysis lacks the information to prove an `AccessDenied`:
 
 - No Lambda or ECS compute sets the environment variables read by the file, and no role was linked via task definitions, Kubernetes manifests, `.diffseal.json`, or `--role`.
 - The resource argument passed to the SDK call comes from a function parameter, external helper, or dynamic expression that static analysis cannot trace to a literal, glob pattern, or environment variable. For unscoped operations such as `dynamodb:ListTables` or `sqs:ListQueues`, Diffseal still checks whether the role grants `Resource: "*"` even when no resource argument is present.
 - The matching `Allow` or `Deny` statement in IAM has a `Condition` block or an `Effect` expression that depends on an unknown value.
 - An uncatalogued AWS managed policy or an unreadable policy expression is attached to the role or its `permissions_boundary`.
-- A helper method in the repository can perform an AWS call that is not permitted by the role, but the constructor value is passed around such that the current binary may never invoke that method.
+- A helper method in the repository can make an AWS call the role does not permit, but the code passes the constructed value around, so the current binary may never invoke that method.

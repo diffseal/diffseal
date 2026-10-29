@@ -14,7 +14,7 @@ yarn global add diffseal@beta
 pnpm add -g diffseal@beta
 ```
 
-Node.js 18 or later is required. For a one-off run without installing:
+The CLI needs Node.js 18 or later. For a one-off run without installing:
 
 ```sh
 npx diffseal@beta verify ./pack --account your-org --period 2026-Q4
@@ -28,7 +28,7 @@ Extract the pack into a folder, then run:
 diffseal verify ./pack --account your-org --period 2026-Q4
 ```
 
-Verification runs offline. It checks the manifest format, the exact file set, every SHA-256 hash and the Ed25519 signature. It rejects symlinks, unsafe paths and duplicate paths, including names that differ only by case. Both `diffseal.pack/v2` and the free `diffseal.evidence-pack/v1` format are supported.
+Verification runs offline. It checks the manifest format, the exact file set, every SHA-256 hash and the Ed25519 signature. It rejects symlinks, unsafe paths and duplicate paths, including names that differ only by case. It supports both `diffseal.pack/v2` and the free `diffseal.evidence-pack/v1` format.
 
 The signing key id must match the public key and `pack.json`. Compromised keys always fail. A pack must have been generated at or after the key's `validFrom` and before its `revokedAt`, when set. `--account` checks the organisation login. `--period` checks the period label, such as `2026-Q4`.
 
