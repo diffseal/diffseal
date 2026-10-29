@@ -191,7 +191,7 @@ export interface Finding {
   title: string;
   status: FindingStatus;
   resource: string;
-  /** Control identifiers, e.g. `ISO27001:A.8.24`. */
+  /** Control identifiers, e.g. `ISO27001:A.8.24` and `SOC2:CC6.1`. */
   controls: string[];
   detail: string;
   remediation?: string;

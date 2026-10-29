@@ -81,8 +81,9 @@ export function changeRecord(input: {
       ...(c.replacePaths ? { replacePaths: c.replacePaths } : {}),
     })),
     risks: result.blast.filter((b) => b.severity !== 'INFO').map((b) => ({ resource: b.resource, severity: b.severity, reason: b.reason, ...(b.accepted ? { accepted: b.accepted } : {}) })),
+    // Keep v1's rows per ISO control; SOC 2 references are already carried in frameworks.soc2_tsc.
     controls: result.findings.flatMap((f) =>
-      f.controls.map((control) => ({
+      f.controls.filter((control) => !control.startsWith('SOC2:')).map((control) => ({
         control,
         rule: f.ruleId,
         resource: f.resource,

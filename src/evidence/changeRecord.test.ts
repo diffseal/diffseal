@@ -43,6 +43,16 @@ describe('changeRecord', () => {
     expect(rds.frameworks.nis2?.some((x) => x.ref.includes('21(2)(h)'))).toBe(true);
   });
 
+  test('v1 JSON keeps one row per ISO control with SOC 2 in the existing frameworks field', () => {
+    const r = changeRecord({ commit, base: 'b'.repeat(40), roots: [], result, appLinks: [], engine: { version: 't', replaceCatalog: 'x' } });
+    const rows = r.controls.filter((c) => c.rule === 'rds.encryption');
+    expect(JSON.parse(JSON.stringify(rows))).toEqual([{
+      control: 'ISO27001:A.8.24', rule: 'rds.encryption', resource: 'aws_db_instance.db', status: 'PASS', detail: 'Storage encrypted',
+      category: 'encryption-at-rest', frameworks: expect.objectContaining({ soc2_tsc: [{ ref: 'CC6.1', fit: 'direct' }] }),
+    }]);
+    expect(r.schema).toBe('diffseal.change-record/v1');
+  });
+
   test('says when approvals are unknown instead of leaving them out silently', () => {
     const r = changeRecord({ commit, base: 'b'.repeat(40), roots: [], result, appLinks: [], engine: { version: 't', replaceCatalog: 'x' } });
     expect(r.approvals).toBeNull();

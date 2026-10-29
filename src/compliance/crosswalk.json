@@ -1,18 +1,19 @@
 {
   "_meta": {
-    "verified": "2026-10-25",
+    "verified": "2026-10-29",
     "notes": [
-      "Research and per-claim sources: docs/research/compliance-crosswalk.md.",
+      "Research and per-claim sources: docs/research/compliance-crosswalk.md. ISO, EU and Swedish sources checked 2026-10-25; SOC 2 updated 2026-10-29 from the supplied trust-center-controls.md note, section 4 and product addition 4.",
       "fit=direct: the cited text names the thing the rule checks. fit=supporting: the rule produces evidence toward the provision but does not satisfy it alone.",
       "EU texts were read from the Official Journal versions served by the Publications Office (publications.europa.eu/resource/celex/<CELEX>); EUR-Lex itself returned an AWS WAF challenge to scripted requests. Source URLs point at the EUR-Lex ELI pages for the same acts.",
       "ISO titles come from ISO's free sample of ISO/IEC 27002:2022 on iso.org (table of contents, clauses 5-8). The ISO/IEC 27001:2022 sample on iso.org says its text is aligned with ISO/IEC 27002:2022, but the Annex A table itself is not in the free sample. Treat the A.x = 27002 clause x mapping as standard practice that was not re-checked against Annex A.",
       "Not verified, so left out of the arrays: ISO A.5.31, A.8.13 and A.8.15. ISO's sample shows these entries only under their 2013 numbers, and the full Online Browsing Platform requires accepting ISO's terms of use, which was not done. src/policy/rules.ts uses ISO27001:A.8.13 in several rules. Confirm A.8.13 with a licensed copy and add it to backup (direct) and A.8.15 to logging (direct).",
-      "soc2_tsc arrays are empty on purpose. The AICPA 2017 Trust Services Criteria (revised points of focus 2022) PDF is behind an AICPA sign-in (page metadata isLocked=locked, restriction loggedInRole). Unverified candidates from the spec and audit: CC6.1, CC6.3 (least-privilege), CC6.7 (encryption-in-transit), CC8.1 (change-management, supply-chain), CC9.2 (supply-chain), A1.2 (backup, redundancy), A1.3 (restore testing). Check against https://www.aicpa-cima.com/resources/download/2017-trust-services-criteria-with-revised-points-of-focus-2022 before use.",
+      "SOC 2 references use only theme mappings confirmed in the supplied trust-center-controls.md note from the archived AICPA 2017 Trust Services Criteria (2022 points of focus): CC6.1 p. 34, CC6.3 p. 36, CC6.6 and CC6.7 p. 38, CC7.1 and CC7.2 p. 40, CC8.1 p. 45, A1.2 p. 50, A1.3 p. 52. Each source URL includes the page. CC7.1 has no matching existing category; A1.3 is unused because there is no restore-testing check. Supply-chain, data-residency and secure-deletion theme mappings are not confirmed, so remain empty. CC9.2 remains unverified and unused.",
       "DORA and its RTS apply only to the financial entities in DORA Art. 2(1)(a)-(t). Show those columns only when the customer declares itself a financial entity. The RTS Title II articles cited here apply to entities outside DORA Art. 16(1); Title III (Arts. 28-41) is the simplified framework.",
       "Implementing Regulation (EU) 2024/2690 covers only DNS service providers, TLD name registries, cloud computing, data centre, CDN, managed service and managed security service providers, online marketplaces, search engines, social networking platforms and trust service providers (Art. 1). Energy is not covered.",
       "Sweden: cybersäkerhetslag (2025:1506) 2 kap. 3 § points 1-10 mirror NIS2 Art. 21(2)(a)-(j). For non-digital sectors such as energy, the detailed security-measure rules are MCFFS 2026:11 (in force 2026-10-01). The framework keys in this file are fixed, so Swedish references are listed in the research doc only.",
       "secure-deletion is mapped as deliberate, irretrievable deletion. If the Diffseal rule actually checks deletion protection (deletion_protection, recovery_window_in_days, skip_final_snapshot), use the backup mapping instead.",
-      "data-residency entries are all supporting. A region restriction alone does not show compliance with GDPR Chapter V or DORA Art. 30(2)(b), which is a contract clause."
+      "data-residency entries are all supporting. A region restriction alone does not show compliance with GDPR Chapter V or DORA Art. 30(2)(b), which is a contract clause.",
+      "A1.2 and A1.3 apply only to Availability engagements. Backup settings and deletion protection do not demonstrate restore testing. A dead-letter queue is neither backup nor redundant processing infrastructure; sqs.dlq has no compliance category or control tag."
     ]
   },
   "encryption-at-rest": {
@@ -74,7 +75,14 @@
         "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
       }
     ],
-    "soc2_tsc": [],
+    "soc2_tsc": [
+      {
+        "ref": "CC6.1",
+        "title": "Encryption at rest and protection of cryptographic keys",
+        "fit": "direct",
+        "source": "https://web.archive.org/web/20251118185101id_/https://assets.ctfassets.net/rb9cdnjh59cm/5jT1narHNQNzt4JGlkd1gr/248661d08e42531329d147782a6f8854/Trust-services-criteria.pdf#page=34"
+      }
+    ],
     "gdpr": [
       {
         "ref": "Art. 32(1)(a)",
@@ -149,7 +157,14 @@
         "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
       }
     ],
-    "soc2_tsc": [],
+    "soc2_tsc": [
+      {
+        "ref": "CC6.7",
+        "title": "Encryption or secure communication channels for data in transit",
+        "fit": "direct",
+        "source": "https://web.archive.org/web/20251118185101id_/https://assets.ctfassets.net/rb9cdnjh59cm/5jT1narHNQNzt4JGlkd1gr/248661d08e42531329d147782a6f8854/Trust-services-criteria.pdf#page=38"
+      }
+    ],
     "gdpr": [
       {
         "ref": "Art. 32(1)(a)",
@@ -212,7 +227,14 @@
         "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
       }
     ],
-    "soc2_tsc": [],
+    "soc2_tsc": [
+      {
+        "ref": "A1.2",
+        "title": "Data backup and recovery infrastructure (Availability engagements only)",
+        "fit": "direct",
+        "source": "https://web.archive.org/web/20251118185101id_/https://assets.ctfassets.net/rb9cdnjh59cm/5jT1narHNQNzt4JGlkd1gr/248661d08e42531329d147782a6f8854/Trust-services-criteria.pdf#page=50"
+      }
+    ],
     "gdpr": [
       {
         "ref": "Art. 32(1)(c)",
@@ -275,7 +297,14 @@
         "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
       }
     ],
-    "soc2_tsc": [],
+    "soc2_tsc": [
+      {
+        "ref": "A1.2",
+        "title": "Alternate processing infrastructure (Availability engagements only)",
+        "fit": "direct",
+        "source": "https://web.archive.org/web/20251118185101id_/https://assets.ctfassets.net/rb9cdnjh59cm/5jT1narHNQNzt4JGlkd1gr/248661d08e42531329d147782a6f8854/Trust-services-criteria.pdf#page=50"
+      }
+    ],
     "gdpr": [
       {
         "ref": "Art. 32(1)(b)",
@@ -344,7 +373,14 @@
         "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
       }
     ],
-    "soc2_tsc": [],
+    "soc2_tsc": [
+      {
+        "ref": "CC6.3",
+        "title": "Least privilege and segregation of duties",
+        "fit": "direct",
+        "source": "https://web.archive.org/web/20251118185101id_/https://assets.ctfassets.net/rb9cdnjh59cm/5jT1narHNQNzt4JGlkd1gr/248661d08e42531329d147782a6f8854/Trust-services-criteria.pdf#page=36"
+      }
+    ],
     "gdpr": [
       {
         "ref": "Art. 25(2)",
@@ -407,7 +443,14 @@
         "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
       }
     ],
-    "soc2_tsc": [],
+    "soc2_tsc": [
+      {
+        "ref": "CC6.3",
+        "title": "Authorization of privileged access",
+        "fit": "direct",
+        "source": "https://web.archive.org/web/20251118185101id_/https://assets.ctfassets.net/rb9cdnjh59cm/5jT1narHNQNzt4JGlkd1gr/248661d08e42531329d147782a6f8854/Trust-services-criteria.pdf#page=36"
+      }
+    ],
     "gdpr": [
       {
         "ref": "Art. 32(1)(b)",
@@ -494,7 +537,14 @@
         "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
       }
     ],
-    "soc2_tsc": [],
+    "soc2_tsc": [
+      {
+        "ref": "CC6.1",
+        "title": "Identification and authentication",
+        "fit": "direct",
+        "source": "https://web.archive.org/web/20251118185101id_/https://assets.ctfassets.net/rb9cdnjh59cm/5jT1narHNQNzt4JGlkd1gr/248661d08e42531329d147782a6f8854/Trust-services-criteria.pdf#page=34"
+      }
+    ],
     "gdpr": [
       {
         "ref": "Art. 32(1)(b)",
@@ -569,7 +619,20 @@
         "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
       }
     ],
-    "soc2_tsc": [],
+    "soc2_tsc": [
+      {
+        "ref": "CC6.1",
+        "title": "Logical access restrictions",
+        "fit": "direct",
+        "source": "https://web.archive.org/web/20251118185101id_/https://assets.ctfassets.net/rb9cdnjh59cm/5jT1narHNQNzt4JGlkd1gr/248661d08e42531329d147782a6f8854/Trust-services-criteria.pdf#page=34"
+      },
+      {
+        "ref": "CC6.6",
+        "title": "Restrictions on access from outside system boundaries",
+        "fit": "direct",
+        "source": "https://web.archive.org/web/20251118185101id_/https://assets.ctfassets.net/rb9cdnjh59cm/5jT1narHNQNzt4JGlkd1gr/248661d08e42531329d147782a6f8854/Trust-services-criteria.pdf#page=38"
+      }
+    ],
     "gdpr": [
       {
         "ref": "Art. 25(2)",
@@ -638,7 +701,20 @@
         "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
       }
     ],
-    "soc2_tsc": [],
+    "soc2_tsc": [
+      {
+        "ref": "CC6.6",
+        "title": "Restrictions on access from outside system boundaries",
+        "fit": "direct",
+        "source": "https://web.archive.org/web/20251118185101id_/https://assets.ctfassets.net/rb9cdnjh59cm/5jT1narHNQNzt4JGlkd1gr/248661d08e42531329d147782a6f8854/Trust-services-criteria.pdf#page=38"
+      },
+      {
+        "ref": "CC6.1",
+        "title": "Network segmentation",
+        "fit": "supporting",
+        "source": "https://web.archive.org/web/20251118185101id_/https://assets.ctfassets.net/rb9cdnjh59cm/5jT1narHNQNzt4JGlkd1gr/248661d08e42531329d147782a6f8854/Trust-services-criteria.pdf#page=34"
+      }
+    ],
     "gdpr": [
       {
         "ref": "Art. 32(1)(b)",
@@ -695,7 +771,14 @@
         "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
       }
     ],
-    "soc2_tsc": [],
+    "soc2_tsc": [
+      {
+        "ref": "CC7.2",
+        "title": "Monitoring for anomalies and evaluating security events",
+        "fit": "supporting",
+        "source": "https://web.archive.org/web/20251118185101id_/https://assets.ctfassets.net/rb9cdnjh59cm/5jT1narHNQNzt4JGlkd1gr/248661d08e42531329d147782a6f8854/Trust-services-criteria.pdf#page=40"
+      }
+    ],
     "gdpr": []
   },
   "supply-chain": {
@@ -825,7 +908,14 @@
         "source": "https://eur-lex.europa.eu/eli/reg_del/2024/1774/oj"
       }
     ],
-    "soc2_tsc": [],
+    "soc2_tsc": [
+      {
+        "ref": "CC8.1",
+        "title": "Controlled changes to infrastructure, data, software and procedures",
+        "fit": "direct",
+        "source": "https://web.archive.org/web/20251118185101id_/https://assets.ctfassets.net/rb9cdnjh59cm/5jT1narHNQNzt4JGlkd1gr/248661d08e42531329d147782a6f8854/Trust-services-criteria.pdf#page=45"
+      }
+    ],
     "gdpr": [
       {
         "ref": "Art. 25(1)",
