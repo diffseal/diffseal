@@ -11,7 +11,7 @@ test('the vendored pilot workflow and isolated package review all three demo sce
     const out = path.join(dir, 'pilot');
     const packed = spawnSync('bun', [path.join(root, 'scripts/prepare-pilot.ts'), out], { encoding: 'utf8' });
     expect(packed.status).toBe(0);
-    expect(fs.readFileSync(path.join(out, 'VERSION'), 'utf8').trim()).toBe('0.5.0-beta');
+    expect(fs.readFileSync(path.join(out, 'VERSION'), 'utf8').trim()).toBe('0.5.1-beta');
     const workflow = parse(fs.readFileSync(path.join(out, '.github/workflows/diffseal.yml'), 'utf8'));
     const step = workflow.jobs.diffseal.steps.find((s: { uses?: string }) => s.uses === './.github/actions/diffseal');
     expect(step['continue-on-error']).toBe(true);
@@ -36,7 +36,7 @@ test('the vendored pilot workflow and isolated package review all three demo sce
       const r = spawnSync('node', ['--import', 'data:text/javascript,globalThis.fetch=()=>{throw Error("network forbidden")}', path.join(tool, 'dist/action.js')], { cwd: repo, encoding: 'utf8', env: { ...process.env, GITHUB_WORKSPACE: repo, GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary, GITHUB_EVENT_PATH: '', INPUT_MODE: step.with.mode, INPUT_ADVISORY: step.with.advisory, INPUT_STRICT: step.with.strict, INPUT_BASE: base, INPUT_COMMENT: 'false', INPUT_POLICY: '', INPUT_ROOTS_UNDER: 'infra/envs/prod' } });
       expect(r.status).toBe(0); // Advisory mode preserves a BLOCK report without failing the job.
       expect(fs.readFileSync(output, 'utf8')).toContain(`gate=${scenario.gate}`);
-      const markdown = fs.readFileSync(summary, 'utf8'); expect(markdown).toContain(scenario.finding); expect(markdown).toContain('0.5.0-beta');
+      const markdown = fs.readFileSync(summary, 'utf8'); expect(markdown).toContain(scenario.finding); expect(markdown).toContain('0.5.1-beta');
       if (scenario.name === 'missing-iam-permission') expect(markdown).toContain('statement {');
       expect(r.stderr).not.toContain('network forbidden');
     }
