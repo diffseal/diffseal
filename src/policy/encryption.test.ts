@@ -11,7 +11,7 @@ import { renderMarkdown } from '../report/markdown.js';
 import { changeRecord } from '../evidence/changeRecord.js';
 
 function check(rule: string, type: string, criterion: string, cases: Array<[string, Attrs, FindingStatus]>) {
-  const address = (name: string) => `module.service["prod"].${type}.example[${JSON.stringify(name)}]`;
+  const address = (name: string) => `module.service["prod"].${type}.${name}["example"]`;
   const findings = evaluatePolicies(readPlan(plan(cases.map(([name, attrs]) => rc(address(name), type, ['create'], attrs)))))
     .filter((f) => f.ruleId === rule);
   expect(findings.map((f) => [f.resource, f.status, f.controls])).toEqual(cases.map(([name, _attrs, status]) => [
@@ -163,6 +163,157 @@ test('nullable expressions do not turn planned encryption defaults into configur
   expect(evaluatePolicies(changes).filter((f) => ['efs.encryption', 'rds.encryption'].includes(f.ruleId))
     .map((f) => [f.resource, f.status])).toEqual([
       ['aws_efs_file_system.existing', 'UNKNOWN'], ['aws_db_instance.example', 'UNKNOWN'],
+    ]);
+});
+
+test('nullable nested object attributes cannot attest provider-populated encryption values', () => {
+  for (const [reference, value, status] of [
+    ['var.config.encrypted', { encrypted: null }, 'UNKNOWN'],
+    ['var.config.storage.encrypted', { storage: { encrypted: null } }, 'UNKNOWN'],
+    ['var.config.storage.encrypted', { storage: null }, 'UNKNOWN'],
+    ['var.config.storage.encrypted', { storage: { encrypted: true }, other: null }, 'PASS'],
+    ['var.config["storage"].encrypted', { storage: { encrypted: null } }, 'UNKNOWN'],
+  ] as const) {
+    const resources = [
+      { address: 'aws_db_instance.example', expressions: { storage_encrypted: { references: [reference, 'var.config'] } } },
+      { address: 'aws_efs_file_system.example', expressions: { encrypted: { references: [reference, 'var.config'] } } },
+    ];
+    const findings = evaluatePolicies(readPlan(plan([
+      rc(resources[0].address, 'aws_db_instance', ['create'], { storage_encrypted: status === 'PASS' }),
+      rc(resources[1].address, 'aws_efs_file_system', ['update'], { encrypted: true }, { before: { encrypted: true } }),
+    ], [], { variables: { config: { value } }, configuration: { root_module: { resources } } })));
+    expect([reference, findings.filter((f) => ['rds.encryption', 'efs.encryption'].includes(f.ruleId)).map((f) => f.status)])
+      .toEqual([reference, [status, status]]);
+  }
+});
+
+test('RDS replica sources must be known same-region identifiers before judging storage_encrypted', () => {
+  const changes = readPlan(plan([
+    rc('aws_db_instance.source', 'aws_db_instance', ['create'], { storage_encrypted: false }, { afterUnknown: { arn: true } }),
+    rc('aws_db_instance.replica', 'aws_db_instance', ['create'], { storage_encrypted: true }, { afterUnknown: { replicate_source_db: true } }),
+  ], [cfg('aws_db_instance.replica', { replicate_source_db: ['aws_db_instance.source.arn'] })]));
+  expect(evaluatePolicies(changes).filter((f) => f.ruleId === 'rds.encryption').map((f) => [f.resource, f.status])).toEqual([
+    ['aws_db_instance.source', 'WARN'], ['aws_db_instance.replica', 'UNKNOWN'],
+  ]);
+  check('rds.encryption', 'aws_db_instance', 'CC6.1', [
+    ['unknown_off', { replicate_source_db: new Unknown('source'), storage_encrypted: false }, 'UNKNOWN'],
+    ['unknown_on', { replicate_source_db: new Unknown('source'), storage_encrypted: true }, 'UNKNOWN'],
+    ['invalid', { replicate_source_db: {}, storage_encrypted: true }, 'UNKNOWN'],
+    ['identifier', { replicate_source_db: 'source-db', storage_encrypted: true }, 'PASS'],
+  ]);
+});
+
+test('coalesce fallbacks cannot erase nullable encryption inputs or configured snapshot inheritance', () => {
+  const resources = [
+    { address: 'aws_db_instance.example', expressions: { storage_encrypted: { references: ['var.encrypt'] } } },
+    { address: 'aws_efs_file_system.example', expressions: { encrypted: { references: ['var.config.encrypted', 'var.config'] } } },
+    { address: 'aws_ebs_volume.example', expressions: { encrypted: { constant_value: false }, snapshot_id: { references: ['var.snapshot'] } } },
+    { address: 'aws_ebs_volume.enabled', expressions: { encrypted: { constant_value: true }, snapshot_id: { references: ['var.snapshot'] } } },
+  ];
+  const findings = evaluatePolicies(readPlan(plan([
+    rc(resources[0].address, 'aws_db_instance', ['create'], { storage_encrypted: false }),
+    rc(resources[1].address, 'aws_efs_file_system', ['create'], { encrypted: true }),
+    rc(resources[2].address, 'aws_ebs_volume', ['create'], { encrypted: false, snapshot_id: 'snap-external' }),
+    rc(resources[3].address, 'aws_ebs_volume', ['create'], { encrypted: true, snapshot_id: 'snap-external' }),
+  ], [], { variables: { encrypt: { value: null }, config: { value: { encrypted: null } }, snapshot: { value: null } },
+    configuration: { root_module: { resources } } })));
+  expect(findings.filter((f) => ['rds.encryption', 'efs.encryption', 'ebs.encryption'].includes(f.ruleId)).map((f) => f.status))
+    .toEqual(['UNKNOWN', 'UNKNOWN', 'UNKNOWN', 'PASS']);
+});
+
+test('module inputs and outputs preserve null, unknown and computed dependencies for encryption evidence', () => {
+  for (const [expression, status] of [
+    [{ constant_value: true }, 'PASS'],
+    [{ references: ['var.enabled'] }, 'PASS'],
+    [{ references: ['var.config.encrypted', 'var.config'] }, 'UNKNOWN'],
+    [{ references: ['var.missing'] }, 'UNKNOWN'],
+    [{ references: ['aws_efs_file_system.computed.encrypted'] }, 'UNKNOWN'],
+  ] as const) {
+    const findings = evaluatePolicies(readPlan(plan([
+      rc('aws_efs_file_system.computed', 'aws_efs_file_system', ['no-op'], { encrypted: true }),
+      rc('aws_efs_file_system.consumer', 'aws_efs_file_system', ['create'], { encrypted: true }),
+      rc('module.settings.aws_efs_file_system.consumer', 'aws_efs_file_system', ['create'], { encrypted: true }),
+    ], [], { variables: { enabled: { value: true }, config: { value: { encrypted: null } } }, configuration: { root_module: {
+      resources: [
+        { address: 'aws_efs_file_system.computed', expressions: {} },
+        cfg('aws_efs_file_system.consumer', { encrypted: ['module.settings.encrypted', 'module.settings'] }),
+      ],
+      module_calls: { settings: { expressions: { enabled: expression }, module: {
+        resources: [cfg('aws_efs_file_system.consumer', { encrypted: ['var.enabled'] })],
+        outputs: { encrypted: { expression: { references: ['var.enabled'] } } },
+      } } },
+    } } })));
+    expect(findings.filter((f) => f.ruleId === 'efs.encryption').map((f) => [f.resource, f.status])).toEqual([
+      ['aws_efs_file_system.consumer', status], ['module.settings.aws_efs_file_system.consumer', status],
+    ]);
+  }
+});
+
+test('computed KMS key references cannot become explicit encryption evidence', () => {
+  const source = new MemorySource({ 'main.tf': `
+    resource "aws_kms_key" "example" {}
+    resource "aws_sqs_queue" "example" { kms_master_key_id = aws_kms_key.example.arn }
+  ` });
+  const fromSource = compareEvaluations(undefined, evaluateRoot(source, '.'));
+  const fromPlan = readPlan(plan([
+    rc('aws_kms_key.example', 'aws_kms_key', ['create'], {}, { afterUnknown: { arn: true } }),
+    rc('aws_sqs_queue.example', 'aws_sqs_queue', ['create'], {}, { afterUnknown: { kms_master_key_id: true } }),
+  ], [cfg('aws_sqs_queue.example', { kms_master_key_id: ['aws_kms_key.example.arn'] })]));
+  for (const changes of [fromSource, fromPlan]) {
+    expect(evaluatePolicies(changes).find((f) => f.ruleId === 'sqs.encryption')?.status).toBe('UNKNOWN');
+  }
+});
+
+test('module object traversal selects known attributes without losing nullable siblings', () => {
+  for (const [encrypted, status] of [[true, 'PASS'], [null, 'UNKNOWN']] as const) {
+    const changes = readPlan(plan([
+      rc('module.settings.aws_efs_file_system.example', 'aws_efs_file_system', ['create'], { encrypted: true }),
+      rc('aws_efs_file_system.example', 'aws_efs_file_system', ['create'], { encrypted: true }),
+    ], [], { variables: { config: { value: { nested: { encrypted }, other: null } } }, configuration: { root_module: {
+      resources: [cfg('aws_efs_file_system.example', { encrypted: ['module.settings.config.nested.encrypted', 'module.settings.config', 'module.settings'] })],
+      module_calls: { settings: { expressions: { config: { references: ['var.config'] } }, module: {
+        resources: [cfg('aws_efs_file_system.example', { encrypted: ['var.config.nested.encrypted', 'var.config'] })],
+        outputs: { config: { expression: { references: ['var.config'] } } },
+      } } },
+    } } }));
+    expect(evaluatePolicies(changes).filter((f) => f.ruleId === 'efs.encryption').map((f) => f.status)).toEqual([status, status]);
+  }
+});
+
+test('source evaluation preserves uncertainty through nested attributes, functions, locals and module outputs', () => {
+  const source = new MemorySource({ 'main.tf': `
+    variable "config" { default = { encrypted = null, known = true } }
+    variable "missing" {}
+    variable "snapshot" { default = null }
+    locals { fallback = coalesce(var.config.encrypted, true) }
+    module "settings" {
+      source = "./settings"
+      enabled = local.fallback
+    }
+    resource "aws_efs_file_system" "fallback" { encrypted = local.fallback }
+    resource "aws_efs_file_system" "module" { encrypted = module.settings.encrypted }
+    resource "aws_efs_file_system" "unknown" { encrypted = var.missing ? true : true }
+    resource "aws_efs_file_system" "unused_fallback" { encrypted = coalesce(true, var.config.encrypted) }
+    resource "aws_efs_file_system" "comparison" { encrypted = var.config.encrypted == null }
+    resource "aws_efs_file_system" "unary" { encrypted = !var.config.encrypted }
+    resource "aws_efs_file_system" "known_attribute" { encrypted = var.config.known }
+    resource "aws_efs_file_system" "known" { encrypted = coalesce(true, false) }
+    resource "aws_ebs_volume" "snapshot" {
+      encrypted = false
+      snapshot_id = coalesce(var.snapshot, "snap-external")
+    }
+  `, 'settings/main.tf': `
+    variable "enabled" {}
+    output "encrypted" { value = var.enabled }
+  ` });
+  const evaluated = evaluateRoot(source, '.');
+  expect(evaluated.diagnostics).toEqual([]);
+  expect(evaluatePolicies(compareEvaluations(undefined, evaluated)).filter((f) => ['efs.encryption', 'ebs.encryption'].includes(f.ruleId))
+    .map((f) => [f.resource, f.status])).toEqual([
+      ['aws_efs_file_system.fallback', 'UNKNOWN'], ['aws_efs_file_system.module', 'UNKNOWN'],
+      ['aws_efs_file_system.unknown', 'UNKNOWN'], ['aws_efs_file_system.unused_fallback', 'UNKNOWN'],
+      ['aws_efs_file_system.comparison', 'UNKNOWN'], ['aws_efs_file_system.unary', 'UNKNOWN'],
+      ['aws_efs_file_system.known_attribute', 'PASS'], ['aws_efs_file_system.known', 'PASS'], ['aws_ebs_volume.snapshot', 'UNKNOWN'],
     ]);
 });
 
@@ -350,7 +501,7 @@ test('EBS volumes warn only about explicitly disabled encryption and leave omitt
   ]);
 });
 
-test('EBS explicit false cannot disable snapshot encryption unless the snapshot is known unencrypted', () => {
+test('EBS snapshot inheritance remains UNKNOWN even when snapshot metadata says unencrypted', () => {
   const changes = readPlan(plan([
     rc('aws_ebs_snapshot_copy.encrypted', 'aws_ebs_snapshot_copy', ['create'], { id: 'snap-encrypted', encrypted: true }),
     rc('data.aws_ebs_snapshot.unencrypted', 'aws_ebs_snapshot', ['read'], { id: 'snap-unencrypted', encrypted: false }, { mode: 'data' }),
@@ -363,7 +514,7 @@ test('EBS explicit false cannot disable snapshot encryption unless the snapshot 
   expect(evaluatePolicies(changes).filter((f) => f.ruleId === 'ebs.encryption').map((f) => [f.resource, f.status])).toEqual([
     ['aws_ebs_volume.encrypted_snapshot', 'UNKNOWN'],
     ['aws_ebs_volume.external_snapshot', 'UNKNOWN'],
-    ['aws_ebs_volume.unencrypted_snapshot', 'WARN'],
+    ['aws_ebs_volume.unencrypted_snapshot', 'UNKNOWN'],
     ['aws_ebs_volume.explicit_enablement', 'PASS'],
     ['aws_ebs_volume.null_snapshot', 'WARN'],
   ]);

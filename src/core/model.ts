@@ -182,6 +182,8 @@ export interface ResourceChange {
   configuredPaths?: string[];
   /** Configured plan arguments, using literal configuration values before provider-populated values. */
   configuredAfter?: Attrs;
+  /** Prior static configuration evidence, when available. */
+  configuredBefore?: Attrs;
   previousAddress?: string;
   /** lifecycle { prevent_destroy = true }: Terraform refuses to plan a destroy. */
   preventDestroy?: boolean;

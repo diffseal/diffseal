@@ -62,7 +62,7 @@ export function plan(resourceChanges: unknown[], configResources: unknown[] = []
     const address = change.address.replace(/\[[^\]]*\]/g, '');
     const config = supplied.find((r) => r.address === address);
     const expressions = Object.fromEntries(Object.entries({ ...change.change.after, ...change.change.after_unknown })
-      .map(([key]) => [key, { references: ['var.fixture'] }]));
+      .map(([key, value]) => [key, value === null ? { constant_value: null } : { references: ['var.fixture'] }]));
     generated.set(address, { address, provider_config_key: 'aws', ...config, expressions: { ...generated.get(address)?.expressions, ...expressions, ...config?.expressions } });
   }
   const resources = [...generated.values()];
@@ -72,5 +72,6 @@ export function plan(resourceChanges: unknown[], configResources: unknown[] = []
     resource_changes: resourceChanges,
     configuration: { root_module: { resources: [...resources, ...supplied.filter((r) => !resources.some((c) => c.address === r.address))] } },
     ...extra,
+    variables: { fixture: { value: true }, ...(extra.variables as Record<string, unknown> | undefined) },
   };
 }

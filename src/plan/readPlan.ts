@@ -7,7 +7,9 @@ import {
   type Attrs,
   type ResourceChange,
 } from '../core/model.js';
-import { redact } from '../hcl/eval.js';
+import { knownConfiguration } from '../core/configuration.js';
+import { LazyMap, evaluate, redact, type EvalScope } from '../hcl/eval.js';
+import { parseHcl } from '../hcl/parser.js';
 
 /** The parts of `terraform show -json <planfile>` Diffseal reads. */
 export interface PlanJson {
@@ -47,11 +49,12 @@ interface StateModule {
 interface ConfigModule {
   resources?: Array<{ address: string; provider_config_key?: string; expressions?: Record<string, unknown> }>;
   module_calls?: Record<string, { expressions?: Record<string, unknown>; module?: ConfigModule }>;
+  outputs?: Record<string, { expression?: unknown }>;
 }
 
 interface ConfiguredExpressions {
   expressions: Record<string, unknown>;
-  nullReferences: Set<string>;
+  scope: EvalScope;
 }
 
 export function readPlan(input: unknown): ResourceChange[] {
@@ -66,8 +69,7 @@ export function readPlan(input: unknown): ResourceChange[] {
   const providers = new Map<string, string>();
   const configuredPaths = new Map<string, string[]>();
   const configurations = new Map<string, ConfiguredExpressions>();
-  const nullReferences = new Set(Object.entries(plan.variables ?? {}).filter(([, v]) => v.value === null).map(([name]) => `var.${name}`));
-  const references = collectReferences(plan.configuration?.root_module, providers, configuredPaths, configurations, nullReferences);
+  const references = collectReferences(plan, providers, configuredPaths, configurations);
   const changes: ResourceChange[] = [];
   const seen = new Set<string>();
 
@@ -97,7 +99,8 @@ export function readPlan(input: unknown): ResourceChange[] {
       actionReason: rc.action_reason,
       references: references.get(configAddress(rc.address)) ?? {},
       configuredPaths: configuredPaths.get(configAddress(rc.address)) ?? [],
-      configuredAfter: overlay(configuredValues(after ?? {}, config?.expressions ?? {}, config?.nullReferences ?? new Set()), rc.change.after_sensitive, redactMarker) as Attrs,
+      configuredAfter: overlay(configuredValues(after ?? {}, config?.expressions ?? {}, config?.scope ?? { root: () => undefined }),
+        rc.change.after_sensitive, (value) => value === undefined ? undefined : redactMarker(value)) as Attrs,
       previousAddress: rc.previous_address,
       confidence: 'proven',
     });
@@ -127,22 +130,40 @@ export function readPlan(input: unknown): ResourceChange[] {
 }
 
 /** Resolve configured expressions from literals or planned expression values, never computed-only fields. */
-function configuredValues(value: unknown, expression: unknown, nullReferences: Set<string>): unknown {
+function configuredValues(value: unknown, expression: unknown, scope: EvalScope): unknown {
   if (!expression || typeof expression !== 'object') return undefined;
   if ('constant_value' in expression) return expression.constant_value ?? undefined;
-  // Plan expressions expose references, not their operators. A nullable input may have been
-  // omitted and replaced by the provider's value, so that planned value cannot attest configuration.
-  if ('references' in expression) return referencesNull(expression, nullReferences) ? undefined : value ?? undefined;
+  // Never let a provider-populated result erase a null, unknown or computed dependency.
+  if ('references' in expression) {
+    const inputs = expressionInputs(expression, scope);
+    return inputs.length && inputs.every(knownConfiguration) ? value ?? undefined
+      : value == null ? undefined : new Unknown('configuration depends on a null, unknown or computed value');
+  }
   if (isUnknown(value) || value instanceof Redacted) return value;
-  if (Array.isArray(expression)) return expression.map((expr, i) => configuredValues(Array.isArray(value) ? value[i] : undefined, expr, nullReferences));
+  if (Array.isArray(expression)) return expression.map((expr, i) => configuredValues(Array.isArray(value) ? value[i] : undefined, expr, scope));
   return Object.fromEntries(Object.entries(expression).map(([key, expr]) => [key,
-    configuredValues(value && typeof value === 'object' ? (value as Attrs)[key] : undefined, expr, nullReferences),
+    configuredValues(value && typeof value === 'object' ? (value as Attrs)[key] : undefined, expr, scope),
   ]));
 }
 
-function referencesNull(expression: object, nullReferences: Set<string>): boolean {
-  return 'references' in expression && Array.isArray(expression.references)
-    && expression.references.some((ref) => nullReferences.has(ref));
+function expressionInputs(expression: object, scope: EvalScope): unknown[] {
+  if (!('references' in expression) || !Array.isArray(expression.references)) return [];
+  const refs = expression.references.filter((ref): ref is string => typeof ref === 'string');
+  // Terraform includes both a traversal and its containing object. Only read the most specific
+  // traversal, so a nullable sibling does not invalidate a known attribute.
+  return refs.filter((ref) => !refs.some((other) => other.startsWith(`${ref}.`) || other.startsWith(`${ref}[`))).map((ref) => {
+    const parsed = parseHcl(`value = ${ref}\n`);
+    return parsed.diagnostics.length || !parsed.body.attributes[0] ? undefined : evaluate(parsed.body.attributes[0].expr, scope);
+  });
+}
+
+/** Module arguments/outputs have no planned value of their own; carry their dependency evidence. */
+function expressionEvidence(expression: unknown, scope: EvalScope): unknown {
+  if (!expression || typeof expression !== 'object') return undefined;
+  if ('constant_value' in expression) return expression.constant_value;
+  const inputs = expressionInputs(expression, scope);
+  if (!inputs.length) return undefined;
+  return inputs.length === 1 ? inputs[0] : inputs.every(knownConfiguration) ? inputs : new Unknown('expression has a null or unknown dependency');
 }
 
 function mapAction(actions: string[], rc: PlanResourceChange): Action {
@@ -191,13 +212,46 @@ function* walkState(mod: StateModule | undefined): Generator<NonNullable<StateMo
 }
 
 /** configAddress -> attribute -> referenced resource addresses (module-qualified). */
-function collectReferences(root: ConfigModule | undefined, providers: Map<string, string>, configuredPaths: Map<string, string[]>, configurations: Map<string, ConfiguredExpressions>, nullReferences: Set<string>): Map<string, Record<string, string[]>> {
+function collectReferences(plan: PlanJson, providers: Map<string, string>, configuredPaths: Map<string, string[]>, configurations: Map<string, ConfiguredExpressions>): Map<string, Record<string, string[]>> {
   const out = new Map<string, Record<string, string[]>>();
-  const visit = (mod: ConfigModule | undefined, prefix: string, nullReferences: Set<string>) => {
-    if (!mod) return;
+  const visit = (mod: ConfigModule | undefined, prefix: string, inputs: Map<string, () => unknown>): EvalScope => {
+    const children = new Map<string, EvalScope>();
+    const roots = new Map<string, unknown>();
+    const variables = new LazyMap(inputs, () => new Unknown('variable value unavailable'));
+    const resources = new LazyMap(new Map((mod?.resources ?? []).map((res) => [res.address, () => {
+      const changes = plan.resource_changes?.filter((rc) => configAddress(rc.address) === prefix + res.address) ?? [];
+      if (changes.length !== 1) return new Unknown('resource instance value unavailable');
+      const rc = changes[0];
+      const after = overlay(overlay(rc.change.after, rc.change.after_unknown, unknownMarker), rc.change.after_sensitive, redactMarker);
+      return configuredValues(after, res.expressions ?? {}, scope);
+    }])));
+    const root = (name: string): unknown => {
+      if (name === 'var') return variables;
+      if (name === 'module') return new LazyMap(new Map(Object.entries(mod?.module_calls ?? {}).map(([name, call]) => [name, () =>
+        new LazyMap(new Map(Object.entries(call.module?.outputs ?? {}).map(([output, config]) => [output, () =>
+          expressionEvidence(config.expression, children.get(name)!),
+        ]))),
+      ])));
+      // Only a configured argument can attest another argument; computed resource fields cannot.
+      const data = name === 'data';
+      const byType = (type: string) => new LazyMap(new Map((mod?.resources ?? [])
+        .filter((r) => r.address.startsWith(`${data ? 'data.' : ''}${type}.`))
+        .map((r) => [r.address.split('.').at(-1)!, () => resources.getAttr(r.address)])));
+      return data ? new LazyMap(new Map([...new Set((mod?.resources ?? []).filter((r) => r.address.startsWith('data.')).map((r) => r.address.split('.')[1]))]
+        .map((type) => [type, () => byType(type)]))) : byType(name);
+    };
+    const scope: EvalScope = { root: (name) => {
+      if (!roots.has(name)) roots.set(name, root(name));
+      return roots.get(name);
+    } };
+    for (const [name, call] of Object.entries(mod?.module_calls ?? {})) {
+      children.set(name, visit(call.module, `${prefix}module.${name}.`, new Map(Object.entries(call.expressions ?? {})
+        .map(([arg, expr]) => [arg, () => expressionEvidence(expr, scope)]))));
+    }
+    if (!mod) return scope;
     for (const res of mod.resources ?? []) {
       if (res.provider_config_key) providers.set(prefix + res.address, res.provider_config_key);
-      configurations.set(prefix + res.address, { expressions: res.expressions ?? {}, nullReferences });
+      configurations.set(prefix + res.address, { expressions: res.expressions ?? {}, scope });
       const paths: string[] = [];
       const visitLiteral = (value: unknown, path: string) => {
         if (value == null) return;
@@ -222,13 +276,9 @@ function collectReferences(root: ConfigModule | undefined, providers: Map<string
       }
       out.set(prefix + res.address, byAttr);
     }
-    for (const [name, call] of Object.entries(mod.module_calls ?? {})) {
-      const nullInputs = Object.entries(call.expressions ?? {}).filter(([, expr]) => expr && typeof expr === 'object'
-        && (('constant_value' in expr && expr.constant_value === null) || referencesNull(expr, nullReferences)));
-      visit(call.module, `${prefix}module.${name}.`, new Set(nullInputs.map(([name]) => `var.${name}`)));
-    }
+    return scope;
   };
-  visit(root, '', nullReferences);
+  visit(plan.configuration?.root_module, '', new Map(Object.entries(plan.variables ?? {}).map(([name, v]) => [name, () => v.value])));
   return out;
 }
 

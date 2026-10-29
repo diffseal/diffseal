@@ -261,7 +261,7 @@
     },
     {
       "kind": "terraform",
-      "name": "round 13 codex and gemini (reconcile, app, policy): inline bucket encryption with a referenced customer key is PASS, not UNKNOWN",
+      "name": "round 13 codex and gemini (reconcile, app, policy): inline bucket encryption with a computed customer key remains UNKNOWN",
       "root": "r",
       "head": {
         "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_kms_key\" \"k\" {}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"b\"\n  server_side_encryption_configuration {\n    rule {\n      apply_server_side_encryption_by_default {\n        sse_algorithm     = \"aws:kms\"\n        kms_master_key_id = aws_kms_key.k.arn\n      }\n    }\n  }\n}\n"
@@ -297,9 +297,9 @@
           {
             "ruleId": "s3.encryption",
             "resource": "aws_s3_bucket.b",
-            "status": "PASS",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "SSE-KMS with a customer managed KMS key"
+            "detailContains": "key not known until apply"
           },
           {
             "ruleId": "s3.public-access",

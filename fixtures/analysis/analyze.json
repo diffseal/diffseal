@@ -1319,7 +1319,7 @@
     },
     {
       "kind": "plan",
-      "name": "SQS (audit P3a, P9): a KMS key known only after apply passes when config references an aws_kms_key",
+      "name": "SQS (audit P3a, P9): a computed KMS key remains UNKNOWN even when config references an aws_kms_key",
       "plan": {
         "format_version": "1.2",
         "terraform_version": "1.9.5",
@@ -1387,9 +1387,9 @@
           {
             "ruleId": "sqs.encryption",
             "resource": "aws_sqs_queue.q",
-            "status": "PASS",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "SSE-KMS with a customer managed key"
+            "detailContains": "KMS key not known"
           },
           {
             "ruleId": "sqs.dlq",

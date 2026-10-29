@@ -72,6 +72,7 @@ export class RuleContext {
 
   /** Only configured expressions count as encryption evidence; planned defaults/computed fields do not. */
   configuredValues(r: ResourceChange): Attrs {
+    if (this.side === 'before' && r.configuredBefore) return typed(reveal(r.configuredBefore) as Attrs, r.type);
     if (this.side === 'after' && r.configuredAfter) return typed(reveal(r.configuredAfter) as Attrs, r.type);
     const values = this.values(r);
     if (!r.configuredPaths) return values;

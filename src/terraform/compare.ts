@@ -334,6 +334,7 @@ function toChange(i: StaticInstance, action: Action, before: Attrs | null, after
     before,
     after,
     references: i.references,
+    ...(i.configuredAttrs ? { configuredAfter: i.configuredAttrs } : {}),
     source: i.source,
     confidence: i.externalModule ? 'unknown' : 'proven',
     preventDestroy: i.preventDestroy || undefined,
@@ -355,6 +356,7 @@ function diffInstance(b: StaticInstance, a: StaticInstance): ResourceChange {
         });
 
   const base = toChange(a, 'no-op', b.attrs, applied(b.attrs, a.attrs, ignored));
+  base.configuredBefore = b.configuredAttrs;
   base.preventDestroy = a.preventDestroy || undefined;
   if (!changed.length || a.mode === 'data') return base;
 

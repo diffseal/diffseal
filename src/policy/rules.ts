@@ -1,4 +1,5 @@
 import { configAddress, instancesCompatible, isRedacted, isUnknown, reveal, type Attrs, type ResourceChange } from '../core/model.js';
+import { knownConfiguration } from '../core/configuration.js';
 import { containsUnknown, stableKey } from '../hcl/eval.js';
 import { capitalize, type Rule, type RuleContext, type RuleResult } from './engine.js';
 import { block, blocks, typed, unknownBlock } from './values.js';
@@ -22,32 +23,9 @@ import {
 
 const isSet = (v: unknown) => v !== undefined && v !== null && v !== '';
 
-/** A data source address: `data.` after the module path. */
-const isDataRef = (r: string) => /^(module\.[^.[]+(\[[^\]]*\])?\.)*data\./.test(r);
-
 /** Classify a KMS key reference as customer managed, AWS managed, or unknown. */
-function keyKind(key: unknown, res: ResourceChange, attr: string, ctx: RuleContext): 'cmk' | 'aws-managed' | 'unknown' | 'none' {
-  if (isUnknown(key) || isRedacted(key)) {
-    const refs = res.references[attr] ?? [];
-    // A key this configuration manages is the customer's. A data source only looks a key up: it may
-    // be an AWS managed one (`data "aws_kms_alias"` with `alias/aws/sqs`).
-    const managed = refs.some((r) => /(^|\.)(aws_kms_key|aws_kms_replica_key|aws_kms_alias)\.[^.]+$/.test(r.replace(/\[[^\]]*\]/g, '')) && !isDataRef(r));
-    if (managed) return 'cmk';
-    const lookups = refs.filter((r) => isDataRef(r) && /\.(aws_kms_key|aws_kms_alias)\./.test(`.${r}`));
-    // The lookup says which key: `alias/aws/...` is AWS managed, any other alias is the customer's, and
-    // a lookup of a key this configuration manages is the customer's. A bare key id could be either.
-    const kinds = lookups.flatMap((r) =>
-      ctx.lookup(configAddress(r)).map((d): 'cmk' | 'aws-managed' | 'unknown' => {
-        const v = ctx.values(d);
-        const id = v.name ?? v.key_id;
-        if (typeof id === 'string') return /(^|:)alias\/aws\//.test(id) ? 'aws-managed' : /(^|:)alias\//.test(id) ? 'cmk' : 'unknown';
-        const via = [...(d.references.name ?? []), ...(d.references.key_id ?? [])];
-        return via.some((x) => /(^|\.)(aws_kms_key|aws_kms_replica_key|aws_kms_alias)\.[^.]+$/.test(x.replace(/\[[^\]]*\]/g, '')) && !isDataRef(x)) ? 'cmk' : 'unknown';
-      })
-    );
-    if (kinds.includes('aws-managed')) return 'aws-managed';
-    return kinds.length && kinds.every((k) => k === 'cmk') ? 'cmk' : 'unknown';
-  }
+function keyKind(key: unknown): 'cmk' | 'aws-managed' | 'unknown' | 'none' {
+  if (isUnknown(key) || isRedacted(key)) return 'unknown';
   if (!isSet(key)) return 'none';
   if (typeof key !== 'string') return 'unknown';
   if (typeof key === 'string' && /(^|:)alias\/aws\//.test(key)) return 'aws-managed';
@@ -75,8 +53,7 @@ function bucketEncryption(bucket: ResourceChange, values: Attrs, ctx: RuleContex
   if (algo === 'AES256') return cmkVerdict(ctx, 'aws-owned', 'SSE-S3 (AES256, S3 managed keys)');
   if (algo === 'aws:kms' || algo === 'aws:kms:dsse') {
     const label = algo === 'aws:kms' ? 'SSE-KMS' : 'DSSE-KMS';
-    // References are indexed by the top-level block: `rule` on the helper, the inline block on the bucket.
-    const kind = keyKind(def.kms_master_key_id, helper ?? bucket, helper ? 'rule' : 'server_side_encryption_configuration', ctx);
+    const kind = keyKind(def.kms_master_key_id);
     if (kind === 'none' || kind === 'aws-managed') return cmkVerdict(ctx, 'aws-managed', `${label} with the AWS managed key aws/s3`);
     if (kind === 'unknown') return { status: 'UNKNOWN', detail: `${label} key not known until apply` };
     return encryptionDecision(true, 'sse_algorithm', 'S3 encryption', { passDetail: `${label} with a customer managed KMS key` });
@@ -188,13 +165,15 @@ const s3BucketPolicy: Rule = {
 function encryptionDecision(value: unknown, attr: string, description: string, options: {
   enforcedAtCreation?: boolean;
   mayInheritEncryption?: boolean;
+  ignoresEncryptionArgument?: boolean;
   passDetail?: string;
   warnDetail?: string;
   unknownDetail?: string;
   remediation?: string;
 } = {}): RuleResult {
   // ElastiCache's at_rest_encryption_enabled also accepts the string form in provider plans.
-  const enabled = value === 'true' ? true : value === 'false' ? false : value;
+  const evidence = knownConfiguration(value) && !options.ignoresEncryptionArgument ? value : undefined;
+  const enabled = evidence === 'true' ? true : evidence === 'false' ? false : evidence;
   if (enabled === true) return { status: 'PASS', detail: options.passDetail ?? `${description} configured (${attr} = true)` };
   if (enabled === false && !options.enforcedAtCreation && !options.mayInheritEncryption) return {
     status: 'WARN', detail: options.warnDetail ?? `${description} explicitly disabled (${attr}); effective AWS settings are not verified`,
@@ -214,6 +193,11 @@ const ebsDefaultEncryption: Rule = {
   evaluate: (v) => encryptionDecision(v.enabled, 'enabled', 'EBS default encryption'),
 };
 
+/** Keep source presence even when its value is unusable as explicit encryption evidence. */
+function configuredArgument(values: Attrs, res: ResourceChange, attr: string): boolean {
+  return isSet(values[attr]) || Boolean(res.configuredPaths?.includes(attr)) || Boolean(res.references[attr]?.length);
+}
+
 const ebsEncryption: Rule = {
   configurationOnly: true,
   id: 'ebs.encryption',
@@ -231,14 +215,7 @@ const ebsEncryption: Rule = {
       }
       return d.enabled === true || d.enabled === 'true';
     });
-    const snapshots = ctx.all.filter((r) => ['aws_ebs_snapshot', 'aws_ebs_snapshot_copy', 'aws_ebs_snapshot_import'].includes(r.type)
-      && ctx.referrers(r, 'aws_ebs_volume', 'snapshot_id', ['id']).includes(res));
-    // A new snapshot's encrypted=false argument can itself be overridden by inheritance.
-    // Only observed snapshot metadata establishes that the source is unencrypted.
-    const unencryptedSnapshot = snapshots.length === 1 && (snapshots[0].mode === 'data'
-      || (snapshots[0].configuredPaths !== undefined && (ctx.side === 'before' || snapshots[0].action === 'no-op')))
-      && ctx.values(snapshots[0]).encrypted === false;
-    const mayInheritEncryption = isSet(v.snapshot_id) && !unencryptedSnapshot;
+    const mayInheritEncryption = configuredArgument(v, res, 'snapshot_id');
     return encryptionDecision(v.encrypted, 'encrypted', 'EBS volume encryption', {
       enforcedAtCreation: ctx.side === 'after' && (res.action === 'create' || res.action === 'replace') && enabled,
       mayInheritEncryption,
@@ -681,7 +658,7 @@ const sqsEncryption: Rule = {
   controls: ['ISO27001:A.8.24'],
   types: ['aws_sqs_queue'],
   evaluate: (v, res, ctx) => {
-    const kind = keyKind(v.kms_master_key_id, res, 'kms_master_key_id', ctx);
+    const kind = keyKind(v.kms_master_key_id);
     if (kind === 'cmk') return encryptionDecision(true, 'kms_master_key_id', 'SQS encryption', { passDetail: 'SSE-KMS with a customer managed key' });
     if (kind === 'aws-managed') return cmkVerdict(ctx, 'aws-managed', 'SSE-KMS with the AWS managed key aws/sqs');
     if (kind === 'unknown') return { status: 'UNKNOWN', detail: 'KMS key not known until apply' };
@@ -733,7 +710,7 @@ const snsEncryption: Rule = {
   controls: ['ISO27001:A.8.24'],
   types: ['aws_sns_topic'],
   evaluate: (v, res, ctx) => {
-    const kind = keyKind(v.kms_master_key_id, res, 'kms_master_key_id', ctx);
+    const kind = keyKind(v.kms_master_key_id);
     if (kind === 'cmk') return encryptionDecision(true, 'kms_master_key_id', 'SNS encryption', { passDetail: 'Encrypted with a customer managed KMS key' });
     if (kind === 'aws-managed') return cmkVerdict(ctx, 'aws-managed', 'Encrypted with the AWS managed key aws/sns');
     if (kind === 'unknown') return { status: 'UNKNOWN', detail: 'KMS key not known until apply' };
@@ -767,7 +744,7 @@ const dynamoEncryption: Rule = {
     if (sse?.enabled === false) return cmkVerdict(ctx, 'aws-owned', 'Encrypted with an AWS-owned key');
     const result = encryptionDecision(sse?.enabled, 'server_side_encryption.enabled', 'DynamoDB KMS encryption');
     if (result.status !== 'PASS') return result;
-    const kind = keyKind(sse?.kms_key_arn, res, 'server_side_encryption', ctx);
+    const kind = keyKind(sse?.kms_key_arn);
     if (kind === 'cmk') return encryptionDecision(true, 'server_side_encryption.enabled', 'DynamoDB encryption', { passDetail: 'Encrypted with a customer managed KMS key' });
     if (kind === 'unknown') return { status: 'UNKNOWN', detail: 'KMS key not known until apply' };
     return cmkVerdict(ctx, 'aws-managed', 'Encrypted with the AWS managed key aws/dynamodb');
@@ -829,14 +806,12 @@ const rdsEncryption: Rule = {
   controls: ['ISO27001:A.8.24'],
   types: ['aws_db_instance', 'aws_rds_cluster'],
   evaluate: (v, res) => {
-    // Cross-region replicas name their source by ARN. The provider ignores storage_encrypted;
-    // a destination key does not establish the source database's encryption configuration.
-    if (res.type === 'aws_db_instance' && typeof v.replicate_source_db === 'string' && v.replicate_source_db.startsWith('arn:')) {
-      return encryptionDecision(undefined, 'storage_encrypted', 'RDS storage encryption', {
-        unknownDetail: 'RDS replica source is an ARN; storage_encrypted is ignored for cross-region replicas and inherited encryption is not established',
-      });
-    }
+    const source = v.replicate_source_db;
+    const uncertainSource = res.type === 'aws_db_instance' && configuredArgument(v, res, 'replicate_source_db')
+      && !(typeof source === 'string' && /^[a-zA-Z][a-zA-Z0-9-]{0,62}$/.test(source) && !source.endsWith('-') && !source.includes('--'));
     return encryptionDecision(v.storage_encrypted, 'storage_encrypted', 'RDS storage encryption', {
+      ignoresEncryptionArgument: uncertainSource,
+      unknownDetail: uncertainSource ? 'RDS replica source is not a known same-region identifier; storage_encrypted cannot establish inherited encryption' : undefined,
       passDetail: 'Storage encrypted',
       remediation: 'Set storage_encrypted = true (requires a new instance or snapshot restore for existing databases).',
     });
