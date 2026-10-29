@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.3-beta, 2026-10-29
+
+### Added
+
+- The CLI is published to npm as `diffseal`. Install it with `npm install -g diffseal@beta` (or Bun, Yarn or pnpm), or run `npx diffseal@beta verify ...` once. It needs Node.js 18 or later.
+- `diffseal --version`.
+
+### Changed
+
+- CI and releases build with Bun 1.4.4, and the build refuses any other Bun version, so the committed `dist/` always matches the release build.
+
 ## 0.5.2-beta, 2026-10-29
 
 ### Changed
