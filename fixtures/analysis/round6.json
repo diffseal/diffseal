@@ -119,9 +119,9 @@
           {
             "ruleId": "s3.encryption",
             "resource": "aws_s3_bucket.b",
-            "status": "PASS",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "No bucket encryption configuration: S3 applies SSE-S3 (AES256) to all new objects by default since January 2023"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "s3.public-access",

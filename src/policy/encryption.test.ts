@@ -19,12 +19,209 @@ function check(rule: string, type: string, criterion: string, cases: Array<[stri
   ]));
 }
 
-test('EBS default encryption warns only when disabled and respects the provider default', () => {
+test('every encryption flag requires explicit configuration for PASS or WARN', () => {
+  const flags = [
+    ['ebs.default-encryption', 'aws_ebs_encryption_by_default', 'enabled', 'CC6.1'],
+    ['ebs.encryption', 'aws_ebs_volume', 'encrypted', 'CC6.1'],
+    ['efs.encryption', 'aws_efs_file_system', 'encrypted', 'CC6.1'],
+    ['elasticache.encryption', 'aws_elasticache_replication_group', 'at_rest_encryption_enabled', 'CC6.1'],
+    ['elasticache.transit-encryption', 'aws_elasticache_replication_group', 'transit_encryption_enabled', 'CC6.7'],
+    ['rds.encryption', 'aws_db_instance', 'storage_encrypted', 'CC6.1'],
+    ['sqs.encryption', 'aws_sqs_queue', 'sqs_managed_sse_enabled', 'CC6.1'],
+  ];
+  for (const [rule, type, attr, criterion] of flags) {
+    check(rule, type, criterion, [
+      ['on', { [attr]: true }, 'PASS'],
+      ['off', { [attr]: false }, 'WARN'],
+      ['omitted', {}, 'UNKNOWN'],
+      ['null', { [attr]: null }, 'UNKNOWN'],
+      ['unknown', { [attr]: new Unknown('configured variable') }, 'UNKNOWN'],
+      ['redacted', { [attr]: new Redacted() }, 'UNKNOWN'],
+    ]);
+  }
+});
+
+test('encryption checks never attest inferred service or nested-block defaults', () => {
+  for (const [rule, type, attrs] of [
+    ['s3.encryption', 'aws_s3_bucket', {}],
+    ['sqs.encryption', 'aws_sqs_queue', {}],
+    ['sns.encryption', 'aws_sns_topic', {}],
+    ['dynamodb.encryption', 'aws_dynamodb_table', {}],
+    ['opensearch.encryption', 'aws_opensearch_domain', {}],
+    ['opensearch.node-to-node-encryption', 'aws_opensearch_domain', {}],
+    ['opensearch.https', 'aws_opensearch_domain', { domain_endpoint_options: [{}] }],
+    ['elb.tls-policy', 'aws_lb_listener', { protocol: 'HTTPS' }],
+    ['cloudfront.tls-policy', 'aws_cloudfront_distribution', { viewer_certificate: [{}] }],
+  ] as const) {
+    expect(evaluatePolicies(readPlan(plan([rc(`${type}.example`, type, ['create'], attrs)])))
+      .find((f) => f.ruleId === rule)?.status).toBe('UNKNOWN');
+  }
+});
+
+test('unrecognized KMS key values and omitted redirect protocols remain UNKNOWN', () => {
+  for (const [rule, type] of [['sqs.encryption', 'aws_sqs_queue'], ['sns.encryption', 'aws_sns_topic']]) {
+    check(rule, type, 'CC6.1', [['invalid_key', { kms_master_key_id: false }, 'UNKNOWN']]);
+  }
+  check('elb.https', 'aws_lb_listener', 'CC6.7', [
+    ['omitted', { protocol: 'HTTP', default_action: [{ type: 'redirect', redirect: [{}] }] }, 'UNKNOWN'],
+    ['invalid', { protocol: 'HTTP', default_action: [{ type: 'redirect', redirect: [{ protocol: 'unrecognized' }] }] }, 'UNKNOWN'],
+  ]);
+});
+
+test('provider-populated encryption values and nested flags are not configured evidence', () => {
+  const cases = [
+    rc('aws_ebs_volume.computed', 'aws_ebs_volume', ['update'], { encrypted: true }),
+    rc('aws_efs_file_system.computed', 'aws_efs_file_system', ['create'], { encrypted: false }),
+    rc('aws_opensearch_domain.computed', 'aws_opensearch_domain', ['create'], { encrypt_at_rest: [{ enabled: true }] }),
+    rc('aws_opensearch_domain.nested', 'aws_opensearch_domain', ['create'], { domain_endpoint_options: [{ enforce_https: true, custom_endpoint_enabled: false }] }),
+  ];
+  const resources = cases.map((c) => ({ address: c.address, expressions: c.address.endsWith('.nested')
+    ? { domain_endpoint_options: [{ custom_endpoint_enabled: { constant_value: false } }] } : {} }));
+  const findings = evaluatePolicies(readPlan(plan(cases, [], { configuration: { root_module: { resources } } })));
+  expect(findings.filter((f) => ['ebs.encryption', 'efs.encryption', 'opensearch.encryption', 'opensearch.https'].includes(f.ruleId))
+    .every((f) => f.status === 'UNKNOWN')).toBe(true);
+});
+
+test('literal nulls stay omitted and explicit flags take precedence over provider-populated plan values', () => {
+  const resources = [
+    { address: 'aws_ebs_volume.omitted', expressions: { encrypted: { constant_value: null } } },
+    { address: 'aws_ebs_volume.disabled', expressions: { encrypted: { constant_value: false } } },
+    { address: 'aws_elasticache_replication_group.primary', expressions: {
+      global_replication_group_id: { constant_value: null },
+      at_rest_encryption_enabled: { constant_value: false }, transit_encryption_enabled: { constant_value: false },
+    } },
+    { address: 'aws_opensearch_domain.omitted', expressions: { domain_endpoint_options: [{ enforce_https: { constant_value: null } }] } },
+  ];
+  const findings = evaluatePolicies(readPlan(plan([
+    rc(resources[0].address, 'aws_ebs_volume', ['create'], { encrypted: true }),
+    rc(resources[1].address, 'aws_ebs_volume', ['create'], { encrypted: true }),
+    rc(resources[2].address, 'aws_elasticache_replication_group', ['create'], {
+      global_replication_group_id: 'computed-primary', at_rest_encryption_enabled: false, transit_encryption_enabled: false,
+    }),
+    rc(resources[3].address, 'aws_opensearch_domain', ['create'], { domain_endpoint_options: [{ enforce_https: true }] }),
+  ], [], { configuration: { root_module: { resources } } })));
+  expect(findings.filter((f) => ['ebs.encryption', 'elasticache.encryption', 'elasticache.transit-encryption', 'opensearch.https'].includes(f.ruleId))
+    .map((f) => [f.resource, f.status])).toEqual([
+      ['aws_ebs_volume.omitted', 'UNKNOWN'], ['aws_ebs_volume.disabled', 'WARN'],
+      ['aws_elasticache_replication_group.primary', 'WARN'], ['aws_elasticache_replication_group.primary', 'WARN'],
+      ['aws_opensearch_domain.omitted', 'UNKNOWN'],
+    ]);
+});
+
+test('computed global membership does not suppress explicit primary encryption checks', () => {
+  for (const membership of [new Unknown('known after apply'), 'computed-global-primary', new Redacted()]) {
+    const address = 'aws_elasticache_replication_group.primary';
+    const findings = evaluatePolicies(readPlan(plan([
+      rc(address, 'aws_elasticache_replication_group', ['create'], {
+        global_replication_group_id: membership,
+        at_rest_encryption_enabled: false, transit_encryption_enabled: false,
+      }),
+    ], [], { configuration: { root_module: { resources: [{ address, expressions: {
+      at_rest_encryption_enabled: { constant_value: false }, transit_encryption_enabled: { constant_value: false },
+    } }] } } }))).filter((f) => f.ruleId.startsWith('elasticache.'));
+    expect(findings.map((f) => [f.ruleId, f.status])).toEqual([
+      ['elasticache.encryption', 'WARN'], ['elasticache.transit-encryption', 'WARN'],
+    ]);
+  }
+});
+
+test('enabling regional EBS defaults does not attest encryption of an existing volume', () => {
+  const base = new MemorySource({ 'main.tf': `
+    resource "aws_ebs_encryption_by_default" "regional" { enabled = false }
+    resource "aws_ebs_volume" "existing" { size = 10 }
+  ` });
+  const head = new MemorySource({ 'main.tf': `
+    resource "aws_ebs_encryption_by_default" "regional" { enabled = true }
+    resource "aws_ebs_volume" "existing" { size = 20 }
+  ` });
+  const findings = evaluatePolicies(compareEvaluations(evaluateRoot(base, '.'), evaluateRoot(head, '.')));
+  expect(findings.find((f) => f.ruleId === 'ebs.encryption')?.status).toBe('UNKNOWN');
+});
+
+test('an in-place Redis to Valkey upgrade does not attest omitted at-rest encryption', () => {
+  const source = (engine: string, version: string) => new MemorySource({ 'main.tf': `
+    resource "aws_elasticache_replication_group" "existing" {
+      engine = "${engine}"
+      engine_version = "${version}"
+    }
+  ` });
+  const changes = compareEvaluations(evaluateRoot(source('redis', '7.1'), '.'), evaluateRoot(source('valkey', '7.2'), '.'));
+  expect(changes[0].action).toBe('update');
+  expect(evaluatePolicies(changes).find((f) => f.ruleId === 'elasticache.encryption')?.status).toBe('UNKNOWN');
+});
+
+test('regional EBS enforcement suppresses explicit-false warnings only at creation in the same provider and region', () => {
+  const cases: Array<[string[], Attrs, Attrs, string, FindingStatus]> = [
+    [['create'], { enabled: true }, {}, 'aws.same', 'UNKNOWN'],
+    [['delete', 'create'], { enabled: true }, {}, 'aws.same', 'UNKNOWN'],
+    [['update'], { enabled: true }, {}, 'aws.same', 'WARN'],
+    [['create'], { enabled: false }, {}, 'aws.same', 'WARN'],
+    [['create'], {}, {}, 'aws.same', 'WARN'],
+    [['create'], { enabled: new Unknown('enabled') }, {}, 'aws.same', 'WARN'],
+    [['create'], { enabled: true }, {}, 'aws.other', 'WARN'],
+    [['create'], { enabled: true, region: 'us-east-1' }, { region: 'us-west-2' }, 'aws.same', 'WARN'],
+    [['create'], { enabled: true, region: 'us-east-1' }, { region: 'us-east-1' }, 'aws.same', 'UNKNOWN'],
+  ];
+  for (const [actions, defaults, volume, provider, status] of cases) {
+    const changes = readPlan(plan([
+      rc('aws_ebs_encryption_by_default.regional', 'aws_ebs_encryption_by_default', ['no-op'], defaults, { before: defaults }),
+      rc('aws_ebs_volume.example', 'aws_ebs_volume', actions, { encrypted: false, ...volume }, { before: { encrypted: false } }),
+    ]));
+    changes[0].providerAddress = 'aws.same';
+    changes[1].providerAddress = provider;
+    expect(evaluatePolicies(changes).find((f) => f.ruleId === 'ebs.encryption')?.status).toBe(status);
+  }
+});
+
+test('a listener-rule-only redirect downgrade re-evaluates its unchanged listener', () => {
+  const listener = { arn: 'listener-http', protocol: 'HTTP', default_action: [{ type: 'forward' }] };
+  const rule = { listener_arn: 'listener-http', priority: 1, condition: [{ path_pattern: [{ values: ['/*'] }] }] };
+  const findings = evaluatePolicies(readPlan(plan([
+    rc('aws_lb_listener.http', 'aws_lb_listener', ['no-op'], listener, { before: listener }),
+    rc('aws_lb_listener_rule.routing', 'aws_lb_listener_rule', ['update'], { ...rule, action: [{ type: 'forward' }] }, {
+      before: { ...rule, action: [{ type: 'redirect', redirect: [{ protocol: 'HTTPS' }] }] },
+    }),
+  ]))).filter((f) => f.ruleId === 'elb.https');
+  expect(findings.map((f) => [f.resource, f.status, f.preExisting])).toEqual([['aws_lb_listener.http', 'WARN', undefined]]);
+});
+
+test('an unresolved listener owner reports UNKNOWN on the changed rule', () => {
+  const address = 'aws_lb_listener_rule.routing';
+  const findings = evaluatePolicies(readPlan(plan([
+    rc(address, 'aws_lb_listener_rule', ['update'], { listener_arn: new Unknown('external listener'), action: [{ type: 'forward' }] }),
+  ]))).filter((f) => f.ruleId === 'elb.https');
+  expect(findings.map((f) => [f.resource, f.status, f.remediation])).toEqual([[address, 'UNKNOWN', undefined]]);
+});
+
+test('listener-rule creation, replacement and deletion re-evaluate the unchanged owner', () => {
+  const redirect = [{ type: 'redirect', redirect: [{ protocol: 'HTTPS' }] }];
+  const forward = [{ type: 'forward' }];
+  const listener = { arn: 'listener-http', protocol: 'HTTP', default_action: forward };
+  const rule = { listener_arn: 'listener-http', priority: 1, condition: [{ path_pattern: [{ values: ['/*'] }] }] };
+  for (const [actions, after, before, status, preExisting] of [
+    [['create'], { ...rule, action: redirect }, null, 'PASS', undefined],
+    [['delete', 'create'], { ...rule, action: forward }, { ...rule, action: redirect }, 'WARN', undefined],
+    [['delete'], null, { ...rule, action: redirect }, 'WARN', undefined],
+    [['update'], { ...rule, priority: 2, action: forward }, { ...rule, action: forward }, 'WARN', true],
+  ] as const) {
+    const findings = evaluatePolicies(readPlan(plan([
+      rc('aws_lb_listener.http', 'aws_lb_listener', ['no-op'], listener, { before: listener }),
+      rc('aws_lb_listener_rule.routing', 'aws_lb_listener_rule', [...actions], after, { before }),
+    ]))).filter((f) => f.ruleId === 'elb.https');
+    expect(findings.map((f) => [f.resource, f.status, f.preExisting])).toEqual([['aws_lb_listener.http', status, preExisting]]);
+  }
+  const findings = evaluatePolicies(readPlan(plan([
+    rc('aws_lb_listener_rule.external', 'aws_lb_listener_rule', ['delete'], null, { before: { listener_arn: 'external' } }),
+  ]))).filter((f) => f.ruleId === 'elb.https');
+  expect(findings.map((f) => [f.resource, f.status])).toEqual([['aws_lb_listener_rule.external', 'UNKNOWN']]);
+});
+
+test('EBS default encryption requires explicit enablement or disablement', () => {
   check('ebs.default-encryption', 'aws_ebs_encryption_by_default', 'CC6.1', [
     ['off', { enabled: false }, 'WARN'],
     ['on', { enabled: 'true' }, 'PASS'],
-    ['default', {}, 'PASS'],
-    ['null', { enabled: null }, 'PASS'],
+    ['default', {}, 'UNKNOWN'],
+    ['null', { enabled: null }, 'UNKNOWN'],
     ['unknown', { enabled: new Unknown('variable') }, 'UNKNOWN'],
     ['redacted', { enabled: new Redacted() }, 'UNKNOWN'],
     ['invalid', { enabled: 'unrecognized' }, 'UNKNOWN'],
@@ -43,10 +240,10 @@ test('EBS volumes warn only about explicitly disabled encryption and leave omitt
   ]);
 });
 
-test('EBS volumes with omitted encryption use a declared enabled regional default', () => {
+test('EBS volumes with omitted encryption remain UNKNOWN even with a declared regional default', () => {
   for (const [attrs, action, status] of [
-    [{ enabled: true }, 'no-op', 'PASS'],
-    [{}, 'create', 'PASS'],
+    [{ enabled: true }, 'no-op', 'UNKNOWN'],
+    [{}, 'create', 'UNKNOWN'],
     [{ enabled: false }, 'create', 'UNKNOWN'],
     [{ enabled: new Unknown('variable') }, 'create', 'UNKNOWN'],
     [{ enabled: true }, 'delete', 'UNKNOWN'],
@@ -73,7 +270,7 @@ test('EBS encryption defaults do not cross provider configurations or explicit r
   ` });
   expect(evaluatePolicies(compareEvaluations(undefined, evaluateRoot(source, '.')))
     .filter((f) => f.ruleId === 'ebs.encryption').map((f) => [f.resource, f.status])).toEqual([
-      ['aws_ebs_volume.same', 'PASS'],
+      ['aws_ebs_volume.same', 'UNKNOWN'],
       ['aws_ebs_volume.other', 'UNKNOWN'],
     ]);
   const changes = [
@@ -86,7 +283,7 @@ test('EBS encryption defaults do not cross provider configurations or explicit r
     .map((address) => ({ address, provider_config_key: address === 'aws_ebs_volume.other' ? 'aws.other' : 'aws.encrypted' }));
   expect(evaluatePolicies(readPlan(plan(changes, config))).filter((f) => f.ruleId === 'ebs.encryption')
     .map((f) => [f.resource, f.status])).toEqual([
-      ['aws_ebs_volume.same', 'PASS'],
+      ['aws_ebs_volume.same', 'UNKNOWN'],
       ['aws_ebs_volume.other', 'UNKNOWN'],
       ['aws_ebs_volume.region', 'UNKNOWN'],
     ]);
@@ -96,20 +293,20 @@ test('EFS encryption distinguishes configured, absent and unresolved values', ()
   check('efs.encryption', 'aws_efs_file_system', 'CC6.1', [
     ['off', { encrypted: false }, 'WARN'],
     ['on', { encrypted: 'true' }, 'PASS'],
-    ['unset', {}, 'WARN'],
-    ['null', { encrypted: null }, 'WARN'],
+    ['unset', {}, 'UNKNOWN'],
+    ['null', { encrypted: null }, 'UNKNOWN'],
     ['unknown', { encrypted: new Unknown('variable') }, 'UNKNOWN'],
     ['redacted', { encrypted: new Redacted() }, 'UNKNOWN'],
   ]);
 });
 
-test('ElastiCache encryption at rest respects Redis and Valkey defaults without guessing unknown engines', () => {
+test('ElastiCache encryption at rest requires explicit flags for Redis and Valkey', () => {
   check('elasticache.encryption', 'aws_elasticache_replication_group', 'CC6.1', [
     ['off', { at_rest_encryption_enabled: 'false', engine: 'valkey' }, 'WARN'],
     ['on', { at_rest_encryption_enabled: 'true' }, 'PASS'],
-    ['unset', {}, 'WARN'],
-    ['redis', { engine: 'redis' }, 'WARN'],
-    ['valkey', { engine: 'valkey' }, 'PASS'],
+    ['unset', {}, 'UNKNOWN'],
+    ['redis', { engine: 'redis' }, 'UNKNOWN'],
+    ['valkey', { engine: 'valkey' }, 'UNKNOWN'],
     ['unknown_engine', { engine: new Unknown('variable') }, 'UNKNOWN'],
     ['unknown', { at_rest_encryption_enabled: new Unknown('computed'), engine: 'valkey' }, 'UNKNOWN'],
     ['redacted', { at_rest_encryption_enabled: new Redacted() }, 'UNKNOWN'],
@@ -122,8 +319,8 @@ test('OpenSearch and Elasticsearch encryption at rest handle block lists, object
       ['off', { encrypt_at_rest: [{ enabled: false }] }, 'WARN'],
       ['on', { encrypt_at_rest: [{ enabled: 'true' }] }, 'PASS'],
       ['object', { encrypt_at_rest: { enabled: true } }, 'PASS'],
-      ['unset', {}, 'WARN'],
-      ['empty', { encrypt_at_rest: [] }, 'WARN'],
+      ['unset', {}, 'UNKNOWN'],
+      ['empty', { encrypt_at_rest: [] }, 'UNKNOWN'],
       ['unknown', { encrypt_at_rest: [{ enabled: new Unknown('computed') }] }, 'UNKNOWN'],
       ['block', { encrypt_at_rest: new Unknown('computed') }, 'UNKNOWN'],
       ['dynamic', { encrypt_at_rest: [new Unknown('dynamic block collection')] }, 'UNKNOWN'],
@@ -132,12 +329,12 @@ test('OpenSearch and Elasticsearch encryption at rest handle block lists, object
   }
 });
 
-test('ElastiCache transit encryption flags false and unset and leaves unresolved values unknown', () => {
+test('ElastiCache transit encryption warns only on explicit false', () => {
   check('elasticache.transit-encryption', 'aws_elasticache_replication_group', 'CC6.7', [
     ['off', { transit_encryption_enabled: 'false' }, 'WARN'],
     ['on', { transit_encryption_enabled: 'true' }, 'PASS'],
-    ['unset', {}, 'WARN'],
-    ['null', { transit_encryption_enabled: null }, 'WARN'],
+    ['unset', {}, 'UNKNOWN'],
+    ['null', { transit_encryption_enabled: null }, 'UNKNOWN'],
     ['unknown', { transit_encryption_enabled: new Unknown('variable') }, 'UNKNOWN'],
     ['redacted', { transit_encryption_enabled: new Redacted() }, 'UNKNOWN'],
   ]);
@@ -162,8 +359,8 @@ test('ElastiCache Memcached transit encryption checks supported versions in a VP
   check('elasticache.transit-encryption', 'aws_elasticache_cluster', 'CC6.7', [
     ['off', { ...supported, transit_encryption_enabled: false }, 'WARN'],
     ['on', { ...supported, transit_encryption_enabled: 'true' }, 'PASS'],
-    ['unset', supported, 'WARN'],
-    ['null', { ...supported, transit_encryption_enabled: null }, 'WARN'],
+    ['unset', supported, 'UNKNOWN'],
+    ['null', { ...supported, transit_encryption_enabled: null }, 'UNKNOWN'],
     ['later', { ...supported, engine_version: '1.6.100', transit_encryption_enabled: true }, 'PASS'],
     ['old_patch', { ...supported, engine_version: '1.6.9' }, 'UNKNOWN'],
     ['old_minor', { ...supported, engine_version: '1.5.16' }, 'UNKNOWN'],
@@ -186,16 +383,16 @@ test('ElastiCache Redis and Valkey cluster members are checked only at their rep
     ),
     rc('aws_elasticache_cluster.pending', 'aws_elasticache_cluster', ['create'], { replication_group_id: new Unknown('group') }),
   ]))).filter((f) => f.ruleId === 'elasticache.transit-encryption');
-  expect(findings.map((f) => [f.resource, f.status])).toEqual([['aws_elasticache_replication_group.primary', 'WARN']]);
+  expect(findings.map((f) => [f.resource, f.status])).toEqual([['aws_elasticache_replication_group.primary', 'WARN'], ['aws_elasticache_cluster.pending', 'UNKNOWN']]);
 });
 
-test('OpenSearch and Elasticsearch node encryption warns on absent blocks and preserves block uncertainty', () => {
+test('OpenSearch and Elasticsearch node encryption requires explicit flags and preserves block uncertainty', () => {
   for (const type of ['aws_opensearch_domain', 'aws_elasticsearch_domain']) {
     check('opensearch.node-to-node-encryption', type, 'CC6.7', [
       ['off', { node_to_node_encryption: [{ enabled: 'false' }] }, 'WARN'],
       ['on', { node_to_node_encryption: { enabled: 'true' } }, 'PASS'],
-      ['unset', {}, 'WARN'],
-      ['empty', { node_to_node_encryption: [] }, 'WARN'],
+      ['unset', {}, 'UNKNOWN'],
+      ['empty', { node_to_node_encryption: [] }, 'UNKNOWN'],
       ['unknown', { node_to_node_encryption: [{ enabled: new Unknown('variable') }] }, 'UNKNOWN'],
       ['block', { node_to_node_encryption: new Unknown('computed') }, 'UNKNOWN'],
       ['dynamic', { node_to_node_encryption: [new Unknown('dynamic collection')] }, 'UNKNOWN'],
@@ -204,12 +401,12 @@ test('OpenSearch and Elasticsearch node encryption warns on absent blocks and pr
   }
 });
 
-test('OpenSearch and Elasticsearch HTTPS enforcement respects the option default without assuming an omitted block', () => {
+test('OpenSearch and Elasticsearch HTTPS enforcement requires an explicit option', () => {
   for (const type of ['aws_opensearch_domain', 'aws_elasticsearch_domain']) {
     check('opensearch.https', type, 'CC6.7', [
       ['off', { domain_endpoint_options: [{ enforce_https: 'false' }] }, 'WARN'],
       ['on', { domain_endpoint_options: { enforce_https: 'true' } }, 'PASS'],
-      ['option_default', { domain_endpoint_options: [{}] }, 'PASS'],
+      ['option_default', { domain_endpoint_options: [{}] }, 'UNKNOWN'],
       ['unset', {}, 'UNKNOWN'],
       ['empty', { domain_endpoint_options: [] }, 'UNKNOWN'],
       ['unknown', { domain_endpoint_options: [{ enforce_https: new Unknown('variable') }] }, 'UNKNOWN'],
@@ -226,8 +423,8 @@ test('HTTP listeners warn unless their default action redirects to HTTPS, preser
     ['redirect', { protocol: 'HTTP', default_action: [{ type: 'redirect', redirect: [{ protocol: 'HTTPS' }] }] }, 'PASS'],
     ['object', { protocol: 'HTTP', default_action: { type: 'redirect', redirect: { protocol: 'HTTPS' } } }, 'PASS'],
     ['http_redirect', { protocol: 'HTTP', default_action: [{ type: 'redirect', redirect: [{ protocol: 'HTTP' }] }] }, 'WARN'],
-    ['inherited_redirect', { protocol: 'HTTP', default_action: [{ type: 'redirect', redirect: [{}] }] }, 'WARN'],
-    ['unset_action', { protocol: 'HTTP' }, 'WARN'],
+    ['inherited_redirect', { protocol: 'HTTP', default_action: [{ type: 'redirect', redirect: [{}] }] }, 'UNKNOWN'],
+    ['unset_action', { protocol: 'HTTP' }, 'UNKNOWN'],
     ['unknown_action', { protocol: 'HTTP', default_action: new Unknown('computed') }, 'UNKNOWN'],
     ['dynamic_action', { protocol: 'HTTP', default_action: [new Unknown('dynamic collection')] }, 'UNKNOWN'],
     ['unknown_type', { protocol: 'HTTP', default_action: [{ type: new Unknown('variable') }] }, 'UNKNOWN'],
@@ -267,7 +464,7 @@ test('HTTP listener HTTPS redirects account for catch-all rule conditions, assoc
     const findings = evaluatePolicies(readPlan(plan([
       rc('aws_lb_listener.http', 'aws_lb_listener', ['create'], { arn: 'listener-http', protocol: 'HTTP', default_action: forward }),
       ...rules.map((attrs, i) => rc(`aws_lb_listener_rule.rule[${i}]`, 'aws_lb_listener_rule', ['create'], attrs)),
-    ]))).filter((f) => f.ruleId === 'elb.https');
+    ]))).filter((f) => f.ruleId === 'elb.https' && f.resource === 'aws_lb_listener.http');
     expect([name, findings.map((f) => f.status)]).toEqual([name, [status]]);
   }
 });
@@ -287,7 +484,7 @@ test('HTTP listener rule references preserve unresolved listener association', (
         action: [{ type: 'redirect', redirect: [{ protocol: 'HTTPS' }] }],
       }),
     ], [cfg('aws_lb_listener_rule.redirect', { listener_arn: [...refs] })])))
-      .filter((f) => f.ruleId === 'elb.https');
+      .filter((f) => f.ruleId === 'elb.https' && f.resource === 'aws_lb_listener.http');
     expect(findings.map((f) => f.status)).toEqual([status]);
   }
 });
@@ -302,7 +499,7 @@ test('HTTPS listener policies require a TLS 1.2 floor rather than a recent polic
     ['tls13_only', { protocol: 'HTTPS', ssl_policy: 'ELBSecurityPolicy-TLS13-1-3-2021-06' }, 'PASS'],
     ['forward_secrecy', { protocol: 'HTTPS', ssl_policy: 'ELBSecurityPolicy-FS-1-2-Res-2020-10' }, 'PASS'],
     ['post_quantum', { protocol: 'HTTPS', ssl_policy: 'ELBSecurityPolicy-TLS13-1-2-Res-PQ-2025-09' }, 'PASS'],
-    ['default', { protocol: 'HTTPS' }, 'WARN'],
+    ['default', { protocol: 'HTTPS' }, 'UNKNOWN'],
     ['unknown', { protocol: 'HTTPS', ssl_policy: new Unknown('variable') }, 'UNKNOWN'],
     ['redacted', { protocol: 'HTTPS', ssl_policy: new Redacted() }, 'UNKNOWN'],
     ['unrecognized', { protocol: 'HTTPS', ssl_policy: 'ELBSecurityPolicy-TLS13-1-2-future' }, 'UNKNOWN'],
@@ -338,7 +535,7 @@ test('CloudFront TLS versions distinguish TLS 1.2 policies from legacy and unres
     ['tls12', { viewer_certificate: { minimum_protocol_version: 'TLSv1.2_2018' } }, 'PASS'],
     ['tls12_2021', { viewer_certificate: [{ minimum_protocol_version: 'TLSv1.2_2021' }] }, 'PASS'],
     ['tls13', { viewer_certificate: [{ minimum_protocol_version: 'TLSv1.3_2025' }] }, 'PASS'],
-    ['custom_default', { viewer_certificate: [{ acm_certificate_arn: 'arn:aws:acm:eu-west-1:123456789012:certificate/example' }] }, 'WARN'],
+    ['custom_default', { viewer_certificate: [{ acm_certificate_arn: 'arn:aws:acm:eu-west-1:123456789012:certificate/example' }] }, 'UNKNOWN'],
     ['cloudfront_default', { viewer_certificate: [{ cloudfront_default_certificate: true, minimum_protocol_version: 'TLSv1.2_2021' }] }, 'WARN'],
     ['unset', {}, 'UNKNOWN'],
     ['unknown', { viewer_certificate: [{ minimum_protocol_version: new Unknown('variable') }] }, 'UNKNOWN'],
@@ -474,7 +671,7 @@ test('encryption checks resolve Terraform listener and subnet references with co
   const findings = evaluatePolicies(compareEvaluations(undefined, evaluated)).filter((f) =>
     ['ebs.encryption', 'elb.https', 'elasticache.encryption', 'elasticache.transit-encryption'].includes(f.ruleId));
   expect(findings.map((f) => [f.resource, f.ruleId, f.status])).toEqual([
-    ['aws_ebs_volume.volume', 'ebs.encryption', 'PASS'],
+    ['aws_ebs_volume.volume', 'ebs.encryption', 'UNKNOWN'],
     ['aws_lb_listener.http[0]', 'elb.https', 'PASS'],
     ['aws_lb_listener.http[1]', 'elb.https', 'PASS'],
     ['aws_elasticache_replication_group.secondary', 'elasticache.encryption', 'UNKNOWN'],
@@ -491,8 +688,9 @@ test('all encryption rules evaluate separate count instances inside for_each mod
   for (const [rule, resource] of moduleRules) {
     for (const [env, status] of [['secure', 'PASS'], ['insecure', 'WARN']]) {
       const addresses = [0, 1].map((i) => `module.service["${env}"].${resource}[${i}]`);
+      // Regional EBS enforcement spans every module using this provider configuration.
       expect(result.findings.filter((f) => f.ruleId === rule && addresses.includes(f.resource)).map((f) => [f.resource, f.status]))
-        .toEqual(addresses.map((address) => [address, status]));
+        .toEqual(addresses.map((address) => [address, rule === 'ebs.encryption' && env === 'insecure' ? 'UNKNOWN' : status]));
     }
   }
   expect(result.findings.some((f) => f.status === 'FAIL')).toBe(false);

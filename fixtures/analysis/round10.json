@@ -516,9 +516,9 @@
           {
             "ruleId": "dynamodb.encryption",
             "resource": "aws_dynamodb_table.t",
-            "status": "PASS",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "Encrypted with an AWS owned key (DynamoDB default)"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "dynamodb.deletion-protection",

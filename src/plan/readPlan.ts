@@ -58,7 +58,9 @@ export function readPlan(input: unknown): ResourceChange[] {
   }
 
   const providers = new Map<string, string>();
-  const references = collectReferences(plan.configuration?.root_module, providers);
+  const configuredPaths = new Map<string, string[]>();
+  const configurations = new Map<string, Record<string, unknown>>();
+  const references = collectReferences(plan.configuration?.root_module, providers, configuredPaths, configurations);
   const changes: ResourceChange[] = [];
   const seen = new Set<string>();
 
@@ -86,6 +88,8 @@ export function readPlan(input: unknown): ResourceChange[] {
       replaceOrder: action === 'replace' ? (actions[0] === 'create' ? 'create-first' : 'delete-first') : undefined,
       actionReason: rc.action_reason,
       references: references.get(configAddress(rc.address)) ?? {},
+      configuredPaths: configuredPaths.get(configAddress(rc.address)) ?? [],
+      configuredAfter: overlay(configuredValues(after ?? {}, configurations.get(configAddress(rc.address)) ?? {}), rc.change.after_sensitive, redactMarker) as Attrs,
       previousAddress: rc.previous_address,
       confidence: 'proven',
     });
@@ -112,6 +116,18 @@ export function readPlan(input: unknown): ResourceChange[] {
   }
 
   return changes;
+}
+
+/** Resolve configured expressions from literals or planned expression values, never computed-only fields. */
+function configuredValues(value: unknown, expression: unknown): unknown {
+  if (!expression || typeof expression !== 'object') return undefined;
+  if ('constant_value' in expression) return expression.constant_value;
+  if ('references' in expression) return value;
+  if (isUnknown(value) || value instanceof Redacted) return value;
+  if (Array.isArray(expression)) return expression.map((expr, i) => configuredValues(Array.isArray(value) ? value[i] : undefined, expr));
+  return Object.fromEntries(Object.entries(expression).map(([key, expr]) => [key,
+    configuredValues(value && typeof value === 'object' ? (value as Attrs)[key] : undefined, expr),
+  ]));
 }
 
 function mapAction(actions: string[], rc: PlanResourceChange): Action {
@@ -160,12 +176,28 @@ function* walkState(mod: StateModule | undefined): Generator<NonNullable<StateMo
 }
 
 /** configAddress -> attribute -> referenced resource addresses (module-qualified). */
-function collectReferences(root: ConfigModule | undefined, providers: Map<string, string>): Map<string, Record<string, string[]>> {
+function collectReferences(root: ConfigModule | undefined, providers: Map<string, string>, configuredPaths: Map<string, string[]>, configurations: Map<string, Record<string, unknown>>): Map<string, Record<string, string[]>> {
   const out = new Map<string, Record<string, string[]>>();
   const visit = (mod: ConfigModule | undefined, prefix: string) => {
     if (!mod) return;
     for (const res of mod.resources ?? []) {
       if (res.provider_config_key) providers.set(prefix + res.address, res.provider_config_key);
+      configurations.set(prefix + res.address, res.expressions ?? {});
+      const paths: string[] = [];
+      const visitLiteral = (value: unknown, path: string) => {
+        if (value == null) return;
+        if (typeof value === 'object' && (Array.isArray(value) || Object.getPrototypeOf(value) === Object.prototype)) {
+          for (const [key, nested] of Object.entries(value)) visitLiteral(nested, `${path}.${key}`);
+        } else paths.push(path);
+      };
+      const visitExpression = (expr: unknown, path: string) => {
+        if (!expr || typeof expr !== 'object') return;
+        if ('constant_value' in expr) { visitLiteral(expr.constant_value, path); return; }
+        if ('references' in expr) { paths.push(path); return; }
+        for (const [key, value] of Object.entries(expr)) visitExpression(value, `${path}.${key}`);
+      };
+      for (const [attr, expr] of Object.entries(res.expressions ?? {})) visitExpression(expr, attr);
+      configuredPaths.set(prefix + res.address, paths);
       const byAttr: Record<string, string[]> = {};
       for (const [attr, expr] of Object.entries(res.expressions ?? {})) {
         const refs = new Set<string>();

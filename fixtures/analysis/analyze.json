@@ -134,6 +134,17 @@
                       "aws_s3_bucket.good.id",
                       "aws_s3_bucket.good"
                     ]
+                  },
+                  "rule": {
+                    "constant_value": [
+                      {
+                        "apply_server_side_encryption_by_default": [
+                          {
+                            "sse_algorithm": "AES256"
+                          }
+                        ]
+                      }
+                    ]
                   }
                 }
               },
@@ -244,9 +255,9 @@
           {
             "ruleId": "s3.encryption",
             "resource": "aws_s3_bucket.bad",
-            "status": "PASS",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "No bucket encryption configuration: S3 applies SSE-S3 (AES256) to all new objects by default since January 2023"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "s3.public-access",
@@ -728,9 +739,9 @@
           {
             "ruleId": "dynamodb.encryption",
             "resource": "aws_dynamodb_table.t",
-            "status": "PASS",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "Encrypted with an AWS owned key (DynamoDB default)"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "dynamodb.deletion-protection",
@@ -762,7 +773,7 @@
     },
     {
       "kind": "plan",
-      "name": "DynamoDB (audit P1): without a CMK the table is still encrypted with an AWS owned key, so encryption passes by default",
+      "name": "DynamoDB: omitted encryption configuration remains UNKNOWN despite service encryption defaults",
       "plan": {
         "format_version": "1.2",
         "terraform_version": "1.9.5",
@@ -820,9 +831,9 @@
           {
             "ruleId": "dynamodb.encryption",
             "resource": "aws_dynamodb_table.t",
-            "status": "PASS",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "Encrypted with an AWS owned key (DynamoDB default)"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "dynamodb.deletion-protection",
@@ -851,7 +862,7 @@
     },
     {
       "kind": "plan",
-      "name": "DynamoDB (audit P1): a policy that requires customer managed keys warns on AWS owned keys",
+      "name": "DynamoDB: omitted key configuration remains UNKNOWN when customer managed keys are required",
       "plan": {
         "format_version": "1.2",
         "terraform_version": "1.9.5",
@@ -911,9 +922,9 @@
           {
             "ruleId": "dynamodb.encryption",
             "resource": "aws_dynamodb_table.t",
-            "status": "WARN",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "Encrypted with an AWS owned key (DynamoDB default); policy requires a customer managed KMS key"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "dynamodb.deletion-protection",
@@ -1071,9 +1082,9 @@
           {
             "ruleId": "s3.encryption",
             "resource": "module.b[\"secure\"].aws_s3_bucket.this",
-            "status": "PASS",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "No bucket encryption configuration: S3 applies SSE-S3 (AES256) to all new objects by default since January 2023"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "s3.public-access",
@@ -1092,9 +1103,9 @@
           {
             "ruleId": "s3.encryption",
             "resource": "module.b[\"public\"].aws_s3_bucket.this",
-            "status": "PASS",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "No bucket encryption configuration: S3 applies SSE-S3 (AES256) to all new objects by default since January 2023"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "s3.public-access",
@@ -1256,9 +1267,9 @@
           {
             "ruleId": "s3.encryption",
             "resource": "aws_s3_bucket.tmp",
-            "status": "PASS",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "No bucket encryption configuration: S3 applies SSE-S3 (AES256) to all new objects by default since January 2023"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "s3.public-access",
@@ -1515,16 +1526,16 @@
           {
             "ruleId": "sqs.encryption",
             "resource": "module.orders.aws_sqs_queue.dlq",
-            "status": "PASS",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "SSE-SQS (SQS managed keys, the default for new queues)"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "sqs.encryption",
             "resource": "module.orders.aws_sqs_queue.queue",
-            "status": "PASS",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "SSE-SQS (SQS managed keys, the default for new queues)"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "sqs.dlq",
@@ -1572,7 +1583,7 @@
     },
     {
       "kind": "plan",
-      "name": "SQS (audit P3a, P9): default SSE-SQS is reported as AWS managed encryption, not as unencrypted",
+      "name": "SQS: provider-populated default SSE does not prove explicit encryption configuration",
       "plan": {
         "format_version": "1.2",
         "terraform_version": "1.9.5",
@@ -1620,9 +1631,9 @@
           {
             "ruleId": "sqs.encryption",
             "resource": "aws_sqs_queue.q",
-            "status": "PASS",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "SSE-SQS (SQS managed keys, the default for new queues)"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "sqs.dlq",
@@ -1658,7 +1669,7 @@
     },
     {
       "kind": "plan",
-      "name": "SQS (audit P3a, P9): SNS topic without kms_master_key_id warns, AWS managed alias passes (a production commit)",
+      "name": "SNS: omitted key configuration remains UNKNOWN, an explicit AWS managed alias passes",
       "plan": {
         "format_version": "1.2",
         "terraform_version": "1.9.5",
@@ -1705,7 +1716,16 @@
         ],
         "configuration": {
           "root_module": {
-            "resources": []
+            "resources": [
+              {
+                "address": "aws_sns_topic.enc",
+                "expressions": {
+                  "kms_master_key_id": {
+                    "constant_value": "alias/aws/sns"
+                  }
+                }
+              }
+            ]
           }
         }
       },
@@ -1730,9 +1750,9 @@
           {
             "ruleId": "sns.encryption",
             "resource": "aws_sns_topic.plain",
-            "status": "WARN",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "SNS does not encrypt messages at rest unless kms_master_key_id is set"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "sns.encryption",
@@ -3253,9 +3273,9 @@
           {
             "ruleId": "rds.encryption",
             "resource": "aws_db_instance.prod",
-            "status": "FAIL",
+            "status": "UNKNOWN",
             "preExisting": true,
-            "detailContains": "Storage not encrypted (encryption can only be enabled at creation)"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "rds.deletion-protection",
@@ -3319,7 +3339,16 @@
         ],
         "configuration": {
           "root_module": {
-            "resources": []
+            "resources": [
+              {
+                "address": "aws_db_instance.prod",
+                "expressions": {
+                  "storage_encrypted": {
+                    "constant_value": true
+                  }
+                }
+              }
+            ]
           }
         }
       },
@@ -3616,9 +3645,9 @@
           {
             "ruleId": "rds.encryption",
             "resource": "aws_db_instance.prod",
-            "status": "FAIL",
+            "status": "UNKNOWN",
             "preExisting": true,
-            "detailContains": "Storage not encrypted (encryption can only be enabled at creation)"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "rds.deletion-protection",
@@ -4021,9 +4050,9 @@
           {
             "ruleId": "rds.encryption",
             "resource": "aws_db_instance.prod",
-            "status": "FAIL",
+            "status": "UNKNOWN",
             "preExisting": true,
-            "detailContains": "Storage not encrypted (encryption can only be enabled at creation)"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "rds.deletion-protection",
@@ -4108,9 +4137,9 @@
           {
             "ruleId": "rds.encryption",
             "resource": "aws_db_instance.prod",
-            "status": "FAIL",
+            "status": "UNKNOWN",
             "preExisting": true,
-            "detailContains": "Storage not encrypted (encryption can only be enabled at creation)"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "rds.deletion-protection",
@@ -4361,7 +4390,21 @@
               }
             }
           }
-        ]
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": [
+              {
+                "address": "aws_db_instance.production_postgres",
+                "expressions": {
+                  "storage_encrypted": {
+                    "constant_value": true
+                  }
+                }
+              }
+            ]
+          }
+        }
       },
       "expect": {
         "changedAddresses": [
@@ -4397,9 +4440,9 @@
           {
             "ruleId": "sqs.encryption",
             "resource": "aws_sqs_queue.vibe_coded_queue",
-            "status": "PASS",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "SSE-SQS (SQS managed keys, the default for new queues)"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "sqs.dlq",

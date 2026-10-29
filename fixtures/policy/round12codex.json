@@ -243,7 +243,7 @@
             "resource": "aws_sqs_queue.q",
             "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "sqs_managed_sse_enabled not known until apply"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "sqs.dlq",
@@ -307,9 +307,9 @@
           {
             "ruleId": "rds.encryption",
             "resource": "aws_db_instance.d",
-            "status": "FAIL",
+            "status": "UNKNOWN",
             "preExisting": true,
-            "detailContains": "Storage not encrypted (encryption can only be enabled at creation)"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "rds.deletion-protection",
