@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.4-beta, 2026-10-29
+
+### Added
+
+- Logging and security-service checks, evaluated on the Terraform configuration each change touches: CloudTrail logging, multi-region and log file validation and KMS key; VPC flow logs; CloudWatch log retention (with the `DELIVERY` class's fixed two days, and an optional `minLogRetentionDays` policy); S3 access logging. They cite SOC 2 CC7.2.
+- A change that switches off or deletes CloudTrail, GuardDuty, AWS Config or Security Hub is flagged for review. It never blocks by default.
+
+### Changed
+
+- The free evidence pack's findings heading names both frameworks, ISO 27001 and SOC 2.
+
 ## 0.5.3-beta, 2026-10-29
 
 ### Added
