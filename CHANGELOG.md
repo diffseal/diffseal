@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.5-beta, 2026-10-29
+
+### Added
+
+- Encryption checks in transit and at rest, on the Terraform configuration each change touches: load balancer listeners (HTTPS redirect and TLS policy), CloudFront (viewer protocol and minimum TLS), ElastiCache (transit and at rest, including Memcached clusters), OpenSearch and Elasticsearch domains (node-to-node, HTTPS and at rest), EBS volumes and EBS default encryption, and EFS. They cite SOC 2 CC6.7 or CC6.1 and ISO 27001 A.8.24, and warn at most.
+- One decision rule for every encryption check: a result passes only when the configuration explicitly turns encryption on, and warns only when it explicitly turns it off with nothing in the configuration enforcing it. Inferred defaults, computed values, values passing through null or unknown, and attributes under `ignore_changes` give an unknown result. Known limits are listed in `docs/research/known-gaps.md`.
+
+### Changed
+
+- DynamoDB `server_side_encryption { enabled = false }` is reported as an AWS-owned key, not as encryption switched off.
+- Plainer README and guides. Advisory mode is described as not failing the job because of findings; configuration or run errors can still fail it.
+
 ## 0.5.4-beta, 2026-10-29
 
 ### Added

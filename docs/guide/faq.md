@@ -58,7 +58,7 @@ Diffseal checks sensitive values without ever printing them.
 
 ## What are the known limits?
 
-Diffseal is a `v0.5.4-beta` release. [`docs/STATUS.md`](../STATUS.md) tracks the current limitations:
+Diffseal is a `v0.5.5-beta` release. [`docs/STATUS.md`](../STATUS.md) tracks the current limitations:
 
 - **External modules and remote state.** Diffseal does not download registry and git modules; it evaluates them as module calls whose inputs changed, with `confidence: "unknown"`. Data sources resolve to symbolic references rather than live AWS values.
 - **Inputs outside the root.** Static replay does not evaluate `terragrunt.hcl` files, or `.tfvars` files other than the auto-loaded `terraform.tfvars` and `*.auto.tfvars`. When a commit modifies them, Diffseal sets the gate to `review` and notes which files changed.

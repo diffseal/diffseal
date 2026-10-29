@@ -1,6 +1,6 @@
 # Diffseal
 
-> **Beta status, v0.5.4-beta.** Diffseal reviews Terraform changes on AWS, checks that application code has the IAM permissions it needs, and writes audit change records. It is a beta validated on one production monorepo. Run the GitHub Action in advisory mode first, with `advisory: 'true'`, and report issues in the [GitHub issue tracker](https://github.com/diffseal/diffseal/issues).
+> **Beta status, v0.5.5-beta.** Diffseal reviews Terraform changes on AWS, checks that application code has the IAM permissions it needs, and writes audit change records. It is a beta validated on one production monorepo. Run the GitHub Action in advisory mode first, with `advisory: 'true'`, and report issues in the [GitHub issue tracker](https://github.com/diffseal/diffseal/issues).
 
 Diffseal reviews Terraform changes on AWS and checks that application code has the IAM permissions it needs. It works from source code and git history. It never asks for cloud credentials and never runs `terraform`.
 
@@ -132,7 +132,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: diffseal/diffseal@v0.5.4-beta
+      - uses: diffseal/diffseal@v0.5.5-beta
         with:
           mode: pr            # or: plan, app
           roots-under: infra/envs/prod

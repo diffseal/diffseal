@@ -120,7 +120,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: diffseal/diffseal@v0.5.4-beta
+      - uses: diffseal/diffseal@v0.5.5-beta
         with:
           mode: pr
           roots-under: infra/envs/prod
@@ -154,7 +154,7 @@ jobs:
           terraform plan -input=false -out=tfplan
           terraform show -json tfplan > tfplan.json
 
-      - uses: diffseal/diffseal@v0.5.4-beta
+      - uses: diffseal/diffseal@v0.5.5-beta
         with:
           mode: plan
           plan-json: tfplan.json
@@ -189,7 +189,7 @@ jobs:
           token: ${{ secrets.INFRA_READ_TOKEN }}
           path: infra
 
-      - uses: diffseal/diffseal@v0.5.4-beta
+      - uses: diffseal/diffseal@v0.5.5-beta
         with:
           mode: app
           infra-path: infra
@@ -212,7 +212,7 @@ permissions:
   id-token: write
 jobs:
   diffseal:
-    uses: diffseal/diffseal/.github/workflows/upload.yml@v0.5.4-beta
+    uses: diffseal/diffseal/.github/workflows/upload.yml@v0.5.5-beta
 ```
 
 The workflow checks out GitHub's test merge commit for a pull request. It reads analysis settings from `.diffseal.json` on the base branch through `git show`. It accepts no analysis inputs. Use the optional [`replay` settings](configuration.md#trusted-upload-replay-settings) to select roots, a policy file or a verified offline module cache. The workflow runs the Action from the same release tag, with `mode: pr`, `upload: 'true'` and `advisory: 'true'`.
