@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.2-beta, 2026-10-29
+
+### Changed
+
+- Every configuration check now names its SOC 2 criterion (2022 Trust Services Criteria) next to its ISO 27001 control, in the pull request comment, the job summary and the change record. The mapping and its sources are in `docs/research/compliance-crosswalk.md`.
+- The SQS dead-letter queue check no longer cites ISO 27001 A.8.14. Keeping failed messages is neither a backup nor redundant processing.
+
 ## 0.5.1-beta, 2026-10-29
 
 ### Changed
