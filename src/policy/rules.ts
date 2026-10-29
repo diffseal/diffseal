@@ -1,5 +1,5 @@
 import { configAddress, instancesCompatible, isRedacted, isUnknown, reveal, type Attrs, type ResourceChange } from '../core/model.js';
-import { stableKey } from '../hcl/eval.js';
+import { containsUnknown, stableKey } from '../hcl/eval.js';
 import { capitalize, type Rule, type RuleContext, type RuleResult } from './engine.js';
 import { block, blocks, typed, unknownBlock } from './values.js';
 import {
@@ -184,6 +184,286 @@ const s3BucketPolicy: Rule = {
       return { status: 'UNKNOWN', detail: 'Who the bucket policy admits depends on principals or conditions not known statically' };
     }
     return undefined;
+  },
+};
+
+// ---------------------------------------------------------------- Encryption configuration
+
+function encryptionFlag(value: unknown, attr: string, description: string, defaultEnabled = false): RuleResult {
+  // ElastiCache's at_rest_encryption_enabled also accepts the string form in provider plans.
+  const enabled = value === 'true' ? true : value === 'false' ? false : value ?? defaultEnabled;
+  if (enabled === true) return { status: 'PASS', detail: `${description} configured (${attr} = true${value == null ? ', the provider default' : ''})` };
+  if (enabled === false) return { status: 'WARN', detail: `${description} is false or unset (${attr}); effective AWS settings are not verified`, remediation: `Set ${attr} = true.` };
+  return { status: 'UNKNOWN', detail: `${description} setting is unknown or unrecognized` };
+}
+
+const ebsDefaultEncryption: Rule = {
+  id: 'ebs.default-encryption',
+  title: 'EBS default encryption',
+  controls: ['ISO27001:A.8.24'],
+  types: ['aws_ebs_encryption_by_default'],
+  evaluate: (v) => encryptionFlag(v.enabled, 'enabled', 'EBS default encryption', true),
+};
+
+const ebsEncryption: Rule = {
+  id: 'ebs.encryption',
+  title: 'EBS volume encryption at rest',
+  controls: ['ISO27001:A.8.24'],
+  types: ['aws_ebs_volume'],
+  evaluate: (v, res, ctx) => {
+    if (v.encrypted != null) return encryptionFlag(v.encrypted, 'encrypted', 'EBS volume encryption');
+    const defaults = ctx.all.filter((r) => r.mode === 'managed' && r.type === 'aws_ebs_encryption_by_default'
+      && (ctx.side === 'after' ? r.after !== null && r.action !== 'delete' : r.before !== null));
+    const enabled = defaults.some((r) => {
+      if (r.providerAddress !== res.providerAddress) return false;
+      const d = ctx.values(r);
+      if (d.region != null || v.region != null) {
+        if (typeof d.region !== 'string' || d.region === '' || d.region !== v.region) return false;
+      }
+      return encryptionFlag(d.enabled, 'enabled', 'EBS default encryption', true).status === 'PASS';
+    });
+    if (enabled) return { status: 'PASS', detail: 'EBS volume encryption supplied by a declared enabled regional default' };
+    return { status: 'UNKNOWN', detail: 'EBS volume encryption is omitted; account or snapshot encryption defaults may apply outside this configuration' };
+  },
+};
+
+const efsEncryption: Rule = {
+  id: 'efs.encryption',
+  title: 'EFS encryption at rest',
+  controls: ['ISO27001:A.8.24'],
+  types: ['aws_efs_file_system'],
+  evaluate: (v) => encryptionFlag(v.encrypted, 'encrypted', 'EFS encryption'),
+};
+
+const elasticacheEncryption: Rule = {
+  id: 'elasticache.encryption',
+  title: 'ElastiCache encryption at rest',
+  controls: ['ISO27001:A.8.24'],
+  types: ['aws_elasticache_replication_group'],
+  evaluate: (v) => {
+    if (isSet(v.global_replication_group_id)) return { status: 'UNKNOWN', detail: 'ElastiCache global secondary inherits encryption from its primary; local encryption arguments conflict with global_replication_group_id' };
+    if (v.at_rest_encryption_enabled == null && v.engine != null && v.engine !== 'redis' && v.engine !== 'valkey') {
+      return { status: 'UNKNOWN', detail: 'ElastiCache encryption default depends on an unknown or unrecognized engine' };
+    }
+    return encryptionFlag(v.at_rest_encryption_enabled, 'at_rest_encryption_enabled', 'ElastiCache encryption at rest', v.engine === 'valkey');
+  },
+};
+
+const elasticacheTransitEncryption: Rule = {
+  id: 'elasticache.transit-encryption',
+  title: 'ElastiCache encryption in transit',
+  controls: ['ISO27001:A.8.24'],
+  types: ['aws_elasticache_replication_group', 'aws_elasticache_cluster'],
+  evaluate: (v, res, ctx) => {
+    if (res.type === 'aws_elasticache_cluster') {
+      // Redis/Valkey members inherit their replication group's settings; this flag is Memcached-only.
+      if (isSet(v.replication_group_id) || v.engine === 'redis' || v.engine === 'valkey') return undefined;
+      if (v.engine !== 'memcached') return { status: 'UNKNOWN', detail: 'ElastiCache cluster transit encryption depends on an unknown or unrecognized engine' };
+      const version = typeof v.engine_version === 'string' ? v.engine_version.match(/^(\d+)\.(\d+)\.(\d+)$/)?.slice(1).map(Number) : undefined;
+      const supported = version && (version[0] > 1 || (version[0] === 1 && (version[1] > 6 || (version[1] === 6 && version[2] >= 12))));
+      const inVpc = (typeof v.subnet_group_name === 'string' && v.subnet_group_name !== '')
+        || ctx.referencesType(res, 'subnet_group_name', ['aws_elasticache_subnet_group']);
+      if (!supported || !inVpc) return { status: 'UNKNOWN', detail: 'Memcached transit encryption requires version 1.6.12 or later in a VPC; support is not established by this configuration' };
+    }
+    if (isSet(v.global_replication_group_id)) return { status: 'UNKNOWN', detail: 'ElastiCache global secondary inherits encryption from its primary; local encryption arguments conflict with global_replication_group_id' };
+    return encryptionFlag(v.transit_encryption_enabled, 'transit_encryption_enabled', 'ElastiCache encryption in transit');
+  },
+};
+
+/** Do not mistake an unresolved (including dynamic or sensitive) block for an omitted block. */
+function unresolvedBlock(value: unknown): boolean {
+  return isUnknown(value) || isRedacted(value) || (Array.isArray(value) && value.some((v) => isUnknown(v) || isRedacted(v)));
+}
+
+const opensearchEncryption: Rule = {
+  id: 'opensearch.encryption',
+  title: 'OpenSearch encryption at rest',
+  controls: ['ISO27001:A.8.24'],
+  types: ['aws_opensearch_domain', 'aws_elasticsearch_domain'],
+  evaluate: (v) => {
+    if (unresolvedBlock(v.encrypt_at_rest)) return { status: 'UNKNOWN', detail: 'OpenSearch encryption at rest block not known until apply' };
+    const result = encryptionFlag(block(v.encrypt_at_rest)?.enabled, 'encrypt_at_rest.enabled', 'OpenSearch encryption at rest');
+    return result.status === 'WARN' ? { ...result, remediation: 'Configure encrypt_at_rest { enabled = true }; review replacement requirements for the domain version.' } : result;
+  },
+};
+
+const opensearchNodeEncryption: Rule = {
+  id: 'opensearch.node-to-node-encryption',
+  title: 'OpenSearch node-to-node encryption',
+  controls: ['ISO27001:A.8.24'],
+  types: ['aws_opensearch_domain', 'aws_elasticsearch_domain'],
+  evaluate: (v) => {
+    if (unresolvedBlock(v.node_to_node_encryption)) return { status: 'UNKNOWN', detail: 'OpenSearch node-to-node encryption block not known until apply' };
+    const result = encryptionFlag(block(v.node_to_node_encryption)?.enabled, 'node_to_node_encryption.enabled', 'OpenSearch node-to-node encryption');
+    return result.status === 'WARN' ? { ...result, remediation: 'Configure node_to_node_encryption { enabled = true }; review replacement requirements for the domain version.' } : result;
+  },
+};
+
+const opensearchHttps: Rule = {
+  id: 'opensearch.https',
+  title: 'OpenSearch HTTPS enforcement',
+  controls: ['ISO27001:A.8.24'],
+  types: ['aws_opensearch_domain', 'aws_elasticsearch_domain'],
+  evaluate: (v) => {
+    const options = block(v.domain_endpoint_options);
+    if (unresolvedBlock(v.domain_endpoint_options) || !options) return { status: 'UNKNOWN', detail: 'OpenSearch endpoint options are unresolved or omitted; HTTPS enforcement is not known' };
+    const result = encryptionFlag(options.enforce_https, 'domain_endpoint_options.enforce_https', 'OpenSearch HTTPS enforcement', true);
+    return result.status === 'WARN' ? { ...result, remediation: 'Set enforce_https = true in domain_endpoint_options.' } : result;
+  },
+};
+
+/** Whether a resolved action list redirects to HTTPS; undefined preserves uncertainty. */
+function redirectsToHttps(value: unknown): boolean | undefined {
+  if (unresolvedBlock(value)) return undefined;
+  const actions = blocks(value);
+  if (actions.some((a) => !['forward', 'redirect', 'fixed-response', 'authenticate-cognito', 'authenticate-oidc', 'jwt-validation'].includes(a.type as string) || (a.type === 'redirect'
+    && (unresolvedBlock(a.redirect) || isUnknown(block(a.redirect)?.protocol) || isRedacted(block(a.redirect)?.protocol))))) return undefined;
+  return actions.some((a) => a.type === 'redirect' && block(a.redirect)?.protocol === 'HTTPS');
+}
+
+/** Multiple condition blocks are ANDed, so a wildcard path alone must cover every condition. */
+function catchAllPaths(value: unknown): boolean {
+  if (unresolvedBlock(value)) return false;
+  const conditions = blocks(value);
+  return conditions.length > 0 && conditions.every((c) => {
+    const fields = Object.entries(c).filter(([_k, v]) => v != null && (!Array.isArray(v) || v.length > 0));
+    if (fields.length !== 1 || fields[0][0] !== 'path_pattern' || unresolvedBlock(c.path_pattern)) return false;
+    const paths = block(c.path_pattern)?.values;
+    return Array.isArray(paths) && paths.some((p) => p === '*' || p === '/*');
+  });
+}
+
+const elbHttps: Rule = {
+  id: 'elb.https',
+  title: 'Load balancer listener HTTPS',
+  controls: ['ISO27001:A.8.24'],
+  types: ['aws_lb_listener'],
+  evaluate: (v, res, ctx) => {
+    if (v.protocol === 'HTTPS') return { status: 'PASS', detail: 'Listener configured to use HTTPS' };
+    if (['TCP', 'TLS', 'UDP', 'TCP_UDP', 'GENEVE', 'QUIC', 'TCP_QUIC'].includes(v.protocol as string)) return undefined;
+    if (v.protocol !== 'HTTP') return { status: 'UNKNOWN', detail: 'Listener protocol is omitted, unknown or unrecognized' };
+    const unknown: RuleResult = { status: 'UNKNOWN', detail: 'HTTP listener rule association, priority, conditions or actions do not establish an effective HTTPS redirect' };
+    const warning: RuleResult = { status: 'WARN', detail: 'HTTP listener has a reachable action without an HTTPS redirect', remediation: 'Configure a default or catch-all redirect to HTTPS and ensure earlier rules also redirect to HTTPS.' };
+    const exists = (r: ResourceChange) => ctx.side === 'after' ? r.after !== null && r.action !== 'delete' : r.before !== null;
+    const rules = ctx.referrers(res, 'aws_lb_listener_rule', 'listener_arn', ['arn']).filter((r) => r.mode === 'managed');
+    const target = configAddress(res.address);
+    const ambiguous = ctx.all.some((r) => {
+      if (r.type !== 'aws_lb_listener_rule' || r.mode !== 'managed' || !exists(r)) return false;
+      const arn = ctx.values(r).listener_arn;
+      if (typeof arn === 'string' && typeof v.arn === 'string') return false;
+      const refs = r.references.listener_arn ?? [];
+      if (refs.length === 1 && /(^|\.)aws_lb_listener\.[^.]+$/.test(refs[0])) {
+        if (refs[0] !== target) return false;
+        const exact = isUnknown(arn) ? arn.refs.filter((ref) => configAddress(ref) === target && ref !== target) : [];
+        if (exact.length === 1) return false;
+        return ctx.lookup(target).filter(exists).length !== 1 || !rules.includes(r);
+      }
+      return true;
+    });
+    if (ambiguous) return unknown;
+    const ordered = rules.map((r) => ctx.values(r));
+    if (ordered.some((r) => typeof r.priority !== 'number' || !Number.isInteger(r.priority) || r.priority < 1 || r.priority > 50000)) return unknown;
+    ordered.sort((a, b) => (a.priority as number) - (b.priority as number));
+    if (new Set(ordered.map((r) => r.priority)).size !== ordered.length) return unknown;
+    for (let i = 0; i < ordered.length; i++) {
+      const rule = ordered[i];
+      const redirect = redirectsToHttps(rule.action);
+      if (redirect === undefined) return unknown;
+      if (catchAllPaths(rule.condition)) {
+        return redirect ? { status: 'PASS', detail: 'HTTP listener redirects to HTTPS before the default action through a catch-all listener rule' } : warning;
+      }
+      // General condition overlap and reachability are not resolved by this check.
+      if (!redirect) return i === 0 && !containsUnknown(rule.condition) && blocks(rule.condition).length > 0 ? warning : unknown;
+    }
+    const redirect = redirectsToHttps(v.default_action);
+    if (redirect === undefined) return unknown;
+    if (redirect) return { status: 'PASS', detail: 'HTTP listener default and preceding actions redirect to HTTPS' };
+    return ordered.length ? unknown : warning;
+  },
+};
+
+// Protocol floors, checked against AWS's ALB security-policy tables on 2026-10-29.
+// https://docs.aws.amazon.com/elasticloadbalancing/latest/application/describe-ssl-policies.html
+// Unlisted names remain UNKNOWN: neither a recent date nor "TLS13" proves a TLS 1.2 floor.
+const ELB_TLS12_POLICIES = new Set([
+  'TLS-1-2-2017-01', 'TLS-1-2-Ext-2018-06',
+  'FS-1-2-2019-08', 'FS-1-2-Res-2019-08', 'FS-1-2-Res-2020-10',
+  'TLS13-1-3-2021-06', 'TLS13-1-3-PQ-2025-09',
+  'TLS13-1-2-2021-06', 'TLS13-1-2-PQ-2025-09',
+  'TLS13-1-2-Res-2021-06', 'TLS13-1-2-Res-PQ-2025-09',
+  'TLS13-1-2-Ext1-2021-06', 'TLS13-1-2-Ext1-PQ-2025-09',
+  'TLS13-1-2-Ext2-2021-06', 'TLS13-1-2-Ext2-PQ-2025-09',
+  'TLS13-1-3-FIPS-2023-04', 'TLS13-1-3-FIPS-PQ-2025-09',
+  'TLS13-1-2-FIPS-2023-04', 'TLS13-1-2-FIPS-PQ-2025-09',
+  'TLS13-1-2-Res-FIPS-2023-04', 'TLS13-1-2-Res-FIPS-PQ-2025-09',
+  'TLS13-1-2-Ext0-FIPS-2023-04', 'TLS13-1-2-Ext0-FIPS-PQ-2025-09',
+  'TLS13-1-2-Ext1-FIPS-2023-04', 'TLS13-1-2-Ext1-FIPS-PQ-2025-09',
+  'TLS13-1-2-Ext2-FIPS-2023-04', 'TLS13-1-2-Ext2-FIPS-PQ-2025-09',
+].map((name) => `ELBSecurityPolicy-${name}`));
+
+const ELB_LEGACY_POLICIES = new Set([
+  '2016-08', 'TLS-1-1-2017-01', 'FS-2018-06', 'FS-1-1-2019-08',
+  'TLS13-1-0-2021-06', 'TLS13-1-0-PQ-2025-09', 'TLS13-1-1-2021-06',
+  'TLS13-1-0-FIPS-2023-04', 'TLS13-1-0-FIPS-PQ-2025-09', 'TLS13-1-1-FIPS-2023-04',
+].map((name) => `ELBSecurityPolicy-${name}`));
+
+const elbTlsPolicy: Rule = {
+  id: 'elb.tls-policy',
+  title: 'Load balancer listener TLS policy',
+  controls: ['ISO27001:A.8.24'],
+  types: ['aws_lb_listener'],
+  evaluate: (v) => {
+    if (v.protocol !== 'HTTPS') return undefined;
+    const policy = v.ssl_policy ?? 'ELBSecurityPolicy-2016-08';
+    if (typeof policy !== 'string') return { status: 'UNKNOWN', detail: 'Listener SSL policy not known until apply' };
+    if (ELB_TLS12_POLICIES.has(policy)) return { status: 'PASS', detail: `Listener SSL policy ${policy} requires TLS 1.2 or later` };
+    if (ELB_LEGACY_POLICIES.has(policy)) return { status: 'WARN', detail: `Listener SSL policy ${policy} permits TLS versions below 1.2`, remediation: 'Set ssl_policy to a policy requiring TLS 1.2 or later, such as ELBSecurityPolicy-TLS13-1-2-2021-06.' };
+    return { status: 'UNKNOWN', detail: 'Listener SSL policy is unrecognized; its minimum TLS version is not known' };
+  },
+};
+
+const cloudfrontHttps: Rule = {
+  id: 'cloudfront.https',
+  title: 'CloudFront viewer HTTPS',
+  controls: ['ISO27001:A.8.24'],
+  types: ['aws_cloudfront_distribution'],
+  evaluate: (v) => {
+    const issues: PolicyIssue[] = [];
+    for (const attr of ['default_cache_behavior', 'ordered_cache_behavior']) {
+      if (unresolvedBlock(v[attr]) || (attr === 'default_cache_behavior' && !block(v[attr]))) {
+        issues.push({ level: 'UNKNOWN', message: `${attr} is unresolved or omitted` });
+      }
+      for (const [i, behavior] of blocks(v[attr]).entries()) {
+        const policy = behavior.viewer_protocol_policy;
+        if (policy === 'allow-all') issues.push({ level: 'WARN', message: `${attr}[${i}] allows HTTP (viewer_protocol_policy = allow-all)` });
+        else if (policy !== 'https-only' && policy !== 'redirect-to-https') issues.push({ level: 'UNKNOWN', message: `${attr}[${i}] viewer protocol policy is unknown or unrecognized` });
+      }
+    }
+    const result = issuesResult(issues, 'All declared cache behaviors require HTTPS or redirect to HTTPS');
+    return result.status === 'WARN' ? { ...result, remediation: 'Set viewer_protocol_policy = "https-only" or "redirect-to-https" on each cache behavior.' } : result;
+  },
+};
+
+// https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/secure-connections-supported-viewer-protocols-ciphers.html
+const CLOUDFRONT_TLS12_POLICIES = new Set(['TLSv1.2_2018', 'TLSv1.2_2019', 'TLSv1.2_2021', 'TLSv1.2_2025', 'TLSv1.3_2025']);
+const CLOUDFRONT_LEGACY_POLICIES = new Set(['SSLv3', 'TLSv1', 'TLSv1_2016', 'TLSv1.1_2016']);
+
+const cloudfrontTlsPolicy: Rule = {
+  id: 'cloudfront.tls-policy',
+  title: 'CloudFront viewer TLS policy',
+  controls: ['ISO27001:A.8.24'],
+  types: ['aws_cloudfront_distribution'],
+  evaluate: (v) => {
+    const certificate = block(v.viewer_certificate);
+    if (unresolvedBlock(v.viewer_certificate) || !certificate) return { status: 'UNKNOWN', detail: 'CloudFront viewer certificate is unresolved or omitted' };
+    const defaultCertificate = certificate.cloudfront_default_certificate;
+    if (defaultCertificate != null && typeof defaultCertificate !== 'boolean') return { status: 'UNKNOWN', detail: 'CloudFront default certificate setting is unknown or unrecognized' };
+    // The default CloudFront certificate forces TLSv1 regardless of minimum_protocol_version.
+    const policy = defaultCertificate === true ? 'TLSv1' : certificate.minimum_protocol_version ?? 'TLSv1';
+    if (typeof policy !== 'string') return { status: 'UNKNOWN', detail: 'CloudFront minimum TLS version not known until apply' };
+    if (CLOUDFRONT_TLS12_POLICIES.has(policy)) return { status: 'PASS', detail: `CloudFront viewer policy ${policy} requires TLS 1.2 or later` };
+    if (CLOUDFRONT_LEGACY_POLICIES.has(policy)) return { status: 'WARN', detail: `CloudFront viewer policy ${policy} permits TLS versions below 1.2${defaultCertificate === true ? ' (forced by cloudfront_default_certificate)' : ''}`, remediation: 'Use a custom viewer certificate and minimum_protocol_version = "TLSv1.2_2021" or a later TLS 1.2+ policy.' };
+    return { status: 'UNKNOWN', detail: 'CloudFront minimum TLS version is unrecognized' };
   },
 };
 
@@ -773,6 +1053,18 @@ export const RULES: Rule[] = [
   s3PabResource,
   s3Versioning,
   s3BucketPolicy,
+  ebsDefaultEncryption,
+  ebsEncryption,
+  efsEncryption,
+  elasticacheEncryption,
+  elasticacheTransitEncryption,
+  opensearchEncryption,
+  opensearchNodeEncryption,
+  opensearchHttps,
+  elbHttps,
+  elbTlsPolicy,
+  cloudfrontHttps,
+  cloudfrontTlsPolicy,
   cloudtrailLogging,
   cloudtrailMultiRegion,
   cloudtrailLogValidation,

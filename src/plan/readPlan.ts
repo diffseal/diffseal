@@ -44,7 +44,7 @@ interface StateModule {
 }
 
 interface ConfigModule {
-  resources?: Array<{ address: string; expressions?: Record<string, unknown> }>;
+  resources?: Array<{ address: string; provider_config_key?: string; expressions?: Record<string, unknown> }>;
   module_calls?: Record<string, { module?: ConfigModule }>;
 }
 
@@ -57,7 +57,8 @@ export function readPlan(input: unknown): ResourceChange[] {
     throw new Error('Plan JSON has no resource_changes. Pass the output of `terraform show -json <planfile>`, not a state file.');
   }
 
-  const references = collectReferences(plan.configuration?.root_module);
+  const providers = new Map<string, string>();
+  const references = collectReferences(plan.configuration?.root_module, providers);
   const changes: ResourceChange[] = [];
   const seen = new Set<string>();
 
@@ -77,6 +78,7 @@ export function readPlan(input: unknown): ResourceChange[] {
       name: rc.name,
       mode: rc.mode ?? 'managed',
       moduleAddress: rc.module_address,
+      ...(providers.has(configAddress(rc.address)) ? { providerAddress: providers.get(configAddress(rc.address)) } : {}),
       action,
       before,
       after,
@@ -158,11 +160,12 @@ function* walkState(mod: StateModule | undefined): Generator<NonNullable<StateMo
 }
 
 /** configAddress -> attribute -> referenced resource addresses (module-qualified). */
-function collectReferences(root: ConfigModule | undefined): Map<string, Record<string, string[]>> {
+function collectReferences(root: ConfigModule | undefined, providers: Map<string, string>): Map<string, Record<string, string[]>> {
   const out = new Map<string, Record<string, string[]>>();
   const visit = (mod: ConfigModule | undefined, prefix: string) => {
     if (!mod) return;
     for (const res of mod.resources ?? []) {
+      if (res.provider_config_key) providers.set(prefix + res.address, res.provider_config_key);
       const byAttr: Record<string, string[]> = {};
       for (const [attr, expr] of Object.entries(res.expressions ?? {})) {
         const refs = new Set<string>();

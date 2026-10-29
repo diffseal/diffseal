@@ -14,7 +14,8 @@
       "secure-deletion is mapped as deliberate, irretrievable deletion. If the Diffseal rule actually checks deletion protection (deletion_protection, recovery_window_in_days, skip_final_snapshot), use the backup mapping instead.",
       "data-residency entries are all supporting. A region restriction alone does not show compliance with GDPR Chapter V or DORA Art. 30(2)(b), which is a contract clause.",
       "A1.2 and A1.3 apply only to Availability engagements. Backup settings and deletion protection do not demonstrate restore testing. A dead-letter queue is neither backup nor redundant processing infrastructure; sqs.dlq has no compliance category or control tag.",
-      "Logging and security-service rules follow section 3 and product addition 2 of trust-center-controls.md. They carry SOC2:CC7.2 (p. 40) only; A.8.15 remains unverified and no supporting ISO id is substituted. These checks judge Terraform configuration and changes, not live AWS state."
+      "Logging and security-service rules follow section 3 and product addition 2 of trust-center-controls.md. They carry SOC2:CC7.2 (p. 40) only; A.8.15 remains unverified and no supporting ISO id is substituted. These checks judge Terraform configuration and changes, not live AWS state.",
+      "Encryption additions follow section 3 and product addition 3 of trust-center-controls.md. Transit rules use the existing A.8.24 and CC6.7 (p. 38) references; added at-rest rules use A.8.24 and CC6.1 (p. 34). Provider argument verification, TLS sources and the skipped S3 SecureTransport deny check are documented in docs/research/compliance-crosswalk.md. New encryption rules are advisory (WARN at most); unresolved values remain UNKNOWN."
     ]
   },
   "encryption-at-rest": {

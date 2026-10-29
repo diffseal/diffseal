@@ -329,6 +329,7 @@ function toChange(i: StaticInstance, action: Action, before: Attrs | null, after
     name: i.name,
     mode: i.mode,
     moduleAddress: i.moduleAddress,
+    ...(i.providerAddress ? { providerAddress: i.providerAddress } : {}),
     action: i.mode === 'data' ? 'no-op' : action,
     before,
     after,

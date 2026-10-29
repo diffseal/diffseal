@@ -166,6 +166,8 @@ export interface ResourceChange {
   mode: 'managed' | 'data';
   /** `module.orders` for resources inside modules. */
   moduleAddress?: string;
+  /** Selected provider configuration, used to scope account/regional configuration helpers. */
+  providerAddress?: string;
   action: Action;
   before: Attrs | null;
   after: Attrs | null;
