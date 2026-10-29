@@ -26,7 +26,6 @@ export const RULE_CATEGORY: Record<string, string> = {
   'rds.backup-retention': 'backup',
   'rds.deletion-protection': 'backup',
   'secrets.recovery-window': 'backup',
-  'sqs.dlq': 'redundancy',
   'lambda.plaintext-secrets': 'authentication',
   'lambda.url-auth': 'authentication',
   'iam.static-credentials': 'authentication',

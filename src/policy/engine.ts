@@ -12,6 +12,7 @@ import {
   type ResourceChange,
 } from '../core/model.js';
 import { RULES } from './rules.js';
+import { frameworksFor } from '../compliance/crosswalk.js';
 import { typed } from './values.js';
 
 export interface RuleResult {
@@ -166,7 +167,7 @@ export function evaluatePolicies(all: ResourceChange[], policy: PolicyConfig = {
         title: rule.title,
         status,
         resource: res.address,
-        controls: rule.controls,
+        controls: [...rule.controls, ...(frameworksFor(rule.id).frameworks.soc2_tsc ?? []).map((r) => `SOC2:${r.ref}`)],
         detail: clean(detail),
         remediation: result.remediation && clean(result.remediation),
         ...(preExisting ? { preExisting } : {}),

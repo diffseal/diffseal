@@ -242,12 +242,13 @@ function blastRow(b: BlastFinding): string {
 }
 
 function findingRow(f: Finding): string {
+  const controls = f.controls.map((c) => c.replace('ISO27001:', '').replace('SOC2:', 'SOC 2 ')).join(', ');
   if (f.accepted) {
-    return `| ${f.status} (accepted) | ${cell(f.title)} | ${codeCell(f.resource)} | ${cell(`${f.detail}. ${acceptedNote(f.accepted)}`)} | ${f.controls.map((c) => c.replace('ISO27001:', '')).join(', ')} |`;
+    return `| ${f.status} (accepted) | ${cell(f.title)} | ${codeCell(f.resource)} | ${cell(`${f.detail}. ${acceptedNote(f.accepted)}`)} | ${controls} |`;
   }
   const status = f.preExisting ? `${f.status} (pre-existing)` : f.status;
   const detail = f.remediation ? `${f.detail}. Fix: ${f.remediation}` : f.detail;
-  return `| ${status} | ${cell(f.title)} | ${codeCell(f.resource)} | ${cell(detail)} | ${f.controls.map((c) => c.replace('ISO27001:', '')).join(', ')} |`;
+  return `| ${status} | ${cell(f.title)} | ${codeCell(f.resource)} | ${cell(detail)} | ${controls} |`;
 }
 
 function sortFindings(fs: Finding[]): Finding[] {

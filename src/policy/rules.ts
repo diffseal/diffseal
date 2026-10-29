@@ -15,7 +15,8 @@ import {
 } from './iam.js';
 
 /*
- * Control ids are ISO/IEC 27001:2022 Annex A. Other frameworks map from these through the crosswalk.
+ * Rules declare ISO/IEC 27001:2022 Annex A controls. The engine adds verified SOC 2 criteria
+ * from the rule category in the crosswalk.
  * Thresholds come from the customer's policy (PolicyConfig); ISO itself does not mandate CMKs or PITR.
  */
 
@@ -221,7 +222,8 @@ function isDeadLetterQueue(q: ResourceChange, ctx: RuleContext): boolean {
 const sqsDlq: Rule = {
   id: 'sqs.dlq',
   title: 'SQS dead-letter queue',
-  controls: ['ISO27001:A.8.14'],
+  // Retaining failed messages is neither a backup nor redundant processing infrastructure.
+  controls: [],
   types: ['aws_sqs_queue'],
   evaluate: (v, res, ctx) => {
     if (isDeadLetterQueue(res, ctx)) return undefined;

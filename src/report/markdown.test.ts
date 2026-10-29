@@ -5,6 +5,34 @@ import { plan, rc } from '../testing/planFixtures.js';
 import { cell, renderMarkdown } from './markdown.js';
 
 describe('renderMarkdown', () => {
+  test.each([
+    { status: 'FAIL' as const },
+    { status: 'PASS' as const },
+    { status: 'UNKNOWN' as const },
+    { status: 'INFO' as const },
+    { status: 'FAIL' as const, preExisting: true },
+    { status: 'WARN' as const, accepted: { reason: 'Migration', expires: '2026-12-31' } },
+  ])('PR comment and job summary controls show SOC 2 alongside ISO for $status findings', (state) => {
+    const result = analyze(readPlan(plan([])));
+    result.findings = [{
+      ruleId: 'rds.encryption', title: 'RDS storage encryption', resource: 'aws_db_instance.db',
+      controls: ['ISO27001:A.8.24', 'SOC2:CC6.1'], detail: 'Storage encryption checked', ...state,
+    }];
+    const markdown = renderMarkdown(result, {});
+    expect(markdown).toContain('| A.8.24, SOC 2 CC6.1 |');
+    const row = markdown.split('\n').find((line) => line.includes('| RDS storage encryption |'))!;
+    expect(row.split(' | ')).toHaveLength(5);
+  });
+
+  test('existing findings with only ISO controls still render', () => {
+    const result = analyze(readPlan(plan([])));
+    result.findings = [{
+      ruleId: 'rds.encryption', title: 'Legacy encryption check', status: 'PASS', resource: 'aws_db_instance.db',
+      controls: ['ISO27001:A.8.24'], detail: 'Storage encrypted',
+    }];
+    expect(renderMarkdown(JSON.parse(JSON.stringify(result)), {})).toContain('| A.8.24 |');
+  });
+
   test('for_each addresses with quotes do not break the table (audit R2)', () => {
     const r = analyze(readPlan(plan([rc('aws_s3_bucket.this["a|b"]', 'aws_s3_bucket', ['create'], { bucket: 'x' })])));
     const md = renderMarkdown(r, { title: 'Plan review' });
