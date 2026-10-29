@@ -12,6 +12,10 @@
 - DynamoDB `server_side_encryption { enabled = false }` is reported as an AWS-owned key, not as encryption switched off.
 - Plainer README and guides. Advisory mode is described as not failing the job because of findings; configuration or run errors can still fail it.
 
+### Fixed
+
+- `check-app` reports named the infrastructure repository by its absolute local path, in the footer and in the note about a missing role. They now show the repository's folder name, so a pasted report no longer shows the folder layout of the machine that ran it.
+
 ## 0.5.4-beta, 2026-10-29
 
 ### Added
