@@ -474,6 +474,60 @@ test('enabling regional EBS defaults does not attest encryption of an existing v
   expect(findings.find((f) => f.ruleId === 'ebs.encryption')?.status).toBe('UNKNOWN');
 });
 
+test('plan updates cannot attest encryption values retained by ignore_changes', () => {
+  // Plan JSON omits lifecycle rules, so both [encrypted] and all have this shape.
+  for (const configured of [true, false]) {
+    for (const retained of [false, true]) {
+      const address = 'aws_efs_file_system.existing';
+      const changes = readPlan(plan([
+        rc(address, 'aws_efs_file_system', ['update'], {
+          encrypted: retained, tags: { team: 'new' },
+        }, { before: { encrypted: retained, tags: { team: 'old' } } }),
+      ], [], { configuration: { root_module: { resources: [{ address, expressions: {
+        encrypted: { constant_value: configured }, tags: { constant_value: { team: 'new' } },
+      } }] } } }));
+      expect(evaluatePolicies(changes).find((f) => f.ruleId === 'efs.encryption')?.status).toBe('UNKNOWN');
+    }
+  }
+});
+
+test('plan encryption evidence survives creates, replacements and applied updates', () => {
+  for (const encrypted of [true, false]) {
+    for (const actions of [['create'], ['delete', 'create'], ['create', 'delete'], ['update']]) {
+      const changes = readPlan(plan([
+        rc('aws_efs_file_system.example', 'aws_efs_file_system', actions, { encrypted }, {
+          before: actions.length === 1 && actions[0] === 'create' ? null : { encrypted: !encrypted },
+          afterSensitive: { encrypted: true },
+        }),
+      ]));
+      expect(evaluatePolicies(changes).find((f) => f.ruleId === 'efs.encryption')?.status).toBe(encrypted ? 'PASS' : 'WARN');
+    }
+  }
+});
+
+test('plan updates keep retained nested encryption values UNKNOWN independently of changed siblings', () => {
+  const address = 'module.service["prod"].aws_opensearch_domain.example[0]';
+  for (const encrypted of [true, false]) {
+    const changes = readPlan(plan([
+      rc(address, 'aws_opensearch_domain', ['update'], {
+        encrypt_at_rest: [{ enabled: true }], domain_endpoint_options: [{ enforce_https: true }],
+      }, { before: {
+        encrypt_at_rest: [{ enabled: encrypted }], domain_endpoint_options: [{ enforce_https: !encrypted }],
+      } }),
+    ], [], { configuration: { root_module: { module_calls: { service: { module: { resources: [{
+      address: 'aws_opensearch_domain.example', expressions: {
+        encrypt_at_rest: [{ enabled: { constant_value: true } }],
+        domain_endpoint_options: { constant_value: [{ enforce_https: true }] },
+      },
+    }] } } } } } }));
+    expect(evaluatePolicies(changes).filter((f) => ['opensearch.encryption', 'opensearch.https'].includes(f.ruleId))
+      .map((f) => [f.ruleId, f.status])).toEqual([
+        ['opensearch.encryption', encrypted ? 'UNKNOWN' : 'PASS'],
+        ['opensearch.https', encrypted ? 'PASS' : 'UNKNOWN'],
+      ]);
+  }
+});
+
 test('ignored encryption configuration is UNKNOWN on existing resources and applies on create', () => {
   const source = (encrypted: boolean, team: string, ignored: string) => new MemorySource({ 'main.tf': `
     resource "aws_efs_file_system" "existing" {
@@ -556,7 +610,7 @@ test('regional EBS enforcement suppresses explicit-false warnings only at creati
   const cases: Array<[string[], Attrs, Attrs, string, FindingStatus]> = [
     [['create'], { enabled: true }, {}, 'aws.same', 'UNKNOWN'],
     [['delete', 'create'], { enabled: true }, {}, 'aws.same', 'UNKNOWN'],
-    [['update'], { enabled: true }, {}, 'aws.same', 'WARN'],
+    [['update'], { enabled: true }, {}, 'aws.same', 'UNKNOWN'],
     [['create'], { enabled: false }, {}, 'aws.same', 'WARN'],
     [['create'], {}, {}, 'aws.same', 'WARN'],
     [['create'], { enabled: new Unknown('enabled') }, {}, 'aws.same', 'WARN'],
@@ -584,7 +638,8 @@ test('a listener-rule-only redirect downgrade re-evaluates its unchanged listene
       before: { ...rule, action: [{ type: 'redirect', redirect: [{ protocol: 'HTTPS' }] }] },
     }),
   ]))).filter((f) => f.ruleId === 'elb.https');
-  expect(findings.map((f) => [f.resource, f.status, f.preExisting])).toEqual([['aws_lb_listener.http', 'WARN', undefined]]);
+  // Retained rule priority and conditions cannot establish enforcement from plan JSON.
+  expect(findings.map((f) => [f.resource, f.status, f.preExisting])).toEqual([['aws_lb_listener.http', 'UNKNOWN', true]]);
 });
 
 test('an unresolved listener owner reports UNKNOWN on the changed rule', () => {
@@ -595,7 +650,7 @@ test('an unresolved listener owner reports UNKNOWN on the changed rule', () => {
   expect(findings.map((f) => [f.resource, f.status, f.remediation])).toEqual([[address, 'UNKNOWN', undefined]]);
 });
 
-test('listener-rule creation, replacement and deletion re-evaluate the unchanged owner', () => {
+test('listener-rule changes re-evaluate the unchanged owner', () => {
   const redirect = [{ type: 'redirect', redirect: [{ protocol: 'HTTPS' }] }];
   const forward = [{ type: 'forward' }];
   const listener = { arn: 'listener-http', protocol: 'HTTP', default_action: forward };
@@ -604,7 +659,7 @@ test('listener-rule creation, replacement and deletion re-evaluate the unchanged
     [['create'], { ...rule, action: redirect }, null, 'PASS', undefined],
     [['delete', 'create'], { ...rule, action: forward }, { ...rule, action: redirect }, 'WARN', undefined],
     [['delete'], null, { ...rule, action: redirect }, 'WARN', undefined],
-    [['update'], { ...rule, priority: 2, action: forward }, { ...rule, action: forward }, 'WARN', true],
+    [['update'], { ...rule, priority: 2, action: forward }, { ...rule, action: forward }, 'UNKNOWN', undefined],
   ] as const) {
     const findings = evaluatePolicies(readPlan(plan([
       rc('aws_lb_listener.http', 'aws_lb_listener', ['no-op'], listener, { before: listener }),
@@ -1148,14 +1203,26 @@ test('symbolic for_each modules keep unresolved encryption values UNKNOWN', () =
 });
 
 test('encryption findings preserve pre-existing detection, exceptions, Markdown and v1 change records', () => {
-  const changes = readPlan(plan([
-    rc('aws_ebs_volume.preexisting', 'aws_ebs_volume', ['update'], { encrypted: false, tags: { team: 'new' } }, { before: { encrypted: false } }),
-    rc('aws_lb_listener.downgrade', 'aws_lb_listener', ['update'], { protocol: 'HTTPS', ssl_policy: 'ELBSecurityPolicy-2016-08' }, { before: { protocol: 'HTTPS', ssl_policy: 'ELBSecurityPolicy-TLS13-1-2-2021-06' } }),
+  // Static review has lifecycle metadata and can still attest retained, non-ignored settings.
+  const source = (team: string, sslPolicy: string) => new MemorySource({ 'main.tf': `
+    resource "aws_ebs_volume" "preexisting" {
+      encrypted = false
+      tags = { team = "${team}" }
+    }
+    resource "aws_lb_listener" "downgrade" {
+      protocol = "HTTPS"
+      ssl_policy = "${sslPolicy}"
+    }
+  ` });
+  const changes = [...compareEvaluations(
+    evaluateRoot(source('old', 'ELBSecurityPolicy-TLS13-1-2-2021-06'), '.'),
+    evaluateRoot(source('new', 'ELBSecurityPolicy-2016-08'), '.'),
+  ), ...readPlan(plan([
     rc('aws_efs_file_system.pending', 'aws_efs_file_system', ['create'], {}, { afterUnknown: { encrypted: true } }),
     rc('aws_ebs_volume.deleted', 'aws_ebs_volume', ['delete'], null, { before: { encrypted: false } }),
     rc('aws_ebs_volume.unchanged', 'aws_ebs_volume', ['no-op'], { encrypted: false }),
     rc('aws_ebs_volume.data', 'aws_ebs_volume', ['create'], { encrypted: false }, { mode: 'data' }),
-  ]));
+  ]))];
   const result = analyze(changes, {
     now: new Date('2026-10-29T00:00:00Z'),
     policy: { exceptions: [{ rule: 'elb.tls-policy', resource: '*', reason: 'Legacy client migration', expires: '2026-12-31' }] },

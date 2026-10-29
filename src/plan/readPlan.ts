@@ -3,6 +3,7 @@ import {
   Unknown,
   configAddress,
   isUnknown,
+  reveal,
   type Action,
   type Attrs,
   type ResourceChange,
@@ -76,6 +77,7 @@ export function readPlan(input: unknown): ResourceChange[] {
       ? null
       : (overlay(rc.change.before, rc.change.before_sensitive, redactMarker) as Attrs);
     const config = configurations.get(configAddress(rc.address));
+    const configured = configuredValues(config ?? {});
 
     changes.push({
       address: rc.address,
@@ -92,7 +94,8 @@ export function readPlan(input: unknown): ResourceChange[] {
       actionReason: rc.action_reason,
       references: references.get(configAddress(rc.address)) ?? {},
       configuredPaths: configuredPaths.get(configAddress(rc.address)) ?? [],
-      configuredAfter: overlay(configuredValues(config ?? {}),
+      configuredAfter: overlay(action === 'update' && before !== null
+        ? updatedConfiguration(configured, reveal(before), reveal(after)) : configured,
         rc.change.after_sensitive, (value) => value === undefined ? undefined : redactMarker(value)) as Attrs,
       previousAddress: rc.previous_address,
       confidence: 'proven',
@@ -131,6 +134,26 @@ function configuredValues(expression: unknown): unknown {
   return Object.fromEntries(Object.entries(expression).map(([key, expr]) => [key,
     configuredValues(expr),
   ]));
+}
+
+/**
+ * Plan JSON omits lifecycle rules. An unchanged value may be ignored even when it matches the
+ * configuration, so only a configured value actually changed by an update can attest enforcement.
+ */
+function updatedConfiguration(configured: unknown, before: unknown, after: unknown): unknown {
+  if (configured === undefined || isUnknown(configured)) return configured;
+  const prior = before && typeof before === 'object' && !isUnknown(before) ? before as Attrs : {};
+  const planned = after && typeof after === 'object' && !isUnknown(after) ? after as Attrs : {};
+  if (Array.isArray(configured)) {
+    return configured.map((value, i) => updatedConfiguration(value, prior[i], planned[i]));
+  }
+  if (configured && typeof configured === 'object' && Object.getPrototypeOf(configured) === Object.prototype) {
+    return Object.fromEntries(Object.entries(configured).map(([key, value]) => [key,
+      updatedConfiguration(value, prior[key], planned[key]),
+    ]));
+  }
+  return configured === after && before !== after
+    ? configured : new Unknown('configuration value not established by this update');
 }
 
 function mapAction(actions: string[], rc: PlanResourceChange): Action {
