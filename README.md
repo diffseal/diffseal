@@ -132,7 +132,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: your-org/diffseal@v0.2
+      - uses: diffseal/diffseal@v0.5.4-beta
         with:
           mode: pr            # or: plan, app
           roots-under: infra/envs/prod
