@@ -11,12 +11,26 @@ It answers four questions about a change:
 3. **Does the code have the permissions it needs?** The AWS SDK calls in Go, TypeScript and Python are matched to the role of the Lambda or ECS task that runs the code. A missing permission comes with the statement to add and the file to add it in.
 4. **What evidence does an auditor get?** Each finding cites the ISO/IEC 27001:2022 Annex A control it relates to. A replay of history produces the population of changes an auditor samples from.
 
-## Quick start
+## Install the CLI
 
 ```bash
-bun install
-bun test
-bun run demo        # a risky plan, and an app whose role is missing dynamodb:Query
+npm install -g diffseal@beta
+```
+
+You can also install with Bun, Yarn or pnpm:
+
+```bash
+bun install -g diffseal@beta
+yarn global add diffseal@beta
+pnpm add -g diffseal@beta
+```
+
+During the beta, install the `beta` tag as shown. Node.js 18 or later is required. The package includes the CLI, the MCP server and their parser assets.
+
+For a one-off run without installing:
+
+```bash
+npx diffseal@beta verify ./pack --account your-org --period 2026-Q4
 ```
 
 ## Commands
@@ -133,7 +147,7 @@ To check an application repository against an infrastructure repository, check t
 ```json
 {
   "mcpServers": {
-    "diffseal": { "command": "bun", "args": ["run", "/path/to/diffseal/src/mcp.ts"] }
+    "diffseal": { "command": "diffseal-mcp" }
   }
 }
 ```
@@ -145,6 +159,20 @@ Tools:
 - `diffseal_replay_commit`
 
 All three are read-only. HashiCorp's Terraform MCP server complements this one: it supplies registry documentation and provider schemas. Diffseal does not call it.
+
+## Develop
+
+Development uses Bun 1.4.4. Clone the repository, then run:
+
+```bash
+bun install
+bun test
+bun run build
+bun run typecheck
+bun run demo        # a risky plan, and an app whose role is missing dynamodb:Query
+```
+
+The demo uses the examples in the repository checkout.
 
 ## Layout
 

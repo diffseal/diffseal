@@ -4,6 +4,7 @@ import { verifyPack, keySource, verificationSummary } from './evidence/verify.js
 import { evidencePack } from './evidence/pack.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { analyze } from './analysis/analyze.js';
 import type { AnalysisResult, PolicyConfig } from './core/model.js';
 import { protectedRoots, writeOutput } from './io/output.js';
@@ -29,6 +30,7 @@ Usage:
   diffseal verify <folder> [--keys <file>] [--account <login>] [--period <label>] [--allow-unsigned] [--json]
   diffseal modules fetch [--repo <path>] [--cache <dir>]
   diffseal demo
+  diffseal --version
 
 Commands:
   review     Review the output of \`terraform show -json <planfile>\`: blast radius, policy checks, fixed-cost changes.
@@ -44,7 +46,7 @@ Commands:
   verify     Verify manifest, file set, Ed25519 signature, key validity and optional scope offline.
   modules    Fetch public module packages and write a verified lock file. This command uses the network.
              replay and check-app accept --module-cache <dir> and never fetch implicitly.
-  demo       Run review and check-app on the bundled examples.
+  demo       Run review and check-app on the examples in a repository checkout (development only).
 
 Exit codes: 0 pass, 1 error, 2 gate failed (BLOCK, or REVIEW with --strict).
 `;
@@ -54,7 +56,7 @@ interface Args {
   flags: Map<string, string | true>;
 }
 
-const BOOLEAN_FLAGS = new Set(['--strict', '--help', '-h', '--worktree', '--allow-unsigned']);
+const BOOLEAN_FLAGS = new Set(['--strict', '--help', '-h', '--version', '-v', '--worktree', '--allow-unsigned']);
 
 function parseArgs(argv: string[]): Args {
   const out: Args = { _: [], flags: new Map() };
@@ -223,8 +225,9 @@ async function runCheckApp(args: Args): Promise<number> {
 }
 
 async function runDemo(): Promise<number> {
-  const root = path.resolve(import.meta.dirname, '..');
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
   const plan = path.join(root, 'examples', 'unsafe-tfplan.json');
+  if (!fs.existsSync(plan)) throw new Error('demo needs a repository checkout. Clone https://github.com/diffseal/diffseal and run bun run demo.');
   const result = analyze(readPlan(JSON.parse(fs.readFileSync(plan, 'utf8'))));
   process.stdout.write(renderMarkdown(result, { title: 'Plan review of `examples/unsafe-tfplan.json`.', version: VERSION }));
   process.stdout.write('\n');
@@ -254,6 +257,10 @@ export async function main(argv: string[]): Promise<number> {
     return 1;
   }
   const cmd = args._[0];
+  if (args.flags.has('--version') || args.flags.has('-v')) {
+    console.log(VERSION);
+    return 0;
+  }
   if (args.flags.has('--help') || args.flags.has('-h')) {
     process.stdout.write(HELP);
     return 0;

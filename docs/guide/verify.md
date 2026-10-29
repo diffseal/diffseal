@@ -1,5 +1,27 @@
 # Verify an evidence pack
 
+## Install the CLI
+
+```sh
+npm install -g diffseal@beta
+```
+
+You can also install with Bun, Yarn or pnpm:
+
+```sh
+bun install -g diffseal@beta
+yarn global add diffseal@beta
+pnpm add -g diffseal@beta
+```
+
+Node.js 18 or later is required. For a one-off run without installing:
+
+```sh
+npx diffseal@beta verify ./pack --account your-org --period 2026-Q4
+```
+
+## Verify a pack
+
 Extract the pack into a folder, then run:
 
 ```sh

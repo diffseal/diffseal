@@ -60,6 +60,16 @@ test('dist/cli.js bundles the offline key list and verifies without dependencies
     const built = spawnSync('bun', ['build', 'src/cli.ts', '--target=node', '--minify-syntax', '--minify-whitespace', '--outdir', out], { cwd: path.resolve(import.meta.dirname, '..'), encoding: 'utf8' });
     expect(built.status).toBe(0);
     expect(fs.readFileSync(path.join(out, 'cli.js')).equals(fs.readFileSync(path.resolve(import.meta.dirname, '../dist/cli.js')))).toBe(true);
+    expect(fs.readFileSync(path.join(out, 'cli.js'), 'utf8').startsWith('#!/usr/bin/env node\n')).toBe(true);
+    const { version } = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    for (const flag of ['--version', '-v']) {
+      const result = spawnSync('node', [path.join(out, 'cli.js'), flag], { cwd: out, encoding: 'utf8' });
+      expect(result.status).toBe(0);
+      expect(result.stdout.trim()).toBe(version);
+    }
+    const help = spawnSync('node', [path.join(out, 'cli.js'), 'verify', '--help'], { cwd: out, encoding: 'utf8' });
+    expect(help.status).toBe(0);
+    expect(help.stdout).toContain('diffseal verify <folder>');
     const pack = path.join(out, 'pack'); fs.mkdirSync(pack);
     const metadata = '{"schema":"diffseal.evidence-pack/v1","since":"2026-10-01","until":"2027-01-01"}\n';
     fs.writeFileSync(path.join(pack, 'pack.json'), metadata);
@@ -68,5 +78,29 @@ test('dist/cli.js bundles the offline key list and verifies without dependencies
     const r = spawnSync('node', ['--import', 'data:text/javascript,globalThis.fetch=()=>{throw new Error("network forbidden")}', path.join(out, 'cli.js'), 'verify', pack, '--allow-unsigned', '--json'], { cwd: out, encoding: 'utf8' });
     expect(r.status).toBe(0); expect(JSON.parse(r.stdout)).toMatchObject({ ok: true, failures: [], files: 1 });
     expect(r.stderr).toContain('Keys: bundled with this version'); expect(r.stderr).not.toContain('network forbidden');
+  } finally { fs.rmSync(out, { recursive: true, force: true }); }
+});
+
+test('dist/mcp.js starts and lists its tools without dependencies or network', () => {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'diffseal-mcp-dist-'));
+  try {
+    const built = spawnSync('bun', ['build', 'src/mcp.ts', '--target=node', '--minify-syntax', '--minify-whitespace', '--outdir', out], { cwd: path.resolve(import.meta.dirname, '..'), encoding: 'utf8' });
+    expect(built.status).toBe(0);
+    const bundle = fs.readFileSync(path.join(out, 'mcp.js'), 'utf8');
+    expect(bundle === fs.readFileSync(new URL('../dist/mcp.js', import.meta.url), 'utf8')).toBe(true);
+    expect(bundle.startsWith('#!/usr/bin/env node\n')).toBe(true);
+    const messages = [
+      { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'package-test', version: '1.0.0' } } },
+      { jsonrpc: '2.0', method: 'notifications/initialized' },
+      { jsonrpc: '2.0', id: 2, method: 'tools/list' },
+    ];
+    const result = spawnSync('node', ['--import', 'data:text/javascript,globalThis.fetch=()=>{throw new Error("network forbidden")}', path.join(out, 'mcp.js')], {
+      cwd: out, encoding: 'utf8', input: messages.map((message) => JSON.stringify(message)).join('\n') + '\n', timeout: 10_000,
+    });
+    expect(result.status).toBe(0);
+    expect(result.stderr).not.toContain('network forbidden');
+    const replies = result.stdout.trim().split('\n').map((line) => JSON.parse(line));
+    expect(replies.find((reply) => reply.id === 1).result.serverInfo.name).toBe('diffseal');
+    expect(replies.find((reply) => reply.id === 2).result.tools.map((tool: { name: string }) => tool.name).sort()).toEqual(['diffseal_check_app', 'diffseal_replay_commit', 'diffseal_review_plan']);
   } finally { fs.rmSync(out, { recursive: true, force: true }); }
 });
