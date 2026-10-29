@@ -3181,7 +3181,7 @@
             "action": "replace",
             "severity": "CRITICAL",
             "dataLoss": true,
-            "reasonContains": "Replaces aws_cognito_user_pool: loses every user and their password (password hashes cannot be exported)"
+            "reasonContains": "Replaces aws_cognito_user_pool: applying it would lose every user and their password (password hashes cannot be exported)"
           }
         ],
         "cost": {
@@ -3190,7 +3190,7 @@
         "gate": {
           "result": "block",
           "reasonsContain": [
-            "CRITICAL: aws_cognito_user_pool.users: Replaces aws_cognito_user_pool: loses every user and their password (password hashes cannot be exported)"
+            "CRITICAL: aws_cognito_user_pool.users: Replaces aws_cognito_user_pool: applying it would lose every user and their password (password hashes cannot be exported)"
           ]
         }
       }
@@ -3271,7 +3271,7 @@
             "action": "replace",
             "severity": "CRITICAL",
             "dataLoss": true,
-            "reasonContains": "Replaces aws_db_instance (forced by changing identifier): loses the database"
+            "reasonContains": "Replaces aws_db_instance (forced by changing identifier): applying it would lose the database"
           }
         ],
         "cost": {
@@ -3280,7 +3280,7 @@
         "gate": {
           "result": "block",
           "reasonsContain": [
-            "CRITICAL: aws_db_instance.prod: Replaces aws_db_instance (forced by changing identifier): loses the database"
+            "CRITICAL: aws_db_instance.prod: Replaces aws_db_instance (forced by changing identifier): applying it would lose the database"
           ]
         }
       }
@@ -3356,7 +3356,7 @@
             "action": "replace",
             "severity": "CRITICAL",
             "dataLoss": true,
-            "reasonContains": "Replaces aws_db_instance (likely forced by changing storage_encrypted): loses the database"
+            "reasonContains": "Replaces aws_db_instance (likely forced by changing storage_encrypted): applying it would lose the database"
           }
         ],
         "cost": {
@@ -3365,7 +3365,7 @@
         "gate": {
           "result": "block",
           "reasonsContain": [
-            "CRITICAL: aws_db_instance.prod: Replaces aws_db_instance (likely forced by changing storage_encrypted): loses the database"
+            "CRITICAL: aws_db_instance.prod: Replaces aws_db_instance (likely forced by changing storage_encrypted): applying it would lose the database"
           ]
         }
       }
@@ -3550,7 +3550,7 @@
             "action": "delete",
             "severity": "HIGH",
             "dataLoss": false,
-            "reasonContains": "Deletes aws_db_instance: loses the database. deletion_protection = true, so the apply will fail mid-way"
+            "reasonContains": "Deletes aws_db_instance: applying it would lose the database. deletion_protection = true, so the apply will fail mid-way"
           }
         ],
         "cost": {
@@ -3559,7 +3559,7 @@
         "gate": {
           "result": "review",
           "reasonsContain": [
-            "HIGH: aws_db_instance.prod: Deletes aws_db_instance: loses the database. deletion_protection = true, so the apply will fail mid-way"
+            "HIGH: aws_db_instance.prod: Deletes aws_db_instance: applying it would lose the database. deletion_protection = true, so the apply will fail mid-way"
           ]
         }
       }
@@ -4126,7 +4126,7 @@
             "action": "replace",
             "severity": "CRITICAL",
             "dataLoss": true,
-            "reasonContains": "Replaces aws_db_instance: loses the database"
+            "reasonContains": "Replaces aws_db_instance: applying it would lose the database"
           }
         ],
         "cost": {
@@ -4135,7 +4135,7 @@
         "gate": {
           "result": "block",
           "reasonsContain": [
-            "CRITICAL: aws_db_instance.prod: Replaces aws_db_instance: loses the database"
+            "CRITICAL: aws_db_instance.prod: Replaces aws_db_instance: applying it would lose the database"
           ]
         }
       }
@@ -4436,7 +4436,7 @@
             "action": "replace",
             "severity": "CRITICAL",
             "dataLoss": true,
-            "reasonContains": "Replaces aws_db_instance (forced by changing storage_encrypted): loses the database"
+            "reasonContains": "Replaces aws_db_instance (forced by changing storage_encrypted): applying it would lose the database"
           },
           {
             "resource": "aws_sqs_queue.vibe_coded_queue",
@@ -4478,7 +4478,7 @@
         "gate": {
           "result": "block",
           "reasonsContain": [
-            "CRITICAL: aws_db_instance.production_postgres: Replaces aws_db_instance (forced by changing storage_encrypted): loses the database"
+            "CRITICAL: aws_db_instance.production_postgres: Replaces aws_db_instance (forced by changing storage_encrypted): applying it would lose the database"
           ]
         }
       }
@@ -5228,7 +5228,7 @@
             "action": "delete",
             "severity": "CRITICAL",
             "dataLoss": true,
-            "reasonContains": "Deletes aws_dynamodb_table: loses the items in the table"
+            "reasonContains": "Deletes aws_dynamodb_table: applying it would lose the items in the table"
           }
         ],
         "cost": {
@@ -5237,7 +5237,7 @@
         "gate": {
           "result": "review",
           "reasonsContain": [
-            "CRITICAL: aws_dynamodb_table.t: Deletes aws_dynamodb_table: loses the items in the table"
+            "CRITICAL: aws_dynamodb_table.t: Deletes aws_dynamodb_table: applying it would lose the items in the table"
           ]
         }
       }

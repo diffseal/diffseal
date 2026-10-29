@@ -130,7 +130,7 @@
             "action": "replace",
             "severity": "CRITICAL",
             "dataLoss": true,
-            "reasonContains": "Replaces aws_dynamodb_table: loses the items in the table (replace_triggered_by: terraform_data.rev is updated)"
+            "reasonContains": "Replaces aws_dynamodb_table: applying it would lose the items in the table (replace_triggered_by: terraform_data.rev is updated)"
           },
           {
             "resource": "terraform_data.rev",
@@ -146,7 +146,7 @@
         "gate": {
           "result": "block",
           "reasonsContain": [
-            "CRITICAL: aws_dynamodb_table.t: Replaces aws_dynamodb_table: loses the items in the table (replace_triggered_by: terraform_data.rev is updated)"
+            "CRITICAL: aws_dynamodb_table.t: Replaces aws_dynamodb_table: applying it would lose the items in the table (replace_triggered_by: terraform_data.rev is updated)"
           ]
         }
       }

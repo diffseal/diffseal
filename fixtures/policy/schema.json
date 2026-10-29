@@ -47,7 +47,7 @@
             "action": "delete",
             "severity": "CRITICAL",
             "dataLoss": true,
-            "reasonContains": "Deletes aws_cognito_user_pool: loses every user and their password"
+            "reasonContains": "Deletes aws_cognito_user_pool: applying it would lose every user and their password"
           }
         ]
       }

@@ -104,7 +104,7 @@ for (const name of [
       }
       if (name === "replace-database") {
         expect(markdown).toContain("hash_key");
-        expect(markdown).toContain("loses the items");
+        expect(markdown).toContain("would lose the items");
         expect(markdown).toContain("> [!CAUTION]");
         // A change whose action depends on apply-time values says so on its own row.
         expect(markdown).toContain("| `module.fulfillment.aws_iam_role_policy.lambda` | update (likely) |");

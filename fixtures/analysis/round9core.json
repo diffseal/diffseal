@@ -29,7 +29,7 @@
             "action": "delete",
             "severity": "CRITICAL",
             "dataLoss": true,
-            "reasonContains": "Deletes aws_dynamodb_table: loses the items in the table"
+            "reasonContains": "Deletes aws_dynamodb_table: applying it would lose the items in the table"
           }
         ],
         "cost": {
@@ -38,7 +38,7 @@
         "gate": {
           "result": "block",
           "reasonsContain": [
-            "CRITICAL: aws_dynamodb_table.t[0]: Deletes aws_dynamodb_table: loses the items in the table"
+            "CRITICAL: aws_dynamodb_table.t[0]: Deletes aws_dynamodb_table: applying it would lose the items in the table"
           ]
         }
       }
@@ -70,7 +70,7 @@
             "action": "delete",
             "severity": "CRITICAL",
             "dataLoss": true,
-            "reasonContains": "Deletes aws_dynamodb_table: loses the items in the table"
+            "reasonContains": "Deletes aws_dynamodb_table: applying it would lose the items in the table"
           }
         ],
         "cost": {
@@ -79,7 +79,7 @@
         "gate": {
           "result": "block",
           "reasonsContain": [
-            "CRITICAL: aws_dynamodb_table.t[0]: Deletes aws_dynamodb_table: loses the items in the table"
+            "CRITICAL: aws_dynamodb_table.t[0]: Deletes aws_dynamodb_table: applying it would lose the items in the table"
           ]
         }
       }

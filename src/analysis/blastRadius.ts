@@ -174,7 +174,7 @@ export function analyzeBlastRadius(changes: ResourceChange[]): BlastFinding[] {
         const guard = destroyGuard(c.type, before, c.preventDestroy);
         const recovery = recoverable(c.type, before, c.before ?? {});
         let severity: Severity = 'CRITICAL';
-        let reason = `${verb} ${c.type}${forcedBy}: loses ${stateful}`;
+        let reason = `${verb} ${c.type}${forcedBy}: applying it would lose ${stateful}`;
         if (guard) {
           severity = 'HIGH';
           reason += `. ${guard}`;
