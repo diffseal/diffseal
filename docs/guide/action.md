@@ -2,6 +2,28 @@
 
 The Diffseal GitHub Action runs bundled JavaScript on the `node24` runtime through `dist/action.js` and makes no external network downloads at run time. It evaluates the change, writes a Markdown report to `$GITHUB_STEP_SUMMARY`, sets the `gate` output, optionally posts or updates a single pull request comment, and exits according to the gate verdict.
 
+## Install the CLI
+
+To run Diffseal locally:
+
+```sh
+npm install -g diffseal@beta
+```
+
+You can also install with Bun, Yarn or pnpm:
+
+```sh
+bun install -g diffseal@beta
+yarn global add diffseal@beta
+pnpm add -g diffseal@beta
+```
+
+Node.js 18 or later is required for the CLI. For a one-off run without installing:
+
+```sh
+npx diffseal@beta verify ./pack --account your-org --period 2026-Q4
+```
+
 ## Modes
 
 Set `mode` to select what the Action checks:

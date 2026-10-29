@@ -4,8 +4,29 @@
   "description": "Change review for Terraform on AWS: blast radius, policy evidence, and the IAM that application code needs",
   "type": "module",
   "bin": {
-    "diffseal": "./dist/cli.js",
-    "diffseal-mcp": "./dist/mcp.js"
+    "diffseal": "dist/cli.js",
+    "diffseal-mcp": "dist/mcp.js"
+  },
+  "files": [
+    "dist/cli.js",
+    "dist/mcp.js",
+    "dist/*.wasm-*.gz",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/diffseal/diffseal.git"
+  },
+  "homepage": "https://diffseal.com",
+  "bugs": {
+    "url": "https://github.com/diffseal/diffseal/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "bun scripts/check-bun-version.ts && bun build src/cli.ts --target=node --minify-syntax --minify-whitespace --outdir dist && bun build src/mcp.ts --target=node --minify-syntax --minify-whitespace --outdir dist && bun build src/action.ts --target=node --minify-syntax --minify-whitespace --outdir dist",
@@ -19,17 +40,18 @@
   },
   "keywords": [
     "terraform",
-    "opentofu",
-    "iac",
+    "aws",
+    "iam",
+    "change-management",
     "iso27001",
-    "infracost",
-    "blast-radius",
-    "claude-code",
-    "mcp",
-    "github-action"
+    "soc2",
+    "audit",
+    "github-action",
+    "cli"
   ],
   "license": "FSL-1.1-ALv2",
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
     "@tree-sitter-grammars/tree-sitter-kotlin": "1.1.0",
     "@types/bun": "1.3.1",
     "@types/node": "22",
@@ -38,10 +60,7 @@
     "tree-sitter-java": "0.23.5",
     "tree-sitter-python": "0.25.0",
     "tree-sitter-typescript": "0.23.2",
-    "typescript": "5.9.3"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "1.32.1",
+    "typescript": "5.9.3",
     "web-tree-sitter": "0.25.10",
     "yaml": "2.9.1",
     "zod": "4.6.5"

@@ -1,10 +1,15 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
+type Step = { name?: string; uses?: string; with?: Record<string, unknown>; run?: string; env?: Record<string, string> };
 type Workflow = {
   on: Record<string, unknown>;
   permissions: Record<string, string>;
-  jobs: Record<string, { steps: Array<{ uses?: string; with?: Record<string, unknown>; run?: string }> }>;
+  jobs: Record<string, { permissions?: Record<string, string>; steps: Step[] }>;
 };
 function workflow(name: string): Workflow {
   return Bun.YAML.parse(readFileSync(new URL(`../.github/workflows/${name}.yml`, import.meta.url), 'utf8')) as Workflow;
@@ -42,6 +47,49 @@ test('tag releases validate the build before publishing with tag notes', () => {
   expect(runs).toContain('--notes-from-tag');
   expect(runs).toContain('--verify-tag');
   expect(runs).toContain('tar -czf');
+});
+
+test('npm publishing follows the GitHub release with trusted publishing and no stored token', () => {
+  const release = workflow('release');
+  expect(release.permissions).not.toHaveProperty('id-token');
+  expect(release.jobs.release.permissions).toEqual({ contents: 'write', 'id-token': 'write' });
+  const steps = release.jobs.release.steps;
+  const setup = steps.findIndex((step) => step.uses?.startsWith('actions/setup-node@'));
+  const publish = steps.findIndex((step) => step.name === 'Publish to npm');
+  expect(setup).toBeGreaterThan(steps.findIndex((step) => step.run?.includes('gh release create')));
+  expect(publish).toBeGreaterThan(setup);
+  expect(steps[setup].uses).toMatch(/^actions\/setup-node@[a-f0-9]{40}$/);
+  expect(steps[setup].with).toEqual({ 'node-version': '24', 'registry-url': 'https://registry.npmjs.org', 'package-manager-cache': false });
+  expect(steps[publish].env).toBeUndefined();
+  expect(JSON.stringify(release)).not.toContain('NPM_TOKEN');
+  expect(steps[publish].run).toContain('npm publish --access public');
+});
+
+test('npm publishing skips a version already on npm, selects beta for prereleases and propagates failures', () => {
+  const script = workflow('release').jobs.release.steps.find((step) => step.name === 'Publish to npm')!.run!;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'diffseal-publish-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ version: '1.0.0' }));
+    // A fake npm: `view` succeeds only when NPM_PUBLISHED is set; `install` is a no-op; `publish` records its arguments.
+    fs.writeFileSync(path.join(dir, 'npm'), '#!/bin/bash\ncase "$1" in\n  view) [[ -n "$NPM_PUBLISHED" ]] && echo 1.0.0 && exit 0; exit 1 ;;\n  install) exit 0 ;;\n  publish) printf "%s\\n" "$@" > "$NPM_ARGS"; exit "${NPM_EXIT:-0}" ;;\nesac\n', { mode: 0o755 });
+    const argsFile = path.join(dir, 'args');
+    const run = (tag: string, published = '', exit = '0') => spawnSync('bash', ['-e', '-c', script], {
+      cwd: dir,
+      encoding: 'utf8',
+      env: { ...process.env, PATH: `${dir}${path.delimiter}${process.env.PATH}`, GITHUB_REF_NAME: tag, NPM_ARGS: argsFile, NPM_EXIT: exit, NPM_PUBLISHED: published },
+    });
+    const skipped = run('v1.0.0', 'yes');
+    expect(skipped.status).toBe(0);
+    expect(skipped.stdout).toContain('already on npm; publishing is skipped');
+    expect(fs.existsSync(argsFile)).toBe(false);
+    expect(run('v1.0.0').status).toBe(0);
+    expect(fs.readFileSync(argsFile, 'utf8').trim().split('\n')).toEqual(['publish', '--access', 'public']);
+    expect(run('v1.0.0-beta').status).toBe(0);
+    expect(fs.readFileSync(argsFile, 'utf8').trim().split('\n')).toEqual(['publish', '--access', 'public', '--tag', 'beta']);
+    expect(run('v1.0.0', '', '1').status).not.toBe(0);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('trusted upload workflow has no analysis inputs and uses base Git settings and the release Action', () => {

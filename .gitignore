@@ -15,3 +15,4 @@ dist/*
 
 # The offline verifier bundles its public key list in the CLI.
 !dist/cli.js
+!dist/mcp.js

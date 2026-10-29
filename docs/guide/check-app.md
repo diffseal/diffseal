@@ -2,17 +2,17 @@
 
 `diffseal check-app` scans Go, TypeScript, and Python source files for AWS SDK calls and environment variable reads, finds the IAM role that runs the code, and checks whether the role's policies in Terraform grant each required action on the target resource.
 
-You can run `check-app` on a whole application or only on the lines added since a base commit:
+After [installing the CLI](verify.md#install-the-cli), you can run `check-app` on a whole application or only on the lines added since a base commit:
 
 ```bash
-# Check the bundled orders-service example against demo-infra in the working tree
-bun run src/cli.ts check-app --app examples/orders-service --infra examples/demo-infra --worktree
+# From a repository checkout, check the orders-service example against demo-infra
+diffseal check-app --app examples/orders-service --infra examples/demo-infra --worktree
 
 # Trace from a specific entry directory and role name
-bun run src/cli.ts check-app --app examples/orders-service --infra examples/demo-infra --entry src --role orders-prod-lambda --worktree
+diffseal check-app --app examples/orders-service --infra examples/demo-infra --entry src --role orders-prod-lambda --worktree
 
 # Check only calls added since a base commit
-bun run src/cli.ts check-app --app . --base HEAD
+diffseal check-app --app . --base HEAD
 ```
 
 ## How Diffseal finds the IAM role
