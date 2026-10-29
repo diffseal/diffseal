@@ -89,8 +89,10 @@ export async function checkApp(opts: CheckAppOptions): Promise<CheckAppResult> {
 
   const explicitRoles = Boolean(opts.roles?.length || JSON.parse(readConfigFile(baseSource ?? appSource) ?? '{}').roles?.length);
   const roles = opts.roles?.length ? opts.roles : link.roles ?? [];
+  // Reports name the repository, not where it sits on this machine.
+  const infraName = path.basename(path.resolve(infraRepo));
   for (const r of roles) {
-    if (!index.rolesNamed(r).length) notes.push(`Role ${r} is not defined in ${roots.length} Terraform root(s) of ${infraRepo}.`);
+    if (!index.rolesNamed(r).length) notes.push(`Role ${r} is not defined in ${roots.length} Terraform root(s) of ${infraName}.`);
   }
   if (deployments.files.size && !explicitRoles) notes.push('Deployment bindings select roles for matched source files; repository role hints apply only to unmatched files.');
   else if (roles.length) notes.push(`Runs as ${roles.join(', ')} (from ${opts.roles?.length ? '--role' : link.sources.join(', ')}).`);
@@ -106,7 +108,7 @@ export async function checkApp(opts: CheckAppOptions): Promise<CheckAppResult> {
   return {
     app: opts.app,
     infraPath: infraRepo,
-    infra: infraSource instanceof GitSource ? `${infraRepo}@${infraSource.sha.slice(0, 9)}` : `${infraRepo} (working tree)`,
+    infra: `${infraName}${infraSource instanceof GitSource ? `@${infraSource.sha.slice(0, 9)}` : ' (working tree)'}`,
     link,
     roots,
     links,
