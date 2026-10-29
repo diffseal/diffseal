@@ -1,6 +1,6 @@
 # GitHub Action reference
 
-The Diffseal GitHub Action runs bundled JavaScript on the `node24` runtime through `dist/action.js` and makes no external network downloads at run time. It evaluates the change, writes a Markdown report to `$GITHUB_STEP_SUMMARY`, sets the `gate` output, optionally posts or updates a single pull request comment, and exits according to the gate verdict.
+The Diffseal GitHub Action runs bundled JavaScript on the `node24` runtime through `dist/action.js` and downloads nothing at run time. It evaluates the change, writes a Markdown report to `$GITHUB_STEP_SUMMARY`, sets the `gate` output, optionally posts or updates a single pull request comment, and exits according to the gate verdict.
 
 ## Install the CLI
 
@@ -18,7 +18,7 @@ yarn global add diffseal@beta
 pnpm add -g diffseal@beta
 ```
 
-Node.js 18 or later is required for the CLI. For a one-off run without installing:
+The CLI needs Node.js 18 or later. For a one-off run without installing:
 
 ```sh
 npx diffseal@beta verify ./pack --account your-org --period 2026-Q4
@@ -47,9 +47,9 @@ Set `mode` to select what the Action checks:
 | `entry` | `''` | `app` | Entry directory or directories to trace imports from in `app` mode, such as `cmd/worker`. Accepts comma-separated values. |
 | `policy` | `''` | all | Path to a policy JSON file inside the repository. Read from the base commit when a base is available so a pull request cannot weaken the policy that judges it. |
 | `strict` | `'false'` | all | Set to `'true'` to fail the step with exit code `2` when the gate is `review` as well as when it is `block`. |
-| `advisory` | `'false'` | all | Set to `'true'` to always exit with code `0`, even when the gate is `block`. The step summary, pull request comment, and `gate` output are still written. |
+| `advisory` | `'false'` | all | Set to `'true'` to always exit with code `0`, even when the gate is `block`. The Action still writes the step summary, pull request comment, and `gate` output. |
 | `comment` | `'true'` | all | Set to `'true'` to create or update a pull request comment when running on a `pull_request` event with a valid `github-token`. |
-| `comment-author` | `'github-actions[bot]'` | all | GitHub login expected on an existing Diffseal comment. Only comments authored by this login and containing `<!-- diffseal-report -->` are updated in place. |
+| `comment-author` | `'github-actions[bot]'` | all | GitHub login expected on an existing Diffseal comment. Diffseal updates in place only a comment authored by this login that contains `<!-- diffseal-report -->`. |
 | `github-token` | `'${{ github.token }}'` | all | GitHub token used to list, create, or update the pull request comment. |
 
 ## Outputs
@@ -84,12 +84,12 @@ When `onlyUpdate` is `true`, Diffseal updates an existing Diffseal comment if on
 
 In `pr` and `app` modes, and in `plan` mode when `policy` is set, Diffseal resolves a base commit:
 
-1. If the `base` input is provided, Diffseal resolves that git revision directly.
+1. If you set the `base` input, Diffseal resolves that git revision.
 2. Otherwise, Diffseal reads `pull_request.base.sha` or `merge_group.base_sha` from the GitHub event file at `$GITHUB_EVENT_PATH` and runs `git merge-base <event-base-sha> HEAD`.
 
-Using `git merge-base` ensures that whether the workflow checks out the pull request head branch or GitHub's synthetic merge commit, the comparison base is the exact commit where the pull request branched off. Check out the repository with `fetch-depth: 0` so both commits and their history are present in the local clone.
+With `git merge-base`, the comparison base is the commit where the pull request branched off, whether the workflow checks out the pull request head branch or GitHub's synthetic merge commit. Check out the repository with `fetch-depth: 0` so both commits and their history are present in the local clone.
 
-All settings that judge a change are read from the base commit:
+Diffseal reads every setting that judges a change from the base commit:
 
 - `.diffseal.json` policy settings and exceptions in `pr` mode.
 - `.diffseal.json` link settings, specifically `infra`, `roles`, and `env`, in `app` mode.
@@ -164,7 +164,7 @@ jobs:
 
 ### Application IAM check with `mode: app`
 
-Use `mode: app` in an application repository to check that AWS SDK calls in added code are permitted by the IAM roles in your infrastructure repository.
+Use `mode: app` in an application repository to check that the IAM roles in your infrastructure repository permit the AWS SDK calls in added code.
 
 ```yaml
 name: Diffseal app check
@@ -223,6 +223,6 @@ In branch protection, make **Diffseal evidence** a required check. Select the **
 
 Pull requests from forks cannot upload. They have no OIDC token for this workflow and receive no Diffseal evidence check. A required evidence check therefore prevents them from merging until your organisation handles the change through a trusted branch.
 
-The Action sends a scrubbed change record: commit metadata, root paths, resource addresses and actions, gate reasons and structured items, risks, control findings, access call sites and analysis notes. It sends no approvals. The service collects approvals from GitHub. The Action never uploads source files, Terraform configuration, plan files, state files or cloud credentials. Values marked sensitive in Terraform are scrubbed from findings. The OIDC token authenticates the request.
+The Action sends a scrubbed change record: commit metadata, root paths, resource addresses and actions, gate reasons and structured items, risks, control findings, access call sites and analysis notes. It sends no approvals. The service collects approvals from GitHub. The Action never uploads source files, Terraform configuration, plan files, state files or cloud credentials. The Action scrubs values marked sensitive in Terraform from findings. The OIDC token authenticates the request.
 
-Uploads happen before the pull request comment. A blocked run may include a service link where an approver can request an exception for that pull request. An upload error produces a warning and preserves the job's gate and exit code. The Action retries a failed network request or a server error once. The `upload-id` output is present only after a successful upload. The service stores default branch pushes; pushes to other branches do not add evidence.
+Uploads happen before the pull request comment. A blocked run may include a service link where an approver can request an exception for that pull request. An upload error produces a warning and keeps the job's gate and exit code. The Action retries a failed network request or a server error once. The `upload-id` output is present only after a successful upload. The service stores default branch pushes; pushes to other branches do not add evidence.
