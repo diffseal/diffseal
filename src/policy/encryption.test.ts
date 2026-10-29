@@ -166,6 +166,42 @@ test('nullable expressions do not turn planned encryption defaults into configur
     ]);
 });
 
+test('null-producing conditionals and module outputs never attest provider-populated encryption', () => {
+  const source = new MemorySource({ 'main.tf': `
+    variable "enabled" { default = true }
+    module "settings" {
+      source = "./settings"
+      enabled = var.enabled
+    }
+    resource "aws_efs_file_system" "conditional" { encrypted = var.enabled ? null : true }
+    resource "aws_efs_file_system" "output" { encrypted = module.settings.encrypted }
+  `, 'settings/main.tf': `
+    variable "enabled" { default = true }
+    output "encrypted" { value = var.enabled ? null : true }
+  ` });
+  const fromSource = compareEvaluations(undefined, evaluateRoot(source, '.'));
+  for (const encrypted of [false, true]) {
+    const fromPlan = readPlan(plan([
+      rc('aws_efs_file_system.conditional', 'aws_efs_file_system', ['create'], { encrypted }),
+      rc('aws_efs_file_system.output', 'aws_efs_file_system', ['create'], { encrypted }),
+    ], [], { variables: { enabled: { value: true } }, configuration: { root_module: {
+      resources: [
+        cfg('aws_efs_file_system.conditional', { encrypted: ['var.enabled'] }),
+        cfg('aws_efs_file_system.output', { encrypted: ['module.settings.encrypted', 'module.settings'] }),
+      ],
+      module_calls: { settings: { expressions: { enabled: { constant_value: true } }, module: {
+        outputs: { encrypted: { expression: { references: ['var.enabled'] } } },
+      } } },
+    } } }));
+    for (const changes of [fromSource, fromPlan]) {
+      expect(evaluatePolicies(changes).filter((f) => f.ruleId === 'efs.encryption').map((f) => [f.resource, f.status]))
+        .toEqual([
+          ['aws_efs_file_system.conditional', 'UNKNOWN'], ['aws_efs_file_system.output', 'UNKNOWN'],
+        ]);
+    }
+  }
+});
+
 test('nullable nested object attributes cannot attest provider-populated encryption values', () => {
   for (const [reference, value, status] of [
     ['var.config.encrypted', { encrypted: null }, 'UNKNOWN'],
@@ -183,7 +219,14 @@ test('nullable nested object attributes cannot attest provider-populated encrypt
       rc(resources[1].address, 'aws_efs_file_system', ['update'], { encrypted: true }, { before: { encrypted: true } }),
     ], [], { variables: { config: { value } }, configuration: { root_module: { resources } } })));
     expect([reference, findings.filter((f) => ['rds.encryption', 'efs.encryption'].includes(f.ruleId)).map((f) => f.status)])
-      .toEqual([reference, [status, status]]);
+      .toEqual([reference, ['UNKNOWN', 'UNKNOWN']]);
+    const source = new MemorySource({ 'main.tf': `
+      variable "config" {}
+      resource "aws_db_instance" "example" { storage_encrypted = ${reference} }
+      resource "aws_efs_file_system" "example" { encrypted = ${reference} }
+    ` });
+    expect(evaluatePolicies(compareEvaluations(undefined, evaluateRoot(source, '.', { config: value })))
+      .filter((f) => ['rds.encryption', 'efs.encryption'].includes(f.ruleId)).map((f) => f.status)).toEqual([status, status]);
   }
 });
 
@@ -222,12 +265,13 @@ test('coalesce fallbacks cannot erase nullable encryption inputs or configured s
 });
 
 test('module inputs and outputs preserve null, unknown and computed dependencies for encryption evidence', () => {
-  for (const [expression, status] of [
-    [{ constant_value: true }, 'PASS'],
-    [{ references: ['var.enabled'] }, 'PASS'],
-    [{ references: ['var.config.encrypted', 'var.config'] }, 'UNKNOWN'],
-    [{ references: ['var.missing'] }, 'UNKNOWN'],
-    [{ references: ['aws_efs_file_system.computed.encrypted'] }, 'UNKNOWN'],
+  for (const [expression, sourceExpression, status] of [
+    [{ constant_value: true }, 'true', 'PASS'],
+    [{ constant_value: false }, 'false', 'WARN'],
+    [{ references: ['var.enabled'] }, 'var.enabled', 'PASS'],
+    [{ references: ['var.config.encrypted', 'var.config'] }, 'var.config.encrypted', 'UNKNOWN'],
+    [{ references: ['var.missing'] }, 'var.missing', 'UNKNOWN'],
+    [{ references: ['aws_efs_file_system.computed.encrypted'] }, 'aws_efs_file_system.computed.encrypted', 'UNKNOWN'],
   ] as const) {
     const findings = evaluatePolicies(readPlan(plan([
       rc('aws_efs_file_system.computed', 'aws_efs_file_system', ['no-op'], { encrypted: true }),
@@ -244,8 +288,25 @@ test('module inputs and outputs preserve null, unknown and computed dependencies
       } } },
     } } })));
     expect(findings.filter((f) => f.ruleId === 'efs.encryption').map((f) => [f.resource, f.status])).toEqual([
-      ['aws_efs_file_system.consumer', status], ['module.settings.aws_efs_file_system.consumer', status],
+      ['aws_efs_file_system.consumer', 'UNKNOWN'], ['module.settings.aws_efs_file_system.consumer', 'UNKNOWN'],
     ]);
+    const source = new MemorySource({ 'main.tf': `
+      variable "enabled" { default = true }
+      variable "config" { default = { encrypted = null } }
+      variable "missing" {}
+      resource "aws_efs_file_system" "computed" {}
+      module "settings" {
+        source = "./settings"
+        enabled = ${sourceExpression}
+      }
+      resource "aws_efs_file_system" "consumer" { encrypted = module.settings.encrypted }
+    `, 'settings/main.tf': `
+      variable "enabled" {}
+      resource "aws_efs_file_system" "consumer" { encrypted = var.enabled }
+      output "encrypted" { value = var.enabled }
+    ` });
+    expect(evaluatePolicies(compareEvaluations(undefined, evaluateRoot(source, '.')))
+      .filter((f) => f.ruleId === 'efs.encryption' && f.resource.endsWith('.consumer')).map((f) => f.status)).toEqual([status, status]);
   }
 });
 
@@ -276,7 +337,21 @@ test('module object traversal selects known attributes without losing nullable s
         outputs: { config: { expression: { references: ['var.config'] } } },
       } } },
     } } }));
-    expect(evaluatePolicies(changes).filter((f) => f.ruleId === 'efs.encryption').map((f) => f.status)).toEqual([status, status]);
+    expect(evaluatePolicies(changes).filter((f) => f.ruleId === 'efs.encryption').map((f) => f.status)).toEqual(['UNKNOWN', 'UNKNOWN']);
+    const source = new MemorySource({ 'main.tf': `
+      variable "config" {}
+      module "settings" {
+        source = "./settings"
+        config = var.config
+      }
+      resource "aws_efs_file_system" "example" { encrypted = module.settings.config.nested.encrypted }
+    `, 'settings/main.tf': `
+      variable "config" {}
+      resource "aws_efs_file_system" "example" { encrypted = var.config.nested.encrypted }
+      output "config" { value = var.config }
+    ` });
+    expect(evaluatePolicies(compareEvaluations(undefined, evaluateRoot(source, '.', { config: { nested: { encrypted }, other: null } })))
+      .filter((f) => f.ruleId === 'efs.encryption').map((f) => f.status)).toEqual([status, status]);
   }
 });
 
@@ -342,11 +417,11 @@ test('null expression handling is shared across nested flags and module inputs w
       },
     } },
   }));
-  expect(changes[2].configuredAfter?.storage_encrypted).toBeUndefined();
+  expect(changes[2].configuredAfter?.storage_encrypted).toBeInstanceOf(Unknown);
   expect(evaluatePolicies(changes).filter((f) => ['opensearch.encryption', 'sqs.encryption', 'rds.encryption', 'efs.encryption'].includes(f.ruleId))
     .map((f) => [f.resource, f.status])).toEqual([
       ['aws_opensearch_domain.example', 'UNKNOWN'], ['aws_sqs_queue.example', 'PASS'], ['aws_db_instance.null', 'UNKNOWN'],
-      ['module.omitted.aws_efs_file_system.example', 'UNKNOWN'], ['module.explicit.aws_efs_file_system.example', 'WARN'],
+      ['module.omitted.aws_efs_file_system.example', 'UNKNOWN'], ['module.explicit.aws_efs_file_system.example', 'UNKNOWN'],
     ]);
 });
 
@@ -397,6 +472,72 @@ test('enabling regional EBS defaults does not attest encryption of an existing v
   ` });
   const findings = evaluatePolicies(compareEvaluations(evaluateRoot(base, '.'), evaluateRoot(head, '.')));
   expect(findings.find((f) => f.ruleId === 'ebs.encryption')?.status).toBe('UNKNOWN');
+});
+
+test('ignored encryption configuration is UNKNOWN on existing resources and applies on create', () => {
+  const source = (encrypted: boolean, team: string, ignored: string) => new MemorySource({ 'main.tf': `
+    resource "aws_efs_file_system" "existing" {
+      encrypted = ${encrypted}
+      tags = { team = "${team}" }
+      lifecycle { ignore_changes = ${ignored} }
+    }
+  ` });
+  for (const ignored of ['[encrypted]', 'all']) {
+    for (const encrypted of [true, false]) {
+      const head = evaluateRoot(source(encrypted, 'new', ignored), '.');
+      const changes = compareEvaluations(evaluateRoot(source(!encrypted, 'old', ignored), '.'), head);
+      expect(changes[0].after?.encrypted).toBe(!encrypted);
+      if (ignored === '[encrypted]') {
+        expect(changes[0].action).toBe('update');
+        expect(evaluatePolicies(changes).find((f) => f.ruleId === 'efs.encryption')?.status).toBe('UNKNOWN');
+      }
+      expect(changes[0].configuredAfter?.encrypted).toBeUndefined();
+      expect(evaluatePolicies(compareEvaluations(undefined, head)).find((f) => f.ruleId === 'efs.encryption')?.status)
+        .toBe(encrypted ? 'PASS' : 'WARN');
+    }
+  }
+});
+
+test('ignored nested encryption paths do not remove evidence from other attributes', () => {
+  const source = (team: string, ignored: string) => new MemorySource({ 'main.tf': `
+    resource "aws_opensearch_domain" "example" {
+      encrypt_at_rest { enabled = true }
+      domain_endpoint_options {
+        enforce_https = true
+        custom_endpoint_enabled = false
+      }
+      tags = { team = "${team}" }
+      lifecycle { ignore_changes = ${ignored} }
+    }
+  ` });
+  for (const [ignored, encryption, https] of [
+    ['[encrypt_at_rest[0].enabled]', 'UNKNOWN', 'PASS'],
+    ['[encrypt_at_rest]', 'UNKNOWN', 'PASS'],
+    ['[domain_endpoint_options[0].enforce_https]', 'PASS', 'UNKNOWN'],
+    ['[domain_endpoint_options[0].custom_endpoint_enabled]', 'PASS', 'PASS'],
+  ]) {
+    const changes = compareEvaluations(evaluateRoot(source('old', ignored), '.'), evaluateRoot(source('new', ignored), '.'));
+    expect(changes[0].action).toBe('update');
+    expect(evaluatePolicies(changes).filter((f) => ['opensearch.encryption', 'opensearch.https'].includes(f.ruleId))
+      .map((f) => [f.ruleId, f.status])).toEqual([['opensearch.encryption', encryption], ['opensearch.https', https]]);
+  }
+});
+
+test('ignored regional defaults cannot attest enforcement for a new volume', () => {
+  for (const ignored of ['[enabled]', 'all']) {
+    const defaults = `
+      resource "aws_ebs_encryption_by_default" "regional" {
+        enabled = true
+        lifecycle { ignore_changes = ${ignored} }
+      }
+    `;
+    const base = new MemorySource({ 'main.tf': defaults });
+    const head = new MemorySource({ 'main.tf': `${defaults}
+      resource "aws_ebs_volume" "example" { encrypted = false }
+    ` });
+    const changes = compareEvaluations(evaluateRoot(base, '.'), evaluateRoot(head, '.'));
+    expect(evaluatePolicies(changes).find((f) => f.ruleId === 'ebs.encryption')?.status).toBe('WARN');
+  }
 });
 
 test('an in-place Redis to Valkey upgrade does not attest omitted at-rest encryption', () => {
@@ -647,7 +788,7 @@ test('ElastiCache global secondaries leave inherited encryption UNKNOWN without 
     { global_replication_group_id: new Redacted() },
   ];
   const findings = evaluatePolicies(readPlan(plan(cases.map((attrs, i) =>
-    rc(`aws_elasticache_replication_group.secondary[${i}]`, 'aws_elasticache_replication_group', ['create'], attrs)
+    rc(`aws_elasticache_replication_group.secondary_${i}`, 'aws_elasticache_replication_group', ['create'], attrs)
   )))).filter((f) => f.ruleId === 'elasticache.encryption' || f.ruleId === 'elasticache.transit-encryption');
   expect(findings.map((f) => [f.status, f.remediation])).toEqual(Array.from({ length: 10 }, () => ['UNKNOWN', undefined]));
 });
@@ -761,7 +902,7 @@ test('HTTP listener HTTPS redirects account for catch-all rule conditions, assoc
   for (const [name, rules, status] of cases) {
     const findings = evaluatePolicies(readPlan(plan([
       rc('aws_lb_listener.http', 'aws_lb_listener', ['create'], { arn: 'listener-http', protocol: 'HTTP', default_action: forward }),
-      ...rules.map((attrs, i) => rc(`aws_lb_listener_rule.rule[${i}]`, 'aws_lb_listener_rule', ['create'], attrs)),
+      ...rules.map((attrs, i) => rc(`aws_lb_listener_rule.rule_${i}`, 'aws_lb_listener_rule', ['create'], attrs)),
     ]))).filter((f) => f.ruleId === 'elb.https' && f.resource === 'aws_lb_listener.http');
     expect([name, findings.map((f) => f.status)]).toEqual([name, [status]]);
   }

@@ -334,7 +334,8 @@ function toChange(i: StaticInstance, action: Action, before: Attrs | null, after
     before,
     after,
     references: i.references,
-    ...(i.configuredAttrs ? { configuredAfter: i.configuredAttrs } : {}),
+    // Existing ignored values may have drifted; neither snapshot's configuration attests them.
+    ...(i.configuredAttrs ? { configuredAfter: before === null ? i.configuredAttrs : applied({}, i.configuredAttrs, i.ignoreChanges) } : {}),
     source: i.source,
     confidence: i.externalModule ? 'unknown' : 'proven',
     preventDestroy: i.preventDestroy || undefined,
