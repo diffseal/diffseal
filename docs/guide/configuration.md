@@ -23,6 +23,7 @@ A `.diffseal.json` file can hold these groups of settings:
   "policy": {
     "requireCustomerManagedKeys": false,
     "minBackupRetentionDays": 7,
+    "minLogRetentionDays": 0,
     "blockOn": ["CRITICAL"]
   },
   "exceptions": [
@@ -45,10 +46,37 @@ In `diffseal replay` and the GitHub Action `pr` mode, policy settings are read f
 | :-- | :-- | :-- | :-- |
 | `requireCustomerManagedKeys` | `boolean` | `false` | Require customer-managed KMS keys on resources where AWS supports them, rather than AWS-managed keys or default SSE-S3 encryption. |
 | `minBackupRetentionDays` | `number` | `7` | Minimum backup retention period in days for RDS instances and Aurora clusters. |
+| `minLogRetentionDays` | `number` | `0` | Minimum finite CloudWatch log retention in days. `0` means no minimum. Unset retention or `retention_in_days = 0` means logs never expire and always meets the minimum. |
 | `blockOn` | `Severity[]` | `["CRITICAL"]` | Blast-radius severities that set the gate to `block`. Allowed values are `"CRITICAL"`, `"HIGH"`, `"MEDIUM"`, `"LOW"`, and `"INFO"`. |
 | `exceptions` | `PolicyException[]` | `[]` | Accepted findings and blast-radius items. Can be set either at the top level of `.diffseal.json`, inside `"policy"` in `.diffseal.json`, or at the top level of a standalone policy JSON file. |
 
 If `CRITICAL` is removed from `blockOn`, unaccepted `CRITICAL` and `HIGH` blast-radius items still set the gate to `review` and never pass silently.
+
+## Logging and security-service checks
+
+These checks judge what Terraform declares on changed resources. They do not read AWS or establish whether logs are delivered, services are running, or organization-level coverage exists.
+
+| Rule | Resource | What it reports | Default status |
+| :-- | :-- | :-- | :-- |
+| `cloudtrail.logging` | `aws_cloudtrail` | `enable_logging = false`; unset uses the provider default of true | `FAIL` (REVIEW) |
+| `cloudtrail.multi-region` | `aws_cloudtrail` | `is_multi_region_trail` false or unset (default false) | `WARN` |
+| `cloudtrail.log-file-validation` | `aws_cloudtrail` | `enable_log_file_validation` false or unset | `WARN` |
+| `cloudtrail.kms-key` | `aws_cloudtrail` | Missing or empty `kms_key_id`; this does not imply unencrypted logs | `WARN` |
+| `network.flow-logs` | `aws_flow_log` | A VPC flow log declaration with a configured `vpc_id` | `PASS` for a known VPC value |
+| `cloudwatch.log-retention` | `aws_cloudwatch_log_group` | Unset or zero retention; finite retention below `minLogRetentionDays` | `INFO` for never expiring; `WARN` below the minimum |
+| `s3.access-logging` | `aws_s3_bucket_logging` | Missing or empty `target_bucket` | `WARN` |
+| `cloudtrail.disabled` | `aws_cloudtrail` | Logging enabled to disabled, including default true to false; resource deletion | `FAIL` (REVIEW) |
+| `guardduty.disabled` | `aws_guardduty_detector` | Change sets `enable = false`, or deletes the detector | `FAIL` (REVIEW) |
+| `config.disabled` | `aws_config_configuration_recorder_status` | Change sets `is_enabled = false`, or deletes the status resource | `FAIL` (REVIEW) |
+| `securityhub.disabled` | `aws_securityhub_account` | Deletes the enrollment resource | `FAIL` (REVIEW) |
+
+Unknown settings produce `UNKNOWN`, never a proven pass or disablement. A likely or unknown deletion is still referred for review, with its uncertainty stated in the detail. Existing disabled settings are not reported as a new disablement on unrelated updates. Deletion findings remain new even if the resource was already disabled. No rule fails a repository for lacking a security service.
+
+`WARN`, `UNKNOWN` and `INFO` are advisory in the existing gate. New, unaccepted `FAIL` findings set REVIEW, never BLOCK. `blockOn` controls blast-radius severities separately; there is no per-rule policy severity override. These change checks therefore cannot block by themselves.
+
+The flow-log rule skips subnet and ENI declarations without a `vpc_id`. It does not flag an `aws_vpc` for missing logs: the engine's best-effort reference matching cannot prove coverage across ambiguous count/for_each instances or unresolved values.
+
+All these rules carry only `SOC2:CC7.2`, confirmed on page 40 of the AICPA file cited in the [crosswalk research](../research/compliance-crosswalk.md#soc-2-aicpa-2017-trust-services-criteria-revised-points-of-focus-2022). ISO A.8.15 remains unverified and is not assigned.
 
 ## Exceptions
 

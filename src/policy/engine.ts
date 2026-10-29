@@ -28,12 +28,15 @@ export interface Rule {
   title: string;
   controls: string[];
   types: string[];
+  /** Change rules also judge deletes and are never compared against a prior configuration result. */
+  scope?: 'change';
   evaluate(values: Attrs, res: ResourceChange, ctx: RuleContext): RuleResult | undefined;
 }
 
 export const DEFAULT_POLICY: Required<PolicyConfig> = {
   requireCustomerManagedKeys: false,
   minBackupRetentionDays: 7,
+  minLogRetentionDays: 0,
   blockOn: ['CRITICAL'],
   exceptions: [],
 };
@@ -135,18 +138,19 @@ export function evaluatePolicies(all: ResourceChange[], policy: PolicyConfig = {
   const clean = (text: string) => scrub(text, hidden);
 
   for (const res of all) {
-    if (res.mode !== 'managed' || !res.after) continue;
+    if (res.mode !== 'managed' || (!res.after && res.action !== 'delete')) continue;
     const viaHelper = res.action === 'no-op' && helperChanged(res);
-    if (!EVALUATED_ACTIONS.has(res.action) && !viaHelper) continue;
-    const after = typed(reveal(res.after) as Attrs, res.type);
+    if (!EVALUATED_ACTIONS.has(res.action) && !viaHelper && res.action !== 'delete') continue;
+    const after = typed(reveal(res.after ?? {}) as Attrs, res.type);
     const before = res.before && typed(reveal(res.before) as Attrs, res.type);
     for (const rule of byType.get(res.type) ?? []) {
+      if (res.action === 'delete' && rule.scope !== 'change') continue;
       const result = rule.evaluate(after, res, ctx);
       if (!result) continue;
       let preExisting: boolean | undefined;
       let status = result.status;
       let detail = result.detail;
-      if ((res.action === 'update' || res.action === 'replace' || viaHelper) && res.before && result.status !== 'PASS') {
+      if (rule.scope !== 'change' && (res.action === 'update' || res.action === 'replace' || viaHelper) && res.before && result.status !== 'PASS') {
         const prior = rule.evaluate(before!, res, ctxBefore);
         if (result.issues && prior?.issues) {
           const before = new Set(prior.issues.map((i) => i.message));

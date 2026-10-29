@@ -13,7 +13,8 @@
       "Sweden: cybersäkerhetslag (2025:1506) 2 kap. 3 § points 1-10 mirror NIS2 Art. 21(2)(a)-(j). For non-digital sectors such as energy, the detailed security-measure rules are MCFFS 2026:11 (in force 2026-10-01). The framework keys in this file are fixed, so Swedish references are listed in the research doc only.",
       "secure-deletion is mapped as deliberate, irretrievable deletion. If the Diffseal rule actually checks deletion protection (deletion_protection, recovery_window_in_days, skip_final_snapshot), use the backup mapping instead.",
       "data-residency entries are all supporting. A region restriction alone does not show compliance with GDPR Chapter V or DORA Art. 30(2)(b), which is a contract clause.",
-      "A1.2 and A1.3 apply only to Availability engagements. Backup settings and deletion protection do not demonstrate restore testing. A dead-letter queue is neither backup nor redundant processing infrastructure; sqs.dlq has no compliance category or control tag."
+      "A1.2 and A1.3 apply only to Availability engagements. Backup settings and deletion protection do not demonstrate restore testing. A dead-letter queue is neither backup nor redundant processing infrastructure; sqs.dlq has no compliance category or control tag.",
+      "Logging and security-service rules follow section 3 and product addition 2 of trust-center-controls.md. They carry SOC2:CC7.2 (p. 40) only; A.8.15 remains unverified and no supporting ISO id is substituted. These checks judge Terraform configuration and changes, not live AWS state."
     ]
   },
   "encryption-at-rest": {

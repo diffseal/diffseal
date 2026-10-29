@@ -81,9 +81,10 @@ export function changeRecord(input: {
       ...(c.replacePaths ? { replacePaths: c.replacePaths } : {}),
     })),
     risks: result.blast.filter((b) => b.severity !== 'INFO').map((b) => ({ resource: b.resource, severity: b.severity, reason: b.reason, ...(b.accepted ? { accepted: b.accepted } : {}) })),
-    // Keep v1's rows per ISO control; SOC 2 references are already carried in frameworks.soc2_tsc.
-    controls: result.findings.flatMap((f) =>
-      f.controls.filter((control) => !control.startsWith('SOC2:')).map((control) => ({
+    // Keep existing rows per ISO control, with a SOC 2 fallback for findings that have no ISO tag.
+    controls: result.findings.flatMap((f) => {
+      const iso = f.controls.filter((control) => !control.startsWith('SOC2:'));
+      return (iso.length ? iso : f.controls).map((control) => ({
         control,
         rule: f.ruleId,
         resource: f.resource,
@@ -92,8 +93,8 @@ export function changeRecord(input: {
         ...frameworksFor(f.ruleId),
         ...(f.preExisting ? { preExisting: true } : {}),
         ...(f.accepted ? { accepted: f.accepted } : {}),
-      }))
-    ),
+      }));
+    }),
     access: input.appLinks.map((l) => ({ status: l.status, callsite: l.callsite, actions: l.actions, resource: l.resource, detail: l.detail })),
     notes,
   };

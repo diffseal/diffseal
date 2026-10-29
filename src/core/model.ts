@@ -257,6 +257,8 @@ export interface PolicyConfig {
   requireCustomerManagedKeys?: boolean;
   /** Minimum RDS/Aurora backup retention in days. */
   minBackupRetentionDays?: number;
+  /** Minimum finite CloudWatch log retention in days. 0 means no minimum; logs that never expire always qualify. */
+  minLogRetentionDays?: number;
   /** Severities that block the gate. */
   blockOn?: Severity[];
   /** Accepted findings. Kept in the repository so they are reviewed like any other change. */

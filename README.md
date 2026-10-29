@@ -84,7 +84,9 @@ Calls through helpers in the same repository are followed. A constructor such as
 
 ## Policy checks
 
-The checks cover S3, SQS, SNS, DynamoDB, KMS, RDS and Aurora, Lambda, security groups, Secrets Manager and IAM. The IAM checks include trust policies, GitHub OIDC `sub` conditions, admin-equivalent managed policies, `NotAction`, privilege escalation, and wildcards that span resources.
+The checks cover S3, SQS, SNS, DynamoDB, KMS, RDS and Aurora, Lambda, security groups, Secrets Manager, IAM, CloudTrail, VPC flow log declarations and CloudWatch log retention. The IAM checks include trust policies, GitHub OIDC `sub` conditions, admin-equivalent managed policies, `NotAction`, privilege escalation, and wildcards that span resources.
+
+Logging checks cover CloudTrail logging, multi-region coverage, log file validation and KMS keys, S3 access log targets, and an optional CloudWatch retention minimum. Change checks flag disabling or deleting CloudTrail, GuardDuty or AWS Config recorder status, and deleting Security Hub enrollment. These evaluate Terraform configuration only; organization-level coverage and live AWS state are outside their scope. Missing flow logs on a VPC are not flagged because instance relations cannot always be resolved reliably. See the [rule list and defaults](docs/guide/configuration.md#logging-and-security-service-checks).
 
 Each finding is `PASS`, `FAIL`, `WARN`, `UNKNOWN` or `INFO`. `UNKNOWN` is never counted as a pass. A `dynamic` block over a collection that is only known at apply time makes the checks it feeds `UNKNOWN`.
 
@@ -93,7 +95,7 @@ Values marked sensitive (`sensitive()`, `sensitive = true` variables, `after_sen
 ISO 27001 certifies a management system, not a bucket, and it does not require customer managed keys or point-in-time recovery: your policy does. Thresholds are set in a policy file:
 
 ```json
-{ "requireCustomerManagedKeys": true, "minBackupRetentionDays": 14, "blockOn": ["CRITICAL"] }
+{ "requireCustomerManagedKeys": true, "minBackupRetentionDays": 14, "minLogRetentionDays": 30, "blockOn": ["CRITICAL"] }
 ```
 
 ### Accepted exceptions

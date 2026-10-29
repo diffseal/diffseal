@@ -199,7 +199,7 @@ export async function evidencePack(opts: EvidenceOptions): Promise<EvidenceResul
           .sort()
           .map(([a, n]) => `| ${md(a)} | ${n} |`)
           .join('\n') || '| none | 0 |'
-      }\n\n## Findings by ISO 27001 control\n\nCounts include pre-existing checks and may count the same resource under several controls. Accepted findings are also counted under their original status.\n\n| Control | PASS | WARN | FAIL | UNKNOWN | INFO | Accepted |\n| --- | --- | --- | --- | --- | --- | --- |\n${
+      }\n\n## Findings by control (ISO 27001 and SOC 2)\n\nCounts include pre-existing checks and may count the same resource under several controls. Accepted findings are also counted under their original status.\n\n| Control | PASS | WARN | FAIL | UNKNOWN | INFO | Accepted |\n| --- | --- | --- | --- | --- | --- | --- |\n${
         [...controls]
           .sort(([a], [b]) => a.localeCompare(b))
           .map(([c, n]) => `| ${md(c)} | ${n.PASS ?? 0} | ${n.WARN ?? 0} | ${n.FAIL ?? 0} | ${n.UNKNOWN ?? 0} | ${n.INFO ?? 0} | ${n.ACCEPTED ?? 0} |`)

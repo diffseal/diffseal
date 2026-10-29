@@ -1,7 +1,7 @@
-import { configAddress, instancesCompatible, isRedacted, isUnknown, type Attrs, type ResourceChange } from '../core/model.js';
+import { configAddress, instancesCompatible, isRedacted, isUnknown, reveal, type Attrs, type ResourceChange } from '../core/model.js';
 import { stableKey } from '../hcl/eval.js';
 import { capitalize, type Rule, type RuleContext, type RuleResult } from './engine.js';
-import { block, blocks, unknownBlock } from './values.js';
+import { block, blocks, typed, unknownBlock } from './values.js';
 import {
   analyzeIdentityPolicy,
   analyzeManagedPolicyArn,
@@ -15,7 +15,7 @@ import {
 } from './iam.js';
 
 /*
- * Rules declare ISO/IEC 27001:2022 Annex A controls. The engine adds verified SOC 2 criteria
+ * Rules declare ISO/IEC 27001:2022 Annex A controls where verified. The engine adds verified SOC 2 criteria
  * from the rule category in the crosswalk.
  * Thresholds come from the customer's policy (PolicyConfig); ISO itself does not mandate CMKs or PITR.
  */
@@ -185,6 +185,166 @@ const s3BucketPolicy: Rule = {
     }
     return undefined;
   },
+};
+
+// ---------------------------------------------------------------- Logging / security services
+
+const cloudtrailLogging: Rule = {
+  id: 'cloudtrail.logging',
+  title: 'CloudTrail logging configuration',
+  controls: [],
+  types: ['aws_cloudtrail'],
+  evaluate: (v) => {
+    if (isUnknown(v.enable_logging) || isRedacted(v.enable_logging)) return { status: 'UNKNOWN', detail: 'CloudTrail logging setting not known until apply' };
+    if (v.enable_logging === false) return { status: 'FAIL', detail: 'CloudTrail logging explicitly disabled (enable_logging = false)', remediation: 'Set enable_logging = true.' };
+    return { status: 'PASS', detail: 'CloudTrail logging configured as enabled (enable_logging defaults to true)' };
+  },
+};
+
+const cloudtrailMultiRegion: Rule = {
+  id: 'cloudtrail.multi-region',
+  title: 'CloudTrail multi-region configuration',
+  controls: [],
+  types: ['aws_cloudtrail'],
+  evaluate: (v) => {
+    if (isUnknown(v.is_multi_region_trail) || isRedacted(v.is_multi_region_trail)) return { status: 'UNKNOWN', detail: 'CloudTrail multi-region setting not known until apply' };
+    if (v.is_multi_region_trail === true) return { status: 'PASS', detail: 'CloudTrail configured as a multi-region trail' };
+    return { status: 'WARN', detail: 'CloudTrail is not configured as a multi-region trail (is_multi_region_trail defaults to false)', remediation: 'Set is_multi_region_trail = true if this trail should cover all regions.' };
+  },
+};
+
+const cloudtrailLogValidation: Rule = {
+  id: 'cloudtrail.log-file-validation',
+  title: 'CloudTrail log file validation',
+  controls: [],
+  types: ['aws_cloudtrail'],
+  evaluate: (v) => {
+    if (isUnknown(v.enable_log_file_validation) || isRedacted(v.enable_log_file_validation)) return { status: 'UNKNOWN', detail: 'CloudTrail log file validation setting not known until apply' };
+    if (v.enable_log_file_validation === true) return { status: 'PASS', detail: 'CloudTrail log file validation configured as enabled' };
+    return { status: 'WARN', detail: 'CloudTrail log file validation is false or unset', remediation: 'Set enable_log_file_validation = true.' };
+  },
+};
+
+const cloudtrailKmsKey: Rule = {
+  id: 'cloudtrail.kms-key',
+  title: 'CloudTrail KMS key configuration',
+  controls: [],
+  types: ['aws_cloudtrail'],
+  evaluate: (v) => {
+    if (isUnknown(v.kms_key_id) || isRedacted(v.kms_key_id)) return { status: 'UNKNOWN', detail: 'CloudTrail KMS key not known until apply' };
+    if (isSet(v.kms_key_id)) return { status: 'PASS', detail: 'CloudTrail has a KMS key configured' };
+    return { status: 'WARN', detail: 'No kms_key_id configured for CloudTrail; this does not mean its logs are unencrypted', remediation: 'Set kms_key_id to use KMS encryption for this trail.' };
+  },
+};
+
+const vpcFlowLogs: Rule = {
+  id: 'network.flow-logs',
+  title: 'VPC flow log configuration',
+  controls: [],
+  types: ['aws_flow_log'],
+  evaluate: (v) => {
+    if (isUnknown(v.vpc_id) || isRedacted(v.vpc_id)) return { status: 'UNKNOWN', detail: 'Flow log VPC not known until apply' };
+    if (!isSet(v.vpc_id)) return undefined;
+    // Referrers match best-effort config references, which cannot prove coverage of every VPC instance.
+    return { status: 'PASS', detail: 'A VPC flow log is declared in Terraform; delivery and live coverage are not verified' };
+  },
+};
+
+const cloudwatchLogRetention: Rule = {
+  id: 'cloudwatch.log-retention',
+  title: 'CloudWatch log retention',
+  controls: [],
+  types: ['aws_cloudwatch_log_group'],
+  evaluate: (v, _res, ctx) => {
+    const logClass = v.log_group_class ?? 'STANDARD';
+    if (logClass !== 'STANDARD' && logClass !== 'INFREQUENT_ACCESS' && logClass !== 'DELIVERY') {
+      return { status: 'UNKNOWN', detail: 'Log group class is unknown or unrecognized; effective retention cannot be determined' };
+    }
+    // The provider ignores retention_in_days for DELIVERY and forces two-day retention.
+    const delivery = logClass === 'DELIVERY';
+    const days = delivery ? 2 : v.retention_in_days;
+    if (isUnknown(days) || isRedacted(days)) return { status: 'UNKNOWN', detail: 'Log retention not known until apply' };
+    if (!isSet(days) || days === 0) return { status: 'INFO', detail: 'CloudWatch logs configured to never expire (retention_in_days is unset or 0)' };
+    if (typeof days !== 'number') return { status: 'UNKNOWN', detail: 'Log retention is not a known number of days' };
+    if (days < ctx.policy.minLogRetentionDays) {
+      return {
+        status: 'WARN',
+        detail: `Log retention ${days} day(s) is below the policy minimum of ${ctx.policy.minLogRetentionDays}${delivery ? ' (DELIVERY class forces two-day retention)' : ''}`,
+        remediation: delivery
+          ? 'Use log_group_class = "STANDARD" or "INFREQUENT_ACCESS" and set retention_in_days to meet the policy minimum.'
+          : 'Increase retention_in_days to meet the policy minimum, or use 0 to never expire.',
+      };
+    }
+    return { status: 'PASS', detail: `CloudWatch logs configured to expire after ${days} day(s)` };
+  },
+};
+
+const s3AccessLogging: Rule = {
+  id: 's3.access-logging',
+  title: 'S3 access log target',
+  controls: [],
+  types: ['aws_s3_bucket_logging'],
+  evaluate: (v) => {
+    if (isUnknown(v.target_bucket) || isRedacted(v.target_bucket)) return { status: 'UNKNOWN', detail: 'S3 access log target bucket not known until apply' };
+    if (isSet(v.target_bucket)) return { status: 'PASS', detail: 'S3 access logging has a target bucket configured; delivery is not verified' };
+    return { status: 'WARN', detail: 'S3 access logging has no target_bucket configured', remediation: 'Set target_bucket on aws_s3_bucket_logging.' };
+  },
+};
+
+function serviceDisableChange(v: Attrs, res: ResourceChange, attr: string | undefined, service: string, defaultEnabled?: boolean): RuleResult | undefined {
+  const uncertainty = res.confidence === 'proven' ? '' : ` (change is ${res.confidence}, not proven)`;
+  if (res.action === 'delete') {
+    return { status: 'FAIL', detail: `${res.confidence === 'proven' ? 'Deletes' : 'May delete'} the ${service} resource if applied${uncertainty}; coverage outside this Terraform configuration is not verified`, remediation: 'Retain the resource or review and accept its removal.' };
+  }
+  if (!attr) return undefined;
+  const before = typed(reveal(res.before ?? {}) as Attrs, res.type);
+  const was = before[attr] ?? defaultEnabled;
+  const now = v[attr] ?? defaultEnabled;
+  if (was === false || now === true) return undefined;
+  if (isUnknown(now) || isRedacted(now) || (now === false && (isUnknown(was) || isRedacted(was)))) {
+    return { status: 'UNKNOWN', detail: `${service} may be disabled if applied; the before or after ${attr} value is not known${uncertainty}` };
+  }
+  if (now !== false) return undefined;
+  return { status: 'FAIL', detail: `Sets ${attr} = false on ${service}; this would disable it if applied${uncertainty}. Coverage outside this Terraform configuration is not verified`, remediation: `Keep ${attr} = true or review and accept disabling this resource.` };
+}
+
+const cloudtrailDisabled: Rule = {
+  id: 'cloudtrail.disabled',
+  title: 'CloudTrail disabled or deleted by this change',
+  controls: [],
+  types: ['aws_cloudtrail'],
+  scope: 'change',
+  evaluate: (v, res) => {
+    if (res.action !== 'update' && res.action !== 'replace' && res.action !== 'delete') return undefined;
+    return serviceDisableChange(v, res, 'enable_logging', 'CloudTrail', true);
+  },
+};
+
+const guarddutyDisabled: Rule = {
+  id: 'guardduty.disabled',
+  title: 'GuardDuty disabled or deleted by this change',
+  controls: [],
+  types: ['aws_guardduty_detector'],
+  scope: 'change',
+  evaluate: (v, res) => serviceDisableChange(v, res, 'enable', 'GuardDuty', true),
+};
+
+const configDisabled: Rule = {
+  id: 'config.disabled',
+  title: 'AWS Config recorder disabled or deleted by this change',
+  controls: [],
+  types: ['aws_config_configuration_recorder_status'],
+  scope: 'change',
+  evaluate: (v, res) => serviceDisableChange(v, res, 'is_enabled', 'AWS Config recorder'),
+};
+
+const securityhubDisabled: Rule = {
+  id: 'securityhub.disabled',
+  title: 'Security Hub deleted by this change',
+  controls: [],
+  types: ['aws_securityhub_account'],
+  scope: 'change',
+  evaluate: (v, res) => serviceDisableChange(v, res, undefined, 'Security Hub'),
 };
 
 // ---------------------------------------------------------------- SQS / SNS
@@ -613,6 +773,17 @@ export const RULES: Rule[] = [
   s3PabResource,
   s3Versioning,
   s3BucketPolicy,
+  cloudtrailLogging,
+  cloudtrailMultiRegion,
+  cloudtrailLogValidation,
+  cloudtrailKmsKey,
+  vpcFlowLogs,
+  cloudwatchLogRetention,
+  s3AccessLogging,
+  cloudtrailDisabled,
+  guarddutyDisabled,
+  configDisabled,
+  securityhubDisabled,
   sqsEncryption,
   sqsDlq,
   snsEncryption,
