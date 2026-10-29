@@ -1,0 +1,271 @@
+{
+  "suite": "policy/logging",
+  "description": "Logging configuration intent and security-service disablements from static Terraform, without AWS access",
+  "cases": [
+    {
+      "kind": "terraform",
+      "name": "static logging declarations use policy thresholds and provider defaults",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_cloudtrail\" \"trail\" {\n  name = \"audit\"\n  s3_bucket_name = \"audit-logs\"\n}\nresource \"aws_flow_log\" \"vpc\" {\n  vpc_id = \"vpc-123\"\n  traffic_type = \"ALL\"\n  log_destination = \"arn:aws:s3:::audit-logs\"\n}\nresource \"aws_cloudwatch_log_group\" \"logs\" {\n  name = \"audit\"\n  retention_in_days = \"7\"\n}\nresource \"aws_s3_bucket_logging\" \"logs\" {\n  bucket = \"app\"\n  target_bucket = \"audit-logs\"\n  target_prefix = \"app/\"\n}\n"
+      },
+      "policy": {
+        "minLogRetentionDays": 30
+      },
+      "expect": {
+        "findings": [
+          {
+            "ruleId": "cloudtrail.logging",
+            "resource": "aws_cloudtrail.trail",
+            "status": "PASS"
+          },
+          {
+            "ruleId": "cloudtrail.multi-region",
+            "resource": "aws_cloudtrail.trail",
+            "status": "WARN"
+          },
+          {
+            "ruleId": "cloudtrail.log-file-validation",
+            "resource": "aws_cloudtrail.trail",
+            "status": "WARN"
+          },
+          {
+            "ruleId": "cloudtrail.kms-key",
+            "resource": "aws_cloudtrail.trail",
+            "status": "WARN"
+          },
+          {
+            "ruleId": "network.flow-logs",
+            "resource": "aws_flow_log.vpc",
+            "status": "PASS"
+          },
+          {
+            "ruleId": "cloudwatch.log-retention",
+            "resource": "aws_cloudwatch_log_group.logs",
+            "status": "WARN",
+            "detailContains": "minimum of 30"
+          },
+          {
+            "ruleId": "s3.access-logging",
+            "resource": "aws_s3_bucket_logging.logs",
+            "status": "PASS"
+          }
+        ],
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "static disablements and Security Hub deletion require review with schema-typed boolean strings",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_cloudtrail\" \"trail\" {\n  enable_logging = true\n}\nresource \"aws_guardduty_detector\" \"detector\" {\n  enable = true\n}\nresource \"aws_config_configuration_recorder_status\" \"recorder\" {\n  is_enabled = true\n}\nresource \"aws_securityhub_account\" \"account\" {}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_cloudtrail\" \"trail\" {\n  enable_logging = \"false\"\n}\nresource \"aws_guardduty_detector\" \"detector\" {\n  enable = \"false\"\n}\nresource \"aws_config_configuration_recorder_status\" \"recorder\" {\n  is_enabled = \"false\"\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "aws_cloudtrail.trail",
+            "action": "update",
+            "confidence": "proven"
+          },
+          {
+            "address": "aws_guardduty_detector.detector",
+            "action": "update",
+            "confidence": "proven"
+          },
+          {
+            "address": "aws_config_configuration_recorder_status.recorder",
+            "action": "update",
+            "confidence": "proven"
+          },
+          {
+            "address": "aws_securityhub_account.account",
+            "action": "delete",
+            "confidence": "proven"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "cloudtrail.disabled",
+            "resource": "aws_cloudtrail.trail",
+            "status": "FAIL",
+            "preExisting": null
+          },
+          {
+            "ruleId": "guardduty.disabled",
+            "resource": "aws_guardduty_detector.detector",
+            "status": "FAIL",
+            "preExisting": null
+          },
+          {
+            "ruleId": "config.disabled",
+            "resource": "aws_config_configuration_recorder_status.recorder",
+            "status": "FAIL",
+            "preExisting": null
+          },
+          {
+            "ruleId": "securityhub.disabled",
+            "resource": "aws_securityhub_account.account",
+            "status": "FAIL",
+            "preExisting": null
+          }
+        ],
+        "gate": {
+          "result": "review"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "unresolved static logging and enablement settings remain unknown rather than proven disablements",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_cloudtrail\" \"trail\" {\n  enable_logging = true\n}\nresource \"aws_guardduty_detector\" \"detector\" {\n  enable = true\n}\nresource \"aws_config_configuration_recorder_status\" \"recorder\" {\n  is_enabled = true\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"enabled\" { type = bool }\nvariable \"key\" { type = string }\nvariable \"days\" { type = number }\nvariable \"target\" { type = string }\nvariable \"vpc\" { type = string }\nresource \"aws_cloudtrail\" \"trail\" {\n  enable_logging = var.enabled\n  is_multi_region_trail = var.enabled\n  enable_log_file_validation = var.enabled\n  kms_key_id = var.key\n}\nresource \"aws_guardduty_detector\" \"detector\" {\n  enable = var.enabled\n}\nresource \"aws_config_configuration_recorder_status\" \"recorder\" {\n  is_enabled = var.enabled\n}\nresource \"aws_flow_log\" \"flow\" {\n  vpc_id = var.vpc\n}\nresource \"aws_cloudwatch_log_group\" \"logs\" {\n  retention_in_days = var.days\n}\nresource \"aws_s3_bucket_logging\" \"logs\" {\n  target_bucket = var.target\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "aws_cloudtrail.trail",
+            "confidence": "likely"
+          },
+          {
+            "address": "aws_guardduty_detector.detector",
+            "confidence": "likely"
+          },
+          {
+            "address": "aws_config_configuration_recorder_status.recorder",
+            "confidence": "likely"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "cloudtrail.logging",
+            "status": "UNKNOWN"
+          },
+          {
+            "ruleId": "cloudtrail.multi-region",
+            "status": "UNKNOWN"
+          },
+          {
+            "ruleId": "cloudtrail.log-file-validation",
+            "status": "UNKNOWN"
+          },
+          {
+            "ruleId": "cloudtrail.kms-key",
+            "status": "UNKNOWN"
+          },
+          {
+            "ruleId": "cloudtrail.disabled",
+            "status": "UNKNOWN"
+          },
+          {
+            "ruleId": "guardduty.disabled",
+            "status": "UNKNOWN"
+          },
+          {
+            "ruleId": "config.disabled",
+            "status": "UNKNOWN"
+          },
+          {
+            "ruleId": "network.flow-logs",
+            "status": "UNKNOWN"
+          },
+          {
+            "ruleId": "cloudwatch.log-retention",
+            "status": "UNKNOWN"
+          },
+          {
+            "ruleId": "s3.access-logging",
+            "status": "UNKNOWN"
+          }
+        ],
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "symbolic service deletions retain likely-not-proven wording and require review",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"n\" { type = number }\nresource \"aws_cloudtrail\" \"trail\" {\n  count = var.n\n  enable_logging = true\n}\nresource \"aws_guardduty_detector\" \"detector\" {\n  count = var.n\n  enable = true\n}\nresource \"aws_config_configuration_recorder_status\" \"recorder\" {\n  count = var.n\n  is_enabled = true\n}\nresource \"aws_securityhub_account\" \"account\" {\n  count = var.n\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+      },
+      "expect": {
+        "noProvenDelete": true,
+        "changes": [
+          {
+            "address": "aws_cloudtrail.trail[*]",
+            "action": "delete",
+            "confidence": "likely"
+          },
+          {
+            "address": "aws_guardduty_detector.detector[*]",
+            "action": "delete",
+            "confidence": "likely"
+          },
+          {
+            "address": "aws_config_configuration_recorder_status.recorder[*]",
+            "action": "delete",
+            "confidence": "likely"
+          },
+          {
+            "address": "aws_securityhub_account.account[*]",
+            "action": "delete",
+            "confidence": "likely"
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "cloudtrail.disabled",
+            "status": "FAIL",
+            "detailContains": "likely, not proven"
+          },
+          {
+            "ruleId": "guardduty.disabled",
+            "status": "FAIL",
+            "detailContains": "likely, not proven"
+          },
+          {
+            "ruleId": "config.disabled",
+            "status": "FAIL",
+            "detailContains": "likely, not proven"
+          },
+          {
+            "ruleId": "securityhub.disabled",
+            "status": "FAIL",
+            "detailContains": "likely, not proven"
+          }
+        ],
+        "noFindingFor": [
+          {
+            "ruleId": "cloudtrail.logging"
+          },
+          {
+            "ruleId": "cloudtrail.multi-region"
+          },
+          {
+            "ruleId": "cloudtrail.log-file-validation"
+          },
+          {
+            "ruleId": "cloudtrail.kms-key"
+          }
+        ],
+        "gate": {
+          "result": "review"
+        }
+      }
+    }
+  ]
+}

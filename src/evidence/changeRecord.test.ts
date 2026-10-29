@@ -53,6 +53,27 @@ describe('changeRecord', () => {
     expect(r.schema).toBe('diffseal.change-record/v1');
   });
 
+  test('SOC 2-only logging and service deletion findings remain visible in v1 records', () => {
+    const result = analyze(readPlan(plan([
+      rc('aws_s3_bucket_logging.logs', 'aws_s3_bucket_logging', ['create'], {}),
+      rc('aws_securityhub_account.account', 'aws_securityhub_account', ['delete'], null),
+    ])));
+    const r = changeRecord({ commit, base: 'b'.repeat(40), roots: [], result, appLinks: [], engine: { version: 't', replaceCatalog: 'x' } });
+    expect(JSON.parse(JSON.stringify(r.controls))).toEqual([
+      {
+        control: 'SOC2:CC7.2', rule: 's3.access-logging', resource: 'aws_s3_bucket_logging.logs',
+        status: 'WARN', detail: expect.any(String), category: 'logging',
+        frameworks: expect.objectContaining({ soc2_tsc: [{ ref: 'CC7.2', fit: 'supporting' }] }),
+      },
+      {
+        control: 'SOC2:CC7.2', rule: 'securityhub.disabled', resource: 'aws_securityhub_account.account',
+        status: 'FAIL', detail: expect.any(String), category: 'logging',
+        frameworks: expect.objectContaining({ soc2_tsc: [{ ref: 'CC7.2', fit: 'supporting' }] }),
+      },
+    ]);
+    expect(r.schema).toBe('diffseal.change-record/v1');
+  });
+
   test('says when approvals are unknown instead of leaving them out silently', () => {
     const r = changeRecord({ commit, base: 'b'.repeat(40), roots: [], result, appLinks: [], engine: { version: 't', replaceCatalog: 'x' } });
     expect(r.approvals).toBeNull();

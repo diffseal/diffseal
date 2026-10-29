@@ -84,6 +84,39 @@ test('evidence CLI writes an unsigned complete period with controls, exceptions 
   }
 }, 30000);
 
+test('evidence labels ISO 27001 and SOC 2 control findings while preserving v1 records', () => {
+  const f = setup();
+  try {
+    fs.writeFileSync(
+      path.join(f.repo, 'infra/prod/logging.tf'),
+      'resource "aws_cloudwatch_log_group" "audit" {\n  retention_in_days = 90\n}\n',
+    );
+    f.git(['add', '.']);
+    f.git(['commit', '-qm', 'Add audit log retention'], '2026-10-04T12:00:00Z');
+    const sha = f.git(['rev-parse', 'HEAD']);
+    const out = path.join(f.dir, 'pack');
+    expect(f.run(['--since', '2026-10-01', '--until', '2026-10-05', '--out-dir', out]).status).toBe(0);
+    const index = fs.readFileSync(path.join(out, 'index.md'), 'utf8');
+    expect(index).toContain('## Findings by control (ISO 27001 and SOC 2)');
+    expect(index).toContain('| ISO27001:A.8.24 |');
+    expect(index).toContain('| SOC2:CC7.2 | 1 | 0 | 0 | 0 | 0 | 0 |');
+    const scope = JSON.parse(fs.readFileSync(path.join(out, 'pack.json'), 'utf8'));
+    expect(scope.schema).toBe('diffseal.evidence-pack/v1');
+    const record = JSON.parse(fs.readFileSync(path.join(out, 'records', `${sha}.json`), 'utf8'));
+    expect(record.schema).toBe('diffseal.change-record/v1');
+    expect(record.controls).toContainEqual(expect.objectContaining({
+      control: 'SOC2:CC7.2',
+      rule: 'cloudwatch.log-retention',
+      resource: 'aws_cloudwatch_log_group.audit',
+      status: 'PASS',
+      frameworks: expect.objectContaining({ soc2_tsc: [{ ref: 'CC7.2', fit: 'supporting' }] }),
+    }));
+    expect(verifyPack(out, { allowUnsigned: true }).ok).toBe(true);
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+  }
+}, 30000);
+
 test('evidence rejects normalized invalid calendar dates before writing a pack', () => {
   const f = setup();
   try {
