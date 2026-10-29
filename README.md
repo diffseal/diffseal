@@ -138,7 +138,7 @@ jobs:
           roots-under: infra/envs/prod
 ```
 
-The Action runs bundled JavaScript (`dist/action.js`) on the runner and downloads nothing at run time. It writes the step summary before setting the exit code and updates a single PR comment. `strict: true` also fails the job on `REVIEW`; `advisory: true` never fails the job, even on `BLOCK`.
+The Action runs bundled JavaScript (`dist/action.js`) on the runner and downloads nothing at run time. It writes the step summary before setting the exit code and updates a single PR comment. `strict: true` also fails the job on `REVIEW`; `advisory: true` does not fail the job because of findings, even on `BLOCK`. A configuration or run error can still fail it.
 
 Diffseal compares a pull request with the commit it branched from, the merge base of `HEAD` and the pull request's base, whether the job checks out the merge commit or the head. Settings that judge the change come from that base: the `policy` file, exceptions, and in `app` mode the roles, env vars and infrastructure named in `.diffseal.json`. Changing any of them makes the gate `REVIEW`, and the new version applies once merged. The policy file must be inside the repository.
 
