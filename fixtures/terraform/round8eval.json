@@ -150,9 +150,9 @@
           {
             "ruleId": "sqs.encryption",
             "resource": "aws_sqs_queue.q",
-            "status": "PASS",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "SSE-SQS (SQS managed keys, the default for new queues)"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "sqs.dlq",

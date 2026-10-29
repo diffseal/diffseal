@@ -30,6 +30,8 @@ export interface Rule {
   types: string[];
   /** Change rules also judge deletes and are never compared against a prior configuration result. */
   scope?: 'change';
+  /** Judge configured arguments, excluding provider defaults and computed plan attributes. */
+  configurationOnly?: boolean;
   evaluate(values: Attrs, res: ResourceChange, ctx: RuleContext): RuleResult | undefined;
 }
 
@@ -66,6 +68,35 @@ export class RuleContext {
   values(r: ResourceChange): Attrs {
     if (this.side === 'before') return typed(reveal(r.before ?? {}) as Attrs, r.type);
     return typed(reveal((r.action === 'delete' ? r.before : r.after) ?? {}) as Attrs, r.type);
+  }
+
+  /** Only configured expressions count as encryption evidence; planned defaults/computed fields do not. */
+  configuredValues(r: ResourceChange): Attrs {
+    if (this.side === 'before' && r.configuredBefore) return typed(reveal(r.configuredBefore) as Attrs, r.type);
+    if (this.side === 'after' && r.configuredAfter) return typed(reveal(r.configuredAfter) as Attrs, r.type);
+    const values = this.values(r);
+    if (!r.configuredPaths) return values;
+    const paths = new Set(r.configuredPaths);
+    const select = (value: unknown, path: string): unknown => {
+      if (paths.has(path)) return value;
+      if (path && !r.configuredPaths!.some((p) => p.startsWith(`${path}.`))) return undefined;
+      if (Array.isArray(value)) return value.map((v, i) => select(v, path ? `${path}.${i}` : String(i)));
+      if (value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) {
+        return Object.fromEntries(Object.entries(value).flatMap(([key, v]) => {
+          const selected = select(v, path ? `${path}.${key}` : key);
+          return selected === undefined ? [] : [[key, selected]];
+        }));
+      }
+      return value;
+    };
+    return select(values, '') as Attrs;
+  }
+
+  /** Resolve a rule's owner with the same instance-aware association used by listener evaluation. */
+  listenerOwners(rule: ResourceChange): ResourceChange[] {
+    if (rule.action === 'delete' && this.side === 'after') return new RuleContext(this.all, this.policy, 'before').listenerOwners(rule);
+    return this.all.filter((r) => r.mode === 'managed' && r.type === 'aws_lb_listener' && this.exists(r)
+      && this.referrers(r, 'aws_lb_listener_rule', 'listener_arn', ['arn']).includes(rule));
   }
 
   /** Resources by config address (instance keys stripped). */
@@ -111,13 +142,14 @@ const EVALUATED_ACTIONS = new Set(['create', 'update', 'replace', 'import']);
 const CHANGED_ACTIONS = new Set(['create', 'update', 'replace', 'import', 'delete']);
 
 /** Resources configured through separate helper resources: a change to a helper changes what the owner's rules judge. */
-const HELPERS: Record<string, string[]> = {
-  aws_s3_bucket: [
+const HELPERS: Record<string, { types: string[]; attr: string; targetAttrs?: string[] }> = {
+  aws_s3_bucket: { attr: 'bucket', types: [
     'aws_s3_bucket_versioning',
     'aws_s3_bucket_server_side_encryption_configuration',
     'aws_s3_bucket_public_access_block',
     'aws_s3_bucket_lifecycle_configuration',
-  ],
+  ] },
+  aws_lb_listener: { attr: 'listener_arn', targetAttrs: ['arn'], types: ['aws_lb_listener_rule'] },
 };
 
 export function evaluatePolicies(all: ResourceChange[], policy: PolicyConfig = {}): Finding[] {
@@ -125,16 +157,19 @@ export function evaluatePolicies(all: ResourceChange[], policy: PolicyConfig = {
   const ctxBefore = new RuleContext(all, { ...DEFAULT_POLICY, ...policy }, 'before');
   // An unchanged owner whose helper changed (versioning suspended) is judged too, against its helpers'
   // prior values, so only what the helper change introduced counts as new.
-  const helperChanged = (res: ResourceChange) =>
-    (HELPERS[res.type] ?? []).some((type) =>
-      [...ctx.referrers(res, type, 'bucket'), ...ctxBefore.referrers(res, type, 'bucket')].some((h) => CHANGED_ACTIONS.has(h.action))
-    );
+  const helperChanged = (res: ResourceChange) => {
+    const helper = HELPERS[res.type];
+    return helper?.types.some((type) =>
+      [...ctx.referrers(res, type, helper.attr, helper.targetAttrs), ...ctxBefore.referrers(res, type, helper.attr, helper.targetAttrs)]
+        .some((h) => CHANGED_ACTIONS.has(h.action))
+    ) ?? false;
+  };
   const findings: Finding[] = [];
   const byType = new Map<string, Rule[]>();
   for (const rule of RULES) for (const t of rule.types) byType.set(t, [...(byType.get(t) ?? []), rule]);
 
   // Rules judge sensitive values; nothing they print may contain one.
-  const hidden = all.flatMap((r) => [...sensitiveLeaves(r.before), ...sensitiveLeaves(r.after)]);
+  const hidden = all.flatMap((r) => [...sensitiveLeaves(r.before), ...sensitiveLeaves(r.after), ...sensitiveLeaves(r.configuredAfter)]);
   const clean = (text: string) => scrub(text, hidden);
 
   for (const res of all) {
@@ -145,13 +180,13 @@ export function evaluatePolicies(all: ResourceChange[], policy: PolicyConfig = {
     const before = res.before && typed(reveal(res.before) as Attrs, res.type);
     for (const rule of byType.get(res.type) ?? []) {
       if (res.action === 'delete' && rule.scope !== 'change') continue;
-      const result = rule.evaluate(after, res, ctx);
+      const result = rule.evaluate(rule.configurationOnly ? ctx.configuredValues(res) : after, res, ctx);
       if (!result) continue;
       let preExisting: boolean | undefined;
       let status = result.status;
       let detail = result.detail;
       if (rule.scope !== 'change' && (res.action === 'update' || res.action === 'replace' || viaHelper) && res.before && result.status !== 'PASS') {
-        const prior = rule.evaluate(before!, res, ctxBefore);
+        const prior = rule.evaluate(rule.configurationOnly ? ctxBefore.configuredValues(res) : before!, res, ctxBefore);
         if (result.issues && prior?.issues) {
           const before = new Set(prior.issues.map((i) => i.message));
           const introduced = result.issues.filter((i) => !before.has(i.message));

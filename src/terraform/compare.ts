@@ -329,10 +329,13 @@ function toChange(i: StaticInstance, action: Action, before: Attrs | null, after
     name: i.name,
     mode: i.mode,
     moduleAddress: i.moduleAddress,
+    ...(i.providerAddress ? { providerAddress: i.providerAddress } : {}),
     action: i.mode === 'data' ? 'no-op' : action,
     before,
     after,
     references: i.references,
+    // Existing ignored values may have drifted; neither snapshot's configuration attests them.
+    ...(i.configuredAttrs ? { configuredAfter: before === null ? i.configuredAttrs : applied({}, i.configuredAttrs, i.ignoreChanges) } : {}),
     source: i.source,
     confidence: i.externalModule ? 'unknown' : 'proven',
     preventDestroy: i.preventDestroy || undefined,
@@ -354,6 +357,7 @@ function diffInstance(b: StaticInstance, a: StaticInstance): ResourceChange {
         });
 
   const base = toChange(a, 'no-op', b.attrs, applied(b.attrs, a.attrs, ignored));
+  base.configuredBefore = b.configuredAttrs;
   base.preventDestroy = a.preventDestroy || undefined;
   if (!changed.length || a.mode === 'data') return base;
 

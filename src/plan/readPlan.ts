@@ -3,6 +3,7 @@ import {
   Unknown,
   configAddress,
   isUnknown,
+  reveal,
   type Action,
   type Attrs,
   type ResourceChange,
@@ -13,6 +14,7 @@ import { redact } from '../hcl/eval.js';
 export interface PlanJson {
   format_version?: string;
   terraform_version?: string;
+  variables?: Record<string, { value: unknown }>;
   resource_changes?: PlanResourceChange[];
   prior_state?: { values?: { root_module?: StateModule } };
   configuration?: { root_module?: ConfigModule };
@@ -44,8 +46,9 @@ interface StateModule {
 }
 
 interface ConfigModule {
-  resources?: Array<{ address: string; expressions?: Record<string, unknown> }>;
-  module_calls?: Record<string, { module?: ConfigModule }>;
+  resources?: Array<{ address: string; provider_config_key?: string; expressions?: Record<string, unknown> }>;
+  module_calls?: Record<string, { expressions?: Record<string, unknown>; module?: ConfigModule }>;
+  outputs?: Record<string, { expression?: unknown }>;
 }
 
 export function readPlan(input: unknown): ResourceChange[] {
@@ -57,7 +60,10 @@ export function readPlan(input: unknown): ResourceChange[] {
     throw new Error('Plan JSON has no resource_changes. Pass the output of `terraform show -json <planfile>`, not a state file.');
   }
 
-  const references = collectReferences(plan.configuration?.root_module);
+  const providers = new Map<string, string>();
+  const configuredPaths = new Map<string, string[]>();
+  const configurations = new Map<string, Record<string, unknown>>();
+  const references = collectReferences(plan, providers, configuredPaths, configurations);
   const changes: ResourceChange[] = [];
   const seen = new Set<string>();
 
@@ -70,6 +76,8 @@ export function readPlan(input: unknown): ResourceChange[] {
     const before = rc.change.before === null || rc.change.before === undefined
       ? null
       : (overlay(rc.change.before, rc.change.before_sensitive, redactMarker) as Attrs);
+    const config = configurations.get(configAddress(rc.address));
+    const configured = configuredValues(config ?? {});
 
     changes.push({
       address: rc.address,
@@ -77,6 +85,7 @@ export function readPlan(input: unknown): ResourceChange[] {
       name: rc.name,
       mode: rc.mode ?? 'managed',
       moduleAddress: rc.module_address,
+      ...(providers.has(configAddress(rc.address)) ? { providerAddress: providers.get(configAddress(rc.address)) } : {}),
       action,
       before,
       after,
@@ -84,6 +93,10 @@ export function readPlan(input: unknown): ResourceChange[] {
       replaceOrder: action === 'replace' ? (actions[0] === 'create' ? 'create-first' : 'delete-first') : undefined,
       actionReason: rc.action_reason,
       references: references.get(configAddress(rc.address)) ?? {},
+      configuredPaths: configuredPaths.get(configAddress(rc.address)) ?? [],
+      configuredAfter: overlay(action === 'update' && before !== null
+        ? updatedConfiguration(configured, reveal(before), reveal(after)) : configured,
+        rc.change.after_sensitive, (value) => value === undefined ? undefined : redactMarker(value)) as Attrs,
       previousAddress: rc.previous_address,
       confidence: 'proven',
     });
@@ -110,6 +123,37 @@ export function readPlan(input: unknown): ResourceChange[] {
   }
 
   return changes;
+}
+
+/** Plan JSON retains literals but only lists dependencies for other expressions, not their result. */
+function configuredValues(expression: unknown): unknown {
+  if (!expression || typeof expression !== 'object') return undefined;
+  if ('constant_value' in expression) return expression.constant_value ?? undefined;
+  if ('references' in expression) return new Unknown('configuration expression result unavailable');
+  if (Array.isArray(expression)) return expression.map(configuredValues);
+  return Object.fromEntries(Object.entries(expression).map(([key, expr]) => [key,
+    configuredValues(expr),
+  ]));
+}
+
+/**
+ * Plan JSON omits lifecycle rules. An unchanged value may be ignored even when it matches the
+ * configuration, so only a configured value actually changed by an update can attest enforcement.
+ */
+function updatedConfiguration(configured: unknown, before: unknown, after: unknown): unknown {
+  if (configured === undefined || isUnknown(configured)) return configured;
+  const prior = before && typeof before === 'object' && !isUnknown(before) ? before as Attrs : {};
+  const planned = after && typeof after === 'object' && !isUnknown(after) ? after as Attrs : {};
+  if (Array.isArray(configured)) {
+    return configured.map((value, i) => updatedConfiguration(value, prior[i], planned[i]));
+  }
+  if (configured && typeof configured === 'object' && Object.getPrototypeOf(configured) === Object.prototype) {
+    return Object.fromEntries(Object.entries(configured).map(([key, value]) => [key,
+      updatedConfiguration(value, prior[key], planned[key]),
+    ]));
+  }
+  return configured === after && before !== after
+    ? configured : new Unknown('configuration value not established by this update');
 }
 
 function mapAction(actions: string[], rc: PlanResourceChange): Action {
@@ -158,11 +202,31 @@ function* walkState(mod: StateModule | undefined): Generator<NonNullable<StateMo
 }
 
 /** configAddress -> attribute -> referenced resource addresses (module-qualified). */
-function collectReferences(root: ConfigModule | undefined): Map<string, Record<string, string[]>> {
+function collectReferences(plan: PlanJson, providers: Map<string, string>, configuredPaths: Map<string, string[]>, configurations: Map<string, Record<string, unknown>>): Map<string, Record<string, string[]>> {
   const out = new Map<string, Record<string, string[]>>();
   const visit = (mod: ConfigModule | undefined, prefix: string) => {
     if (!mod) return;
+    for (const [name, call] of Object.entries(mod.module_calls ?? {})) {
+      visit(call.module, `${prefix}module.${name}.`);
+    }
     for (const res of mod.resources ?? []) {
+      if (res.provider_config_key) providers.set(prefix + res.address, res.provider_config_key);
+      configurations.set(prefix + res.address, res.expressions ?? {});
+      const paths: string[] = [];
+      const visitLiteral = (value: unknown, path: string) => {
+        if (value == null) return;
+        if (typeof value === 'object' && (Array.isArray(value) || Object.getPrototypeOf(value) === Object.prototype)) {
+          for (const [key, nested] of Object.entries(value)) visitLiteral(nested, `${path}.${key}`);
+        } else paths.push(path);
+      };
+      const visitExpression = (expr: unknown, path: string) => {
+        if (!expr || typeof expr !== 'object') return;
+        if ('constant_value' in expr) { visitLiteral(expr.constant_value, path); return; }
+        if ('references' in expr) { paths.push(path); return; }
+        for (const [key, value] of Object.entries(expr)) visitExpression(value, `${path}.${key}`);
+      };
+      for (const [attr, expr] of Object.entries(res.expressions ?? {})) visitExpression(expr, attr);
+      configuredPaths.set(prefix + res.address, paths);
       const byAttr: Record<string, string[]> = {};
       for (const [attr, expr] of Object.entries(res.expressions ?? {})) {
         const refs = new Set<string>();
@@ -172,11 +236,8 @@ function collectReferences(root: ConfigModule | undefined): Map<string, Record<s
       }
       out.set(prefix + res.address, byAttr);
     }
-    for (const [name, call] of Object.entries(mod.module_calls ?? {})) {
-      visit(call.module, `${prefix}module.${name}.`);
-    }
   };
-  visit(root, '');
+  visit(plan.configuration?.root_module, '');
   return out;
 }
 

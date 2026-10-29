@@ -1,6 +1,7 @@
 import { createHmac, randomBytes } from 'node:crypto';
 import { isIP } from 'node:net';
 import { Redacted, UNKNOWN_PART, Unknown, hasRedacted, isRedacted, isUnknown, reveal } from '../core/model.js';
+import { knownConfiguration } from '../core/configuration.js';
 import type { Expr, TemplatePart } from './ast.js';
 import { parseHcl } from './parser.js';
 
@@ -93,6 +94,8 @@ export class ResourceValue extends Traversable {
 export class EvalError extends Error {}
 
 export interface EvalScope {
+  /** Preserve invalid dependencies instead of simplifying them into encryption evidence. */
+  configurationEvidence?: boolean;
   /** Resolve a root name: var, local, each, count, path, terraform, module, data, a resource type, or a loop variable. */
   root(name: string): unknown;
   /** Read a file relative to the module directory, for file() and friends. */
@@ -103,6 +106,7 @@ export function childScope(parent: EvalScope, vars: Record<string, unknown>): Ev
   return {
     root: (name) => (name in vars ? vars[name] : parent.root(name)),
     readFile: parent.readFile,
+    configurationEvidence: parent.configurationEvidence,
   };
 }
 
@@ -195,7 +199,32 @@ function fingerprint(x: unknown): string {
   return JSON.stringify(x, (k, v) => (k === 'range' ? undefined : v));
 }
 
+const evidenceFrames: Array<{ kind: Expr['kind']; invalid: boolean }> = [];
+
+/** Keep dependency failures even when Terraform can simplify the resulting value. Constructors
+ * and traversals retain their shape so selecting a known sibling remains valid evidence. */
 function ev(expr: Expr, scope: EvalScope, anon?: unknown): unknown {
+  if (!scope.configurationEvidence) return evValue(expr, scope, anon);
+  const frame = { kind: expr.kind, invalid: false };
+  evidenceFrames.push(frame);
+  let value: unknown;
+  try {
+    value = evValue(expr, scope, anon);
+    const structural = ['object', 'tuple', 'scope', 'getattr', 'index', 'paren', 'anon'].includes(expr.kind);
+    if (frame.invalid && !structural) value = new Unknown('configuration passed through a null, unknown or computed value');
+    return value;
+  } finally {
+    evidenceFrames.pop();
+    const parent = evidenceFrames.at(-1);
+    // Lazy objects are examined when traversed or consumed, rather than enumerated here.
+    if (parent && !(value instanceof Traversable) && !knownConfiguration(value)) {
+      const projecting = ['getattr', 'index', 'object', 'tuple', 'paren'].includes(parent.kind);
+      if (!projecting || value == null || isUnknown(value) || isRedacted(value)) parent.invalid = true;
+    }
+  }
+}
+
+function evValue(expr: Expr, scope: EvalScope, anon?: unknown): unknown {
   switch (expr.kind) {
     case 'literal':
       return expr.value;
@@ -822,6 +851,18 @@ const ALWAYS_UNKNOWN = new Set([
 
 function callFunction(rawName: string, argExprs: Expr[], expandFinal: boolean, scope: EvalScope, anon: unknown): unknown {
   const name = rawName.replace(/^provider::[^:]+::/, '');
+  // try/can/coalesce and structural functions must not hide an invalid dependency. Keep
+  // this check before their normal simplifications, and include every function argument.
+  if (scope.configurationEvidence) {
+    const values = argExprs.map((arg) => {
+      try { return ev(arg, scope, anon); }
+      catch (error) {
+        if (error instanceof EvalError) return new Unknown('configuration argument could not be resolved');
+        throw error;
+      }
+    });
+    if (!values.every((v) => knownConfiguration(toPlain(v)))) return derivedUnknown('configuration function argument is null or unknown', name, values);
+  }
   if (name === 'try') {
     for (const a of argExprs) {
       try {

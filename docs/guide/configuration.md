@@ -78,6 +78,33 @@ The flow-log rule skips subnet and ENI declarations without a `vpc_id`. It does 
 
 All these rules carry only `SOC2:CC7.2`, confirmed on page 40 of the AICPA file cited in the [crosswalk research](../research/compliance-crosswalk.md#soc-2-aicpa-2017-trust-services-criteria-revised-points-of-focus-2022). ISO A.8.15 remains unverified and is not assigned.
 
+## Encryption checks
+
+Encryption checks describe the configuration on changed resources. Across all encryption checks, PASS requires explicit enablement; WARN requires explicit disablement with no enforcing setting in the same configuration and provider applying at creation; all other cases are UNKNOWN. Provider defaults and computed-only plan values never establish enablement or disablement. They do not read AWS or verify that a change was applied. Every rule below carries `ISO27001:A.8.24`, plus `SOC2:CC6.7` for transit or `SOC2:CC6.1` for at rest, through the existing crosswalk.
+
+| Rule | Resource | Warns when |
+| :-- | :-- | :-- |
+| `elb.https` | `aws_lb_listener` | An HTTP listener has a known reachable action without an HTTPS redirect; associated listener rules are evaluated in priority order |
+| `elb.tls-policy` | `aws_lb_listener` | An HTTPS listener's known SSL policy permits TLS below 1.2; omitted `ssl_policy` remains `UNKNOWN` |
+| `cloudfront.https` | `aws_cloudfront_distribution` | Any default or ordered cache behavior uses `viewer_protocol_policy = "allow-all"` |
+| `cloudfront.tls-policy` | `aws_cloudfront_distribution` | The viewer certificate's minimum protocol permits TLS below 1.2 |
+| `elasticache.transit-encryption` | `aws_elasticache_replication_group`, `aws_elasticache_cluster` | `transit_encryption_enabled` is explicitly false on a primary replication group or supported Memcached cluster |
+| `opensearch.node-to-node-encryption` | `aws_opensearch_domain`, `aws_elasticsearch_domain` | `node_to_node_encryption.enabled` is explicitly false |
+| `opensearch.https` | `aws_opensearch_domain`, `aws_elasticsearch_domain` | `domain_endpoint_options.enforce_https` is false |
+| `ebs.default-encryption` | `aws_ebs_encryption_by_default` | `enabled` is explicitly false; omitted remains `UNKNOWN` |
+| `ebs.encryption` | `aws_ebs_volume` | `encrypted` is explicitly false without applicable configured enforcement at creation; omitted remains `UNKNOWN` |
+| `efs.encryption` | `aws_efs_file_system` | `encrypted` is explicitly false |
+| `elasticache.encryption` | `aws_elasticache_replication_group` | `at_rest_encryption_enabled` is explicitly false on a primary |
+| `opensearch.encryption` | `aws_opensearch_domain`, `aws_elasticsearch_domain` | `encrypt_at_rest.enabled` is explicitly false |
+
+These rules produce at most `WARN`, which is advisory in the existing gate, and never block by themselves. Unknown or unavailable sensitive settings and unresolved blocks produce `UNKNOWN`. TLS policies are classified using verified protocol tables, rather than dates or name prefixes; unrecognized policies remain `UNKNOWN`. Data sources and ordinary resource deletes do not run these configuration checks. Listener-rule changes, including deletion, re-evaluate their owner even when the listener is unchanged; unresolved owners produce `UNKNOWN` on the rule. Pre-existing findings and policy exceptions use the existing mechanisms and finding/evidence record schemas.
+
+The listener checks cover HTTP/HTTPS, default actions and associated `aws_lb_listener_rule` actions. A catch-all path condition (`/*` or `*`, without additional restrictions) redirecting to HTTPS can make the default unreachable; earlier rules must also redirect. Unresolved association, priority or general condition coverage remains `UNKNOWN`. Other listener protocols are outside their scope. An omitted listener protocol is `UNKNOWN` because its default depends on load balancer type. CloudFront checks every declared cache behavior. An explicitly selected default CloudFront certificate forces a TLSv1 floor regardless of `minimum_protocol_version`; an omitted minimum remains `UNKNOWN`. OpenSearch requires explicit `enforce_https`; omitted flags and blocks remain `UNKNOWN`.
+
+EBS volumes with omitted `encrypted` always remain `UNKNOWN`. An explicitly enabled `aws_ebs_encryption_by_default` in the same provider configuration and region suppresses an explicit-false volume warning to `UNKNOWN` only at creation or replacement. Creation defaults do not affect existing-resource updates, including Redis-to-Valkey upgrades. Only a configured, resolved `global_replication_group_id` establishes an ElastiCache global secondary, which returns `UNKNOWN` for inherited encryption without conflicting local flag remediation. Unknown or computed membership never suppresses explicit encryption flag checks. Memcached cluster transit checks require a known version of 1.6.12 or later and VPC configuration; unresolved or unsupported prerequisites remain `UNKNOWN`. Redis/Valkey clusters and replication-group members are skipped at the cluster level. ElastiCache's transit check tests enablement, not whether `transit_encryption_mode` requires all clients to use TLS. These additions check encryption enablement, without extending the customer-managed-key policy to new resource types.
+
+The S3 `aws:SecureTransport` deny check is skipped. The existing IAM code parses policies and analyzes grants but does not prove that a deny covers all relevant principals, actions and resources, including conditions and unresolved statements. Finding a condition key alone would not establish transport enforcement. See the [provider argument verification and scope notes](../research/compliance-crosswalk.md#encryption-check-scope).
+
 ## Exceptions
 
 An exception accepts a policy finding or a blast-radius item on matching resources until its expiry date. Accepted items remain visible in the report under the collapsible section for passing, accepted, and pre-existing checks, and they do not fail or block the gate.

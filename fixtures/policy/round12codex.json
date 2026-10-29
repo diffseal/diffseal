@@ -4,7 +4,7 @@
   "cases": [
     {
       "kind": "terraform",
-      "name": "round 12 codex: policy and cost: a KMS data source lookup of an AWS managed alias is not a customer managed key",
+      "name": "round 12 codex: policy and cost: a KMS data source lookup of an AWS managed alias remains UNKNOWN until its value is known",
       "root": "r",
       "head": {
         "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_kms_alias\" \"sqs\" {\n  name = \"alias/aws/sqs\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name              = \"q\"\n  kms_master_key_id = data.aws_kms_alias.sqs.target_key_arn\n}\n"
@@ -30,9 +30,9 @@
           {
             "ruleId": "sqs.encryption",
             "resource": "aws_sqs_queue.q",
-            "status": "WARN",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "SSE-KMS with the AWS managed key aws/sqs; policy requires a customer managed KMS key"
+            "detailContains": "key not known until apply"
           },
           {
             "ruleId": "sqs.dlq",
@@ -68,7 +68,7 @@
     },
     {
       "kind": "terraform",
-      "name": "round 12 codex: policy and cost: a KMS data source lookup of a key not known statically is UNKNOWN, a managed key is still a CMK [1]",
+      "name": "round 12 codex: policy and cost: a KMS data source lookup of a key not known statically is UNKNOWN, including managed key references [1]",
       "root": "r",
       "head": {
         "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"key\" {}\ndata \"aws_kms_key\" \"k\" {\n  key_id = var.key\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name              = \"q\"\n  kms_master_key_id = data.aws_kms_key.k.arn\n}\n"
@@ -93,7 +93,7 @@
             "resource": "aws_sqs_queue.q",
             "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "KMS key not known until apply"
+            "detailContains": "key not known until apply"
           },
           {
             "ruleId": "sqs.dlq",
@@ -129,7 +129,7 @@
     },
     {
       "kind": "terraform",
-      "name": "round 12 codex: policy and cost: a KMS data source lookup of a key not known statically is UNKNOWN, a managed key is still a CMK [2]",
+      "name": "round 12 codex: policy and cost: a KMS data source lookup of a key not known statically is UNKNOWN, including managed key references [2]",
       "root": "r",
       "head": {
         "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_kms_key\" \"k\" {}\nresource \"aws_sqs_queue\" \"q\" {\n  name              = \"q\"\n  kms_master_key_id = aws_kms_key.k.arn\n}\n"
@@ -165,9 +165,9 @@
           {
             "ruleId": "sqs.encryption",
             "resource": "aws_sqs_queue.q",
-            "status": "PASS",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "SSE-KMS with a customer managed key"
+            "detailContains": "key not known until apply"
           },
           {
             "ruleId": "sqs.dlq",
@@ -243,7 +243,7 @@
             "resource": "aws_sqs_queue.q",
             "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "sqs_managed_sse_enabled not known until apply"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "sqs.dlq",
@@ -307,9 +307,9 @@
           {
             "ruleId": "rds.encryption",
             "resource": "aws_db_instance.d",
-            "status": "FAIL",
+            "status": "UNKNOWN",
             "preExisting": true,
-            "detailContains": "Storage not encrypted (encryption can only be enabled at creation)"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "rds.deletion-protection",

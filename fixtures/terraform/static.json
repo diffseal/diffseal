@@ -152,9 +152,9 @@
           {
             "ruleId": "rds.encryption",
             "resource": "module.svc.aws_db_instance.db",
-            "status": "FAIL",
+            "status": "WARN",
             "preExisting": null,
-            "detailContains": "Storage not encrypted (encryption can only be enabled at creation)"
+            "detailContains": "explicitly disabled"
           },
           {
             "ruleId": "rds.deletion-protection",
@@ -362,9 +362,9 @@
           {
             "ruleId": "s3.encryption",
             "resource": "module.svc.aws_s3_bucket.b",
-            "status": "PASS",
-            "preExisting": null,
-            "detailContains": "No bucket encryption configuration: S3 applies SSE-S3 (AES256) to all new objects by default since January 2023"
+            "status": "UNKNOWN",
+            "preExisting": true,
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "s3.public-access",
@@ -750,16 +750,16 @@
           {
             "ruleId": "sqs.encryption",
             "resource": "module.svc.module.events_queue.aws_sqs_queue.dlq",
-            "status": "PASS",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "SSE-SQS (SQS managed keys, the default for new queues)"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "sqs.encryption",
             "resource": "module.svc.module.events_queue.aws_sqs_queue.queue",
-            "status": "PASS",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "SSE-SQS (SQS managed keys, the default for new queues)"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "sqs.dlq",
@@ -1037,9 +1037,9 @@
           {
             "ruleId": "sqs.encryption",
             "resource": "module.svc.aws_sqs_queue.renamed",
-            "status": "PASS",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "SSE-SQS (SQS managed keys, the default for new queues)"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "sqs.dlq",
@@ -1376,9 +1376,9 @@
           {
             "ruleId": "dynamodb.encryption",
             "resource": "module.svc.aws_dynamodb_table.ledger",
-            "status": "PASS",
-            "preExisting": null,
-            "detailContains": "Encrypted with an AWS owned key (DynamoDB default)"
+            "status": "UNKNOWN",
+            "preExisting": true,
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "dynamodb.deletion-protection",
@@ -1556,9 +1556,9 @@
           {
             "ruleId": "dynamodb.encryption",
             "resource": "aws_dynamodb_table.t[0]",
-            "status": "PASS",
-            "preExisting": null,
-            "detailContains": "Encrypted with an AWS owned key (DynamoDB default)"
+            "status": "UNKNOWN",
+            "preExisting": true,
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "dynamodb.deletion-protection",

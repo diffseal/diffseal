@@ -238,9 +238,9 @@
           {
             "ruleId": "rds.encryption",
             "resource": "aws_db_instance.db",
-            "status": "FAIL",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "Storage not encrypted (encryption can only be enabled at creation)"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "rds.deletion-protection",
@@ -277,10 +277,7 @@
           ]
         },
         "gate": {
-          "result": "review",
-          "reasonsContain": [
-            "FAIL rds.encryption: aws_db_instance.db: Storage not encrypted (encryption can only be enabled at creation)"
-          ]
+          "result": "pass"
         },
         "forbiddenSubstrings": [
           "hunter2"
@@ -312,9 +309,9 @@
           {
             "ruleId": "sqs.encryption",
             "resource": "aws_sqs_queue.q",
-            "status": "PASS",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "SSE-SQS (SQS managed keys, the default for new queues)"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "sqs.dlq",
@@ -456,9 +453,9 @@
           {
             "ruleId": "s3.encryption",
             "resource": "aws_s3_bucket.b",
-            "status": "PASS",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "No bucket encryption configuration: S3 applies SSE-S3 (AES256) to all new objects by default since January 2023"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "s3.public-access",
@@ -655,9 +652,9 @@
           {
             "ruleId": "sqs.encryption",
             "resource": "aws_sqs_queue.q",
-            "status": "PASS",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "SSE-SQS (SQS managed keys, the default for new queues)"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "sqs.dlq",

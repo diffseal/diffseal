@@ -362,7 +362,7 @@
     },
     {
       "kind": "terraform",
-      "name": "round 13: a data source lookup of a customer alias or key is a customer managed key [1]",
+      "name": "round 13: a data source lookup of a customer alias or key requires a resolved non-computed key value [1]",
       "root": "r",
       "head": {
         "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_kms_alias\" \"k\" {\n  name = \"alias/app-data\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name              = \"q\"\n  kms_master_key_id = data.aws_kms_alias.k.target_key_arn\n}\n"
@@ -385,9 +385,9 @@
           {
             "ruleId": "sqs.encryption",
             "resource": "aws_sqs_queue.q",
-            "status": "PASS",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "SSE-KMS with a customer managed key"
+            "detailContains": "key not known until apply"
           },
           {
             "ruleId": "sqs.dlq",
@@ -423,7 +423,7 @@
     },
     {
       "kind": "terraform",
-      "name": "round 13: a data source lookup of a customer alias or key is a customer managed key [2]",
+      "name": "round 13: a data source lookup of a customer alias or key requires a resolved non-computed key value [2]",
       "root": "r",
       "head": {
         "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_kms_key\" \"main\" {}\ndata \"aws_kms_key\" \"k\" {\n  key_id = aws_kms_key.main.arn\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name              = \"q\"\n  kms_master_key_id = data.aws_kms_key.k.arn\n}\n"
@@ -459,9 +459,9 @@
           {
             "ruleId": "sqs.encryption",
             "resource": "aws_sqs_queue.q",
-            "status": "PASS",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "SSE-KMS with a customer managed key"
+            "detailContains": "key not known until apply"
           },
           {
             "ruleId": "sqs.dlq",

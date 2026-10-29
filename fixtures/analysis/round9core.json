@@ -275,9 +275,9 @@
           {
             "ruleId": "sqs.encryption",
             "resource": "aws_sqs_queue.q",
-            "status": "PASS",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "SSE-SQS (SQS managed keys, the default for new queues)"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "sqs.dlq",
@@ -349,9 +349,9 @@
           {
             "ruleId": "s3.encryption",
             "resource": "aws_s3_bucket.b",
-            "status": "PASS",
-            "preExisting": null,
-            "detailContains": "No bucket encryption configuration: S3 applies SSE-S3 (AES256) to all new objects by default since January 2023"
+            "status": "UNKNOWN",
+            "preExisting": true,
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "s3.public-access",
@@ -423,9 +423,9 @@
           {
             "ruleId": "s3.encryption",
             "resource": "aws_s3_bucket.b",
-            "status": "PASS",
-            "preExisting": null,
-            "detailContains": "No bucket encryption configuration: S3 applies SSE-S3 (AES256) to all new objects by default since January 2023"
+            "status": "UNKNOWN",
+            "preExisting": true,
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "s3.public-access",
@@ -492,9 +492,9 @@
           {
             "ruleId": "dynamodb.encryption",
             "resource": "aws_dynamodb_table.t",
-            "status": "PASS",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "Encrypted with an AWS owned key (DynamoDB default)"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "dynamodb.deletion-protection",
@@ -523,7 +523,7 @@
     },
     {
       "kind": "terraform",
-      "name": "round 9 (Codex): evaluator, Terraform, policy, plan: implicit SSE-S3 encryption warns when customer managed keys are required",
+      "name": "round 9 (Codex): evaluator, Terraform, policy, plan: implicit SSE-S3 encryption remains UNKNOWN when customer managed keys are required",
       "root": "r",
       "head": {
         "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"b\"\n}\n"
@@ -549,9 +549,9 @@
           {
             "ruleId": "s3.encryption",
             "resource": "aws_s3_bucket.b",
-            "status": "WARN",
+            "status": "UNKNOWN",
             "preExisting": null,
-            "detailContains": "No bucket encryption configuration: S3 applies SSE-S3 (AES256) to all new objects by default since January 2023; policy requires a customer managed KMS key"
+            "detailContains": "explicit encryption configuration is not established"
           },
           {
             "ruleId": "s3.public-access",

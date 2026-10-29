@@ -15,6 +15,8 @@ export interface StaticInstance {
   mode: 'managed' | 'data';
   moduleAddress?: string;
   attrs: Attrs;
+  /** Values evaluated without erasing null/unknown dependencies. Used only for policy evidence. */
+  configuredAttrs?: Attrs;
   /** Top-level attribute or block type -> referenced resource addresses (config addresses). */
   references: Record<string, string[]>;
   source: SourceRef;
@@ -83,10 +85,16 @@ export function evaluateRoot(source: FileSource, rootDir: string, rootVars: Reco
   const inputs = new Map<string, () => unknown>(Object.entries(vars).map(([k, v]) => [k, () => v]));
   const top = new ModuleInstance(source, cfg, '', '', inputs, new Map(), root, 0, result.readFiles);
   top.collect(result);
+  const evidence: RootEvaluation = { ...result, instances: [], diagnostics: [], moved: [], removed: [], imports: [], preventDestroy: new Set() };
+  const evidenceVars = { ...readTfvars(source, root, true), ...rootVars };
+  const evidenceInputs = new Map<string, () => unknown>(Object.entries(evidenceVars).map(([k, v]) => [k, () => v]));
+  new ModuleInstance(source, cfg, '', '', evidenceInputs, new Map(), root, 0, result.readFiles, undefined, true).collect(evidence);
+  const byAddress = new Map(evidence.instances.map((i) => [i.address, i.attrs]));
+  for (const instance of result.instances) instance.configuredAttrs = byAddress.get(instance.address) ?? {};
   return result;
 }
 
-function readTfvars(source: FileSource, root: string): Record<string, unknown> {
+function readTfvars(source: FileSource, root: string, configurationEvidence = false): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   // Terraform loads terraform.tfvars(.json) first, then *.auto.tfvars(.json) in lexical order; later files win.
   const names = source.listFiles(root);
@@ -105,7 +113,7 @@ function readTfvars(source: FileSource, root: string): Record<string, unknown> {
       continue;
     }
     const { body } = parseHcl(text);
-    for (const a of body.attributes) out[a.name] = toPlain(evaluate(a.expr, { root: () => undefined }));
+    for (const a of body.attributes) out[a.name] = toPlain(evaluate(a.expr, { root: () => undefined, configurationEvidence }));
   }
   return out;
 }
@@ -193,11 +201,13 @@ class ModuleInstance {
     private readonly rootDir: string,
     private readonly depth: number,
     reads?: Set<string>,
-    private readonly inheritedProviders?: Map<string,ProviderBinding>
+    private readonly inheritedProviders?: Map<string,ProviderBinding>,
+    private readonly configurationEvidence = false
   ) {
     const self = this;
     this.reads = reads;
     this.scope = {
+      configurationEvidence,
       root(name) {
         return self.rootValue(name);
       },
@@ -266,6 +276,7 @@ class ModuleInstance {
                 let value: unknown;
                 // An explicit null stays null unless the variable says nullable = false.
                 if (input) value = input();
+                if (this.configurationEvidence && input && value === null && literalFalse('nullable')) return new Unknown('variable input passed through null');
                 if (!input || (value === null && literalFalse('nullable'))) {
                   const def = attr('default');
                   value = def ? toPlain(evaluate(def.expr, this.scope)) : input ? null : new Unknown(`variable "${k}" has no value in this configuration`);
@@ -346,7 +357,7 @@ class ModuleInstance {
       evaluating = false;
       return attrs;
     };
-    const rv = new ResourceValue(address, getAttrs, (name) => computedAttr(rb, name, getAttrs, address));
+    const rv = new ResourceValue(address, getAttrs, (name) => this.configurationEvidence ? undefined : computedAttr(rb, name, getAttrs, address));
     this.valueMemo.set(address, rv);
     return rv;
   }
@@ -388,7 +399,8 @@ class ModuleInstance {
           this.rootDir,
           this.depth + 1,
           this.reads,
-          this.childProviders(call)
+          this.childProviders(call),
+          this.configurationEvidence
         );
         return { key: exp.key, mod };
       };
@@ -918,7 +930,8 @@ function typeDefaults(type: Expr, v: unknown, scope: EvalScope): unknown {
       if (key === undefined) continue;
       const at = item.value;
       if ((out[key] === undefined || out[key] === null) && at.kind === 'call' && at.name === 'optional') {
-        out[key] = at.args.length > 1 ? toPlain(evaluate(at.args[1], scope)) : null;
+        out[key] = scope.configurationEvidence ? new Unknown('optional object attribute is null or unset')
+          : at.args.length > 1 ? toPlain(evaluate(at.args[1], scope)) : null;
       }
       out[key] = typeDefaults(at, out[key], scope);
     }

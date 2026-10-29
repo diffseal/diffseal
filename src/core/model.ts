@@ -166,6 +166,8 @@ export interface ResourceChange {
   mode: 'managed' | 'data';
   /** `module.orders` for resources inside modules. */
   moduleAddress?: string;
+  /** Selected provider configuration, used to scope account/regional configuration helpers. */
+  providerAddress?: string;
   action: Action;
   before: Attrs | null;
   after: Attrs | null;
@@ -176,6 +178,12 @@ export interface ResourceChange {
   actionReason?: string;
   /** Top-level attribute -> referenced resource addresses (module-qualified, without instance keys). */
   references: Record<string, string[]>;
+  /** Plan configuration expression paths, including nested block indices. Absent for static HCL values. */
+  configuredPaths?: string[];
+  /** Configured plan arguments, using literal configuration values before provider-populated values. */
+  configuredAfter?: Attrs;
+  /** Prior static configuration evidence, when available. */
+  configuredBefore?: Attrs;
   previousAddress?: string;
   /** lifecycle { prevent_destroy = true }: Terraform refuses to plan a destroy. */
   preventDestroy?: boolean;
