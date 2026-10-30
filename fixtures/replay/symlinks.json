@@ -680,6 +680,133 @@
      "result": "block"
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 8: retargeting a directory link inside a linked directory replays the root that reads through both",
+   "base": {
+    "old/main.tf": "resource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"postgres\"\n}\n",
+    "new/main.tf": "resource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"mysql\"\n}\n",
+    "r/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"r\"\n  }\n}\nmodule \"m\" {\n  source = \"../alias/inner\"\n}\n",
+    "tree/x.txt": "x"
+   },
+   "head": {
+    "old/main.tf": "resource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"postgres\"\n}\n",
+    "new/main.tf": "resource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"mysql\"\n}\n",
+    "r/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"r\"\n  }\n}\nmodule \"m\" {\n  source = \"../alias/inner\"\n}\n",
+    "tree/x.txt": "x"
+   },
+   "baseLinks": {
+    "alias": "tree",
+    "tree/inner": "../old"
+   },
+   "headLinks": {
+    "alias": "tree",
+    "tree/inner": "../new"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "r: module.m.aws_db_instance.main",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review 8: links that point back at their own directory do not multiply without bound",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"a\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"b\"\n}\n"
+   },
+   "baseLinks": {
+    "loop/l0": ".",
+    "loop/l1": ".",
+    "loop/l2": ".",
+    "loop/l3": ".",
+    "loop/l4": ".",
+    "loop/l5": ".",
+    "loop/l6": ".",
+    "loop/l7": ".",
+    "loop/l8": ".",
+    "loop/l9": ".",
+    "loop/l10": ".",
+    "loop/l11": ".",
+    "loop/l12": ".",
+    "loop/l13": ".",
+    "loop/l14": ".",
+    "loop/l15": ".",
+    "loop/l16": ".",
+    "loop/l17": ".",
+    "loop/l18": ".",
+    "loop/l19": "."
+   },
+   "headLinks": {
+    "loop/l0": ".",
+    "loop/l1": ".",
+    "loop/l2": ".",
+    "loop/l3": ".",
+    "loop/l4": ".",
+    "loop/l5": ".",
+    "loop/l6": ".",
+    "loop/l7": ".",
+    "loop/l8": ".",
+    "loop/l9": ".",
+    "loop/l10": ".",
+    "loop/l11": ".",
+    "loop/l12": ".",
+    "loop/l13": ".",
+    "loop/l14": ".",
+    "loop/l15": ".",
+    "loop/l16": ".",
+    "loop/l17": ".",
+    "loop/l18": ".",
+    "loop/l19": "."
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_sqs_queue.q",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review 8: a linked terraform.tfvars may be shared with other roots, so its change stays reviewed",
+   "base": {
+    "shared/common.tfvars": "cls = \"a\"\n",
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "db/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"cls\" {\n  type = string\n}\n"
+   },
+   "head": {
+    "shared/common.tfvars": "cls = \"b\"\n",
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "db/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"cls\" {\n  type = string\n}\n"
+   },
+   "baseLinks": {
+    "app/terraform.tfvars": "../shared/common.tfvars"
+   },
+   "headLinks": {
+    "app/terraform.tfvars": "../shared/common.tfvars"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "shared/common.tfvars"
+     ]
+    }
+   }
   }
  ]
 }

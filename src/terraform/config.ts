@@ -23,6 +23,12 @@ export interface ModuleConfig {
    * type and its location arguments, or the cloud block's organization and workspace name.
    */
   stateLocation?: string;
+  /**
+   * The state object a root may use, from the arguments that name it only (bucket and key for S3), when
+   * they are literal: two roots with the same key may share a state, though only the full location
+   * proves it.
+   */
+  stateKey?: string;
   /** AWS account ids this module's provider blocks target (assume_role ARNs, allowed_account_ids). */
   providerAccounts: string[];
   providers: Map<string, Block>;
@@ -242,6 +248,8 @@ function indexBlock(mod: ModuleConfig, b: Block, file: string, src: string) {
       for (const x of b.body.blocks) {
         const location = stateLocation(x);
         if (location) mod.stateLocation = location;
+        const key = stateLocation(x, true);
+        if (key) mod.stateKey = key;
       }
       break;
   }
@@ -265,7 +273,7 @@ const STATE_KEYS: Record<string, string[]> = {
  * set elsewhere (partial configuration with -backend-config, a workspace prefix, a local file whose
  * path is relative to the directory).
  */
-function stateLocation(b: Block): string | undefined {
+function stateLocation(b: Block, keyOnly = false): string | undefined {
   // Terraform Cloud and Enterprise: the same organization and workspace on another host is another state.
   const hostname = () => {
     const h = attr(b.body, 'hostname');
@@ -287,6 +295,7 @@ function stateLocation(b: Block): string | undefined {
   }
   const keys = type ? STATE_KEYS[type] : undefined;
   if (!keys || keys.some((k) => !literalString(attr(b.body, k)?.expr))) return undefined;
+  if (keyOnly) return JSON.stringify([type, ...keys.map((k) => literalString(attr(b.body, k)?.expr))]);
   // Every argument is part of the identity (workspace_key_prefix, region, endpoint...), and all must be
   // plain values: a difference anywhere leaves state continuity unproven.
   const args = b.body.attributes.map((a) => [a.name, a.expr.kind === 'literal' ? a.expr.value : literalString(a.expr)] as const);

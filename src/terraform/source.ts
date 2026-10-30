@@ -206,29 +206,31 @@ export class GitSource implements FileSource {
       else if (isDir(r.path)) dirLinks.push([link, r.path]);
       else this.refused.set(link, `${label}: its target is not in the repository at this commit`);
     }
-    // Directory links, repeated so a directory link inside a linked directory is expanded too.
+    // Directory links, in passes, so a directory link inside a linked directory is expanded under the
+    // outer link too. Bounded: at most 20,000 files and 2,000 directory aliases in all, and 4 passes.
     let added = 0;
+    let aliasDirs = 0;
     const done = new Set<string>();
-    for (let pass = 0; pass < 4; pass++) {
+    // Each entry: alias path, the directory it shows, and the links its resolution passes through.
+    let pending: Array<[string, string, string[]]> = dirLinks.map(([link, dir]) => [link, dir, resolved.get(link)?.via ?? [link]]);
+    for (let pass = 0; pass < 4 && pending.length; pass++) {
       const all = [...this.blobs.keys()];
       const allRefused = [...this.refused];
-      let progressed = false;
-      // Directory links found under an alias made in an earlier pass.
-      const pending: Array<[string, string]> = [...dirLinks];
-      for (const [link, dir] of [...this.dirLinks]) {
-        for (const [inner, innerDir] of dirLinks) if (inner.startsWith(dir + '/')) pending.push([link + inner.slice(dir.length), innerDir]);
-      }
-      for (const [link, dir] of pending) {
+      const next: Array<[string, string, string[]]> = [];
+      for (const [link, dir, via] of pending) {
         if (done.has(link)) continue;
-        const under = all.filter((f) => f.startsWith(dir + '/'));
-        if (added + under.length > 20_000) {
-          this.refused.set(link, `symbolic link to ${text.get(link) ?? dir} is not followed: its directory holds too many files`);
-          done.add(link);
+        done.add(link);
+        // A link inside the directory it points at would show itself without end.
+        if (link.startsWith(dir + '/')) {
+          this.refused.set(link, `symbolic link to ${text.get(link) ?? dir} is not followed: it points at a directory that contains it`);
           continue;
         }
-        done.add(link);
+        const under = all.filter((f) => f.startsWith(dir + '/'));
+        if (added + under.length > 20_000 || ++aliasDirs > 2_000) {
+          this.refused.set(link, `symbolic link to ${text.get(link) ?? dir} is not followed: its directory holds too many files`);
+          continue;
+        }
         this.dirLinks.set(link, dir);
-        progressed = true;
         // A link inside the target that is not followed is not followed under the alias either.
         for (const [f, why] of allRefused) if (f.startsWith(dir + '/') && !this.refused.has(link + f.slice(dir.length))) this.refused.set(link + f.slice(dir.length), why);
         for (const f of under) {
@@ -236,11 +238,15 @@ export class GitSource implements FileSource {
           if (this.blobs.has(alias)) continue;
           this.blobs.set(alias, this.blobs.get(f)!);
           this.linkTargets.set(alias, this.linkTargets.get(f) ?? f);
-          this.linkVia.set(alias, [...(resolved.get(link)?.via ?? [link]), ...(this.linkVia.get(f) ?? [])]);
+          this.linkVia.set(alias, [...via, ...(this.linkVia.get(f) ?? [])]);
           added++;
         }
+        // Directory links inside this target appear under the alias in the next pass.
+        for (const [inner, innerDir] of dirLinks) {
+          if (inner.startsWith(dir + '/')) next.push([link + inner.slice(dir.length), innerDir, [...via, ...(resolved.get(inner)?.via ?? [inner])]]);
+        }
       }
-      if (!progressed) break;
+      pending = next;
     }
   }
 
@@ -250,8 +256,10 @@ export class GitSource implements FileSource {
 
   linkedDir(dir: string): string | undefined {
     const d = normalize(dir);
-    for (const [link, target] of this.dirLinks) if (d === link || d.startsWith(link + '/')) return target + d.slice(link.length);
-    return undefined;
+    // The deepest link wins: `alias/inner` reaches what `alias/inner` links to, not `tree/inner`.
+    let best: [string, string] | undefined;
+    for (const [link, target] of this.dirLinks) if ((d === link || d.startsWith(link + '/')) && (!best || link.length > best[0].length)) best = [link, target];
+    return best ? best[1] + d.slice(best[0].length) : undefined;
   }
 
   linkTarget(p: string): string | undefined {

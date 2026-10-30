@@ -138,8 +138,9 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
       const touchesConfig = moduleLockChanged || [...changedDirs].some((d) => closure.has(d));
       // A root whose state location another root at the head now uses is not just deleted code: applying
       // that root plans against this state.
-      const location = loadModule(baseSource, baseRoot)?.stateLocation;
-      const adopted = location !== undefined && headRoots.some((h) => h !== root && loadModule(headSource, h)?.stateLocation === location);
+      // Any other root that may use the same state object counts, so only the arguments naming it are compared.
+      const location = loadModule(baseSource, baseRoot)?.stateKey;
+      const adopted = location !== undefined && headRoots.some((h) => h !== root && loadModule(headSource, h)?.stateKey === location);
       const rootDeleted = !move && !adopted && baseRoots.includes(root) && !loadModule(headSource, root);
       const was = loadModule(baseSource, baseRoot)?.stateLocation;
       const now = loadModule(headSource, root)?.stateLocation;
@@ -213,7 +214,8 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   for (const r of roots) {
     if (r.varFile) evaluatedInputs.add(r.varFile);
     for (const [src, dir] of [[headSource, r.root], [baseSource, r.movedFrom ?? r.root]] as const) {
-      for (const f of src.listFiles(dir)) if (AUTO_LOADED.test(f)) evaluatedInputs.add(path.posix.join(dir, f));
+      // A linked tfvars file may be shared with other roots, so only a plain one counts as evaluated.
+      for (const f of src.listFiles(dir)) if (AUTO_LOADED.test(f) && !src.linkTarget(path.posix.join(dir, f))) evaluatedInputs.add(path.posix.join(dir, f));
     }
     if (r.varFile && r.movedFrom) evaluatedInputs.add(path.posix.join(r.movedFrom, path.posix.relative(r.root, r.varFile)));
     if (r.baseVarFile) evaluatedInputs.add(r.baseVarFile);

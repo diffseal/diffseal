@@ -470,10 +470,11 @@ function nullSemantics(type: string, key: string, rawBefore: unknown, rawAfter: 
     was ??= fallback;
     now ??= fallback;
   }
+  // Only an argument left out (or null) keeps the state value on an Optional and Computed argument; ""
+  // is configured, and may be a change from whatever the provider computed.
+  if (facts.optionalComputed.has(key) && after === '' && before !== '') return 'possible';
   if (was === null && now === null) return 'same';
   if (facts.optionalComputed.has(key)) {
-    // Only an argument left out (or null) keeps the state value; "" is configured, and may be a change.
-    if (after === '' && before !== '') return 'possible';
     if (now === null) return sdk ? 'same' : 'possible';
     if (was === null) return 'possible';
   }

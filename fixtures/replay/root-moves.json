@@ -465,6 +465,32 @@
      ]
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 8: a root that takes over a deleted root's bucket and key keeps its deletions proven, whatever its other backend arguments",
+   "base": {
+    "old/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"s\"\n    key    = \"app\"\n  }\n}\n",
+    "old/db.tf": "resource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"postgres\"\n}\n",
+    "other/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"s\"\n    key    = \"other\"\n  }\n}\n",
+    "other/q.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n}\n"
+   },
+   "head": {
+    "other/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"s\"\n    key    = \"app\"\n    use_lockfile = true\n  }\n}\n",
+    "other/q.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "old: aws_db_instance.main",
+      "action": "delete",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
   }
  ]
 }
