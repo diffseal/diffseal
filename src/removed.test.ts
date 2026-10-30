@@ -27,7 +27,7 @@ test('the Action fails mode: app with one clear line and writes no report', () =
 }, 30_000);
 
 test('the CLI fails check-app with one clear line', () => {
-  for (const args of [['check-app', '--app', '.', '--worktree'], ['check-app'], ['--app', '.', 'check-app']]) {
+  for (const args of [['check-app', '--app', '.', '--worktree'], ['check-app'], ['--app', '.', 'check-app'], ['--worktree', 'check-app']]) {
     const r = spawnSync('bun', [path.join(root, 'src/cli.ts'), ...args], { cwd: root, encoding: 'utf8' });
     expect(r.status).toBe(1);
     expect(r.stderr.trim().split('\n')).toEqual(['check-app was removed in the next release; Diffseal reviews Terraform only']);

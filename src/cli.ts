@@ -214,23 +214,25 @@ function serializable(r: ReplayResult) {
 /** Printed when a removed command is used, so an old script fails with one clear line. */
 const CHECK_APP_REMOVED = 'check-app was removed in the next release; Diffseal reviews Terraform only';
 
+const COMMANDS = new Set(['review', 'replay', 'evidence', 'verify', 'modules', 'demo']);
+
 export async function main(argv: string[]): Promise<number> {
-  if (argv[0] === 'check-app') {
-    console.error(CHECK_APP_REMOVED);
-    return 1;
-  }
-  let args: Args;
+  let args: Args | undefined;
   try {
     args = parseArgs(argv);
   } catch (e) {
-    console.error((e as Error).message);
-    return 1;
+    if (!argv.includes('check-app')) {
+      console.error((e as Error).message);
+      return 1;
+    }
   }
-  const cmd = args._[0];
-  if (cmd === 'check-app') {
+  // An old check-app call, also when one of its flags came first and took the command as its value.
+  if (argv.includes('check-app') && !COMMANDS.has(args?._[0] ?? '')) {
     console.error(CHECK_APP_REMOVED);
     return 1;
   }
+  if (!args) return 1;
+  const cmd = args._[0];
   if (args.flags.has('--version') || args.flags.has('-v')) {
     console.log(VERSION);
     return 0;
