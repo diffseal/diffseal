@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+Accuracy fixes from a measurement on 675 commits of 9 public Terraform repositories; `docs/STATUS.md` has the numbers.
+
+### Changed
+
+- A change to the `source` or `version` of a registry or git module that is not in the offline cache, or the removal of such a module call, raises the gate to REVIEW. The line names the module address, the old and new source or version, and the roots that use it. A change to an external module's `count` or `for_each`, and any change to a call of a local module that cannot be read, is reviewed too.
+- Before comparing an argument, replay applies what `null` means to the provider: absent and `null` are the same, `null` takes the provider's default, a value going to `null` on an Optional and Computed argument keeps the state value, and `null` becoming a value there is a possible change (`likely`), not a proven one. In SDKv2 resources `""` is `null` for a string without a default. The facts come from the provider source at the catalogue's commit; `aws-replace.json` now records Optional and Computed arguments, literal defaults and which resources use the plugin framework.
+- A Terraform root directory that a change moves is compared with its old directory, found by a matching literal state location (backend or cloud block) or by at least half of its files kept or renamed. The move is reviewed when the state location is not fixed in the configuration. A root directory that a change deletes lists its resources as `likely` deletions and says they are destroyed only if someone runs `terraform destroy` against its state; it no longer blocks as if they were destroyed. A root whose state another root takes over in the change keeps its deletions proven, and a root whose bucket and key change is reviewed.
+- Var-files in a root directory or in directories below it that hold no Terraform are evaluated with that root, once per var-file present at both commits, in addition to the evaluation without var-files, so a proven replacement through a var-file blocks. A changed var-file still raises a coverage REVIEW that says it was evaluated only in part, because which roots load it, and with which other var-files, is set outside the configuration. A tfvars file no root was evaluated with, a var-file value its root does not declare, and a changed `terragrunt.hcl` keep the coverage REVIEW, now naming the file and the variables it changes. Terragrunt is still not read.
+- An inline role, user or group policy, or a managed policy, that grants nothing its previous version did not (same owner, same policy language version, no Deny removed) does not introduce `iam.least-privilege` issues, even when its statement ids change.
+- A deleted security group, role or other identity resource reads "whatever still refers to it fails" instead of describing a replacement.
+
+### Fixed
+
+- Symbolic links in the repository are followed at the replayed commit, through linked files and directories and one path component at a time, instead of being parsed as their link text. A change to a link's target, or to any link on the way to it, replays every root that reads through it. A link that leaves the repository or points at nothing is not followed and is reported.
+- Reports, JSON output and change records name a root replayed with a var-file, a moved root and a deleted root as such.
+
 ## 0.6.0-beta, 2026-10-30
 
 ### Removed

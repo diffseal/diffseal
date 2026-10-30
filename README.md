@@ -49,14 +49,15 @@ Exit codes: `0` pass, `1` error, `2` the gate failed.
 
 `replay` reads git objects only (`ls-tree`, `cat-file`, `diff`). It never checks out, writes to, or sends anything from the repository, and it refuses to write reports inside it. For each commit it:
 
-- finds the Terraform roots whose module tree the commit touches
-- evaluates each root at both commits: local modules, variables, locals, `count`, `for_each`, `dynamic` blocks and policy documents
-- compares the two, honouring `moved`, `removed` and `import` blocks
+- finds the Terraform roots whose module tree the commit touches, following symbolic links that stay inside the repository
+- evaluates each root at both commits: local modules, variables, locals, `count`, `for_each`, `dynamic` blocks and policy documents, and again once per var-file found in or below the root
+- compares the two, honouring `moved`, `removed` and `import` blocks, and what `null` means for each provider argument (absent, provider default, or kept from state)
+- compares a root that moved to a new directory with its old directory, and reviews a deleted root directory instead of treating it as destroyed
 - classifies replacements using a catalogue of the arguments that force a new resource, extracted from the AWS provider's source (`scripts/extract-forcenew.ts`, stamped with the provider commit)
 
 Replay also writes a change record per commit (`records/<sha>.json`, schema `diffseal.change-record/v1`): what changed, the gate, the findings with the controls they relate to, and, with `--approvals`, who approved the change. `summary.csv` is the change population an auditor samples from, and `MANIFEST.sha256` covers every file written. The approvals file maps commit to approvals. You can export it read-only with the GitHub CLI; Diffseal itself makes no network calls.
 
-Without state or provider calls, some values are only known after apply. Diffseal reports changes that depend on them as `likely` rather than `proven`. Data sources resolve to references, not values. Diffseal shows registry and git modules as module calls whose inputs changed, because their source is not available offline.
+Without state or provider calls, some values are only known after apply. Diffseal reports changes that depend on them as `likely` rather than `proven`. Data sources resolve to references, not values. Diffseal shows registry and git modules as module calls whose inputs changed, because their source is not available offline; a change to their `source` or `version`, or removing one, is reviewed.
 
 ## Policy checks
 
