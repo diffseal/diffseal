@@ -39,7 +39,12 @@ export interface RootReplay {
   deleted?: boolean;
   /** The var-file (environment) this replay of the root was evaluated with. */
   varFile?: string;
+  /** The base's var-file for this environment, when git renamed it. */
+  baseVarFile?: string;
 }
+
+/** actionReason of the resources of an environment whose var-file the change deleted. */
+export const DELETED_VAR_FILE_REASON = 'its var-file is deleted; it is destroyed only if someone runs terraform destroy with that var-file';
 
 /** actionReason of the resources of a root whose directory the change deleted. */
 export const DELETED_ROOT_REASON = 'its root directory is deleted; it is destroyed only if someone runs terraform destroy against that state';
@@ -94,36 +99,74 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     const movedFrom = new Map([...moves].map(([from, m]) => [m.to, { ...m, from }]));
     const candidates = new Set([...headRoots, ...baseRoots]);
     const allRoots = new Set([...headRoots, ...baseRoots]);
+    const renamedTo = new Map(changed.filter((c) => c.status === 'R' && c.oldPath).map((c) => [c.oldPath!, c.path]));
+    /**
+     * The environments of a root: each var-file at the head paired with its var-file at the base (same
+     * path, or renamed by git). Adding the first var-file, or removing the last, pairs it with the root
+     * evaluated without one, so what the configuration itself changes is never hidden behind a "new" or
+     * "deleted" environment. Without var-files on either side, one evaluation without any.
+     */
+    const environments = (root: string, baseRoot: string, rootsSet: Set<string>) => {
+      const headFiles = varFilesOf(headSource, root, rootsSet);
+      const baseFiles = varFilesOf(baseSource, baseRoot, rootsSet);
+      const rootAtBase = Boolean(loadModule(baseSource, baseRoot));
+      const rootAtHead = Boolean(loadModule(headSource, root));
+      type Env = { headFile?: string; baseFile?: string; headMissing?: boolean; baseMissing?: boolean };
+      if (!headFiles.length && !baseFiles.length) return [{}] as Env[];
+      const out: Env[] = [];
+      const paired = new Set<string>();
+      for (const h of headFiles) {
+        const same = path.posix.join(baseRoot, path.posix.relative(root, h));
+        const b = baseFiles.includes(same) ? same : baseFiles.find((x) => renamedTo.get(x) === h);
+        if (b) {
+          paired.add(b);
+          out.push({ headFile: h, baseFile: b });
+        } else if (!baseFiles.length && rootAtBase) out.push({ headFile: h });
+        else out.push({ headFile: h, baseMissing: true });
+      }
+      for (const b of baseFiles) {
+        if (paired.has(b)) continue;
+        if (!headFiles.length && rootAtHead) out.push({ baseFile: b });
+        else out.push({ baseFile: b, headMissing: true });
+      }
+      return out.sort((x, y) => (x.headFile ?? x.baseFile ?? '').localeCompare(y.headFile ?? y.baseFile ?? ''));
+    };
     for (const root of [...candidates].sort()) {
       if (moves.has(root)) continue; // replayed under the directory it moved to
       const move = movedFrom.get(root);
       const baseRoot = move?.from ?? root;
       const closure = new Set([...moduleClosure(headSource, root), ...moduleClosure(baseSource, baseRoot)]);
       const touchesConfig = moduleLockChanged || [...changedDirs].some((d) => closure.has(d));
-      // Environments: var-files below the root, by their path inside it. Without any, one evaluation.
-      const envs = new Set([...varFilesOf(headSource, root, allRoots).map((f) => path.posix.relative(root, f)), ...varFilesOf(baseSource, baseRoot, allRoots).map((f) => path.posix.relative(baseRoot, f))]);
       const rootDeleted = !move && baseRoots.includes(root) && !loadModule(headSource, root);
       let deletedResources = 0;
-      for (const env of envs.size ? [...envs].sort() : [undefined]) {
-        const headFile = env !== undefined && headSource.blobId(path.posix.join(root, env)) ? path.posix.join(root, env) : undefined;
-        const baseFile = env !== undefined && baseSource.blobId(path.posix.join(baseRoot, env)) ? path.posix.join(baseRoot, env) : undefined;
+      for (const env of environments(root, baseRoot, allRoots)) {
+        const { headFile, baseFile } = env;
         const touchesEnv = touchesConfig || [headFile, baseFile].some((f) => f !== undefined && touchedPaths.has(f));
         if (!touchesEnv && !(dataChanged.length && readsFiles(closure, headSource, baseSource))) continue;
-        // A var-file that is new at the head is a new environment: nothing of it exists yet.
-        const baseEval = env !== undefined && !baseFile ? undefined : evaluateRoot(baseSource, baseRoot, {}, baseFile ? [baseFile] : []);
-        const headEval = env !== undefined && !headFile ? undefined : evaluateRoot(headSource, root, {}, headFile ? [headFile] : []);
+        // A var-file new at the head with nothing to pair it with is a new environment: nothing of it exists yet.
+        const baseEval = env.baseMissing ? undefined : evaluateRoot(baseSource, baseRoot, {}, baseFile ? [baseFile] : []);
+        const headEval = env.headMissing ? undefined : evaluateRoot(headSource, root, {}, headFile ? [headFile] : []);
         if (!touchesEnv && !dataChanged.some((p) => headEval?.readFiles.has(p) || baseEval?.readFiles.has(p))) continue;
         // An evaluation with no instances still carries removed, moved and prevent_destroy blocks.
         const changes = compareEvaluations(baseEval, headEval);
+        // Terraform refuses a var-file that does not parse; values that fell back to defaults prove nothing.
+        const brokenVarFile = [headFile, baseFile].find((f) => f && [...(headEval?.diagnostics ?? []), ...(baseEval?.diagnostics ?? [])].some((d) => d.startsWith(`${f}:`)));
+        if (brokenVarFile) {
+          for (const c of changes) {
+            if (c.action === 'no-op' || c.confidence !== 'proven') continue;
+            c.confidence = 'likely';
+            c.actionReason = `${brokenVarFile} does not parse, so its values were not read`;
+          }
+        }
         // A deleted root directory, or a deleted environment's var-file, plans nothing: the state is left
         // behind, and its resources are destroyed only if someone runs destroy against it. Possible
         // deletions, reviewed.
-        const envDeleted = env !== undefined && !headFile && Boolean(baseFile);
+        const envDeleted = Boolean(env.headMissing && baseFile);
         if (rootDeleted || envDeleted) {
           for (const c of changes) {
             if (c.action !== 'delete') continue;
             c.confidence = 'likely';
-            c.actionReason = DELETED_ROOT_REASON;
+            c.actionReason = rootDeleted ? DELETED_ROOT_REASON : DELETED_VAR_FILE_REASON;
             if (c.mode === 'managed') deletedResources++;
           }
           if (envDeleted && !rootDeleted) {
@@ -131,17 +174,19 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
           }
         }
         // Exceptions are judged on the date of the change, so replaying history reproduces its gate.
+        const varFile = headFile ?? baseFile;
         roots.push({
           root,
           changes,
           result: analyze(changes, { policy, now: opts.now ?? new Date(commit.date) }),
-          diagnostics: (headEval ?? baseEval)?.diagnostics ?? [],
+          diagnostics: [...new Set([...(headEval?.diagnostics ?? []), ...(baseEval && !headEval ? baseEval.diagnostics : [])])],
           ...(move ? { movedFrom: move.from } : {}),
           ...(rootDeleted ? { deleted: true } : {}),
-          ...(env !== undefined ? { varFile: headFile ?? baseFile } : {}),
+          ...(varFile ? { varFile } : {}),
+          ...(env.baseFile && env.baseFile !== varFile ? { baseVarFile: env.baseFile } : {}),
         });
       }
-      if (rootDeleted && roots.some((r) => r.root === root)) {
+      if (rootDeleted && deletedResources) {
         const n = deletedResources;
         rootItems.push({ kind: 'coverage', level: 'review', text: `Root ${root} is deleted with ${n} resource${n === 1 ? '' : 's'} in its configuration. Deleting the directory destroys nothing by itself: they are destroyed only if someone runs terraform destroy against its state, and otherwise stay in AWS without Terraform managing them; confirm which is intended` });
       }
@@ -169,6 +214,7 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
       for (const f of src.listFiles(dir)) if (AUTO_LOADED.test(f)) evaluatedInputs.add(path.posix.join(dir, f));
     }
     if (r.varFile && r.movedFrom) evaluatedInputs.add(path.posix.join(r.movedFrom, path.posix.relative(r.root, r.varFile)));
+    if (r.baseVarFile) evaluatedInputs.add(r.baseVarFile);
   }
   const inputPaths = [...new Set(changed.flatMap((c) => [c.path, c.oldPath]).filter((p): p is string => Boolean(p)))];
   const terragrunt = inputPaths.filter((p) => /(^|\/)terragrunt\.hcl$/.test(p));
@@ -254,6 +300,8 @@ export function varFilesOf(source: GitSource, root: string, roots: Set<string>):
     if (!f.startsWith(prefix) || !/\.tfvars(\.json)?$/.test(f)) return false;
     const rel = f.slice(prefix.length);
     const parts = rel.split('/');
+    // The repository root only gets its own files: directories below it may serve any root.
+    if (root === '.' && parts.length > 1) return false;
     if (parts.length === 1 && AUTO_LOADED.test(rel)) return false;
     if (parts.some((p) => /^backends?$/i.test(p)) || /backend/i.test(parts[parts.length - 1])) return false;
     if (parts.some((p) => p === '.terraform' || p === 'node_modules')) return false;
@@ -319,7 +367,7 @@ export function externalModuleItems(roots: RootReplay[]): GateItem[] {
       const was = { source: c.before?.source, version: c.before?.version };
       const now = { source: c.after?.source, version: c.after?.version };
       if (c.action === 'delete') {
-        if (c.actionReason === DELETED_ROOT_REASON) continue; // said once for the whole root
+        if (c.actionReason === DELETED_ROOT_REASON || c.actionReason === DELETED_VAR_FILE_REASON) continue; // said once for the whole root or environment
         add(['removed', c.address, was.source, was.version], root, (where) =>
           `External module ${quoted(was.source)}${was.version ? ` (version ${was.version})` : ''} is removed (${c.address} in ${where}): every resource it manages is destroyed, and Diffseal cannot list them offline; review a plan`);
         continue;
@@ -347,7 +395,9 @@ export function externalModuleItems(roots: RootReplay[]): GateItem[] {
 /**
  * Root directories the change moved: a base root whose directory has no configuration at the head,
  * paired with a new head root that has the same literal state location, or failing that, keeps at
- * least half of its files (identical, or renamed by git). Each new root is paired at most once.
+ * least half of its files (identical, or renamed by git) including one that declares resources, data
+ * sources or module calls. Files identical in several base roots (shared provider or version files)
+ * are not evidence. Pairs are ranked across all roots, best first, and each root is paired at most once.
  */
 function movedRoots(base: GitSource, head: GitSource, baseRoots: string[], headRoots: string[], changed: ChangedPath[]) {
   const out = new Map<string, { to: string; sameState: boolean; matched: number; total: number }>();
@@ -355,29 +405,40 @@ function movedRoots(base: GitSource, head: GitSource, baseRoots: string[], headR
   const fresh = headRoots.filter((r) => !loadModule(base, r));
   if (!gone.length || !fresh.length) return out;
   const renamed = new Map(changed.filter((c) => c.status === 'R' && c.oldPath).map((c) => [c.oldPath!, c.path]));
-  const taken = new Set<string>();
+  const blobRoots = new Map<string, Set<string>>();
+  for (const r of baseRoots) {
+    for (const name of loadModule(base, r)?.files ?? []) {
+      const blob = base.blobId(`${r}/${name}`);
+      if (blob) blobRoots.set(blob, new Set([...(blobRoots.get(blob) ?? []), r]));
+    }
+  }
+  const pairs: Array<{ from: string; to: string; sameState: boolean; matched: number; total: number; score: number }> = [];
   for (const g of gone) {
     const bm = loadModule(base, g)!;
-    let best: { to: string; sameState: boolean; matched: number; total: number; score: number } | undefined;
+    const declaring = new Set([...bm.resources.values(), ...bm.data.values(), ...bm.moduleCalls.values()].map((x) => x.file));
     for (const f of fresh) {
-      if (taken.has(f)) continue;
       const hm = loadModule(head, f)!;
       const sameState = Boolean(bm.stateLocation) && bm.stateLocation === hm.stateLocation;
-      const matched = bm.files.filter((name) => {
+      const kept = bm.files.filter((name) => {
         const was = `${g}/${name}`;
         const blob = base.blobId(was);
-        if (blob && hm.files.some((n) => head.blobId(`${f}/${n}`) === blob)) return true;
+        if (blob && (blobRoots.get(blob)?.size ?? 0) <= 1 && hm.files.some((n) => head.blobId(`${f}/${n}`) === blob)) return true;
         const to = renamed.get(was);
         return to !== undefined && path.posix.dirname(to) === f;
-      }).length;
+      });
+      const matched = kept.length;
       const total = Math.max(bm.files.length, hm.files.length);
       const score = sameState ? 2 : matched / total;
-      if (!sameState && score < 0.5) continue;
-      if (!best || score > best.score) best = { to: f, sameState, matched, total, score };
+      if (!sameState && (score < 0.5 || !kept.some((name) => declaring.has(`${g}/${name}`)))) continue;
+      pairs.push({ from: g, to: f, sameState, matched, total, score });
     }
-    if (!best) continue;
-    taken.add(best.to);
-    out.set(g, { to: best.to, sameState: best.sameState, matched: best.matched, total: best.total });
+  }
+  pairs.sort((x, y) => y.score - x.score || x.from.localeCompare(y.from) || x.to.localeCompare(y.to));
+  const taken = new Set<string>();
+  for (const p of pairs) {
+    if (out.has(p.from) || taken.has(p.to)) continue;
+    taken.add(p.to);
+    out.set(p.from, { to: p.to, sameState: p.sameState, matched: p.matched, total: p.total });
   }
   return out;
 }
@@ -431,7 +492,7 @@ export function shortRootLabels(roots: string[]): Record<string, string> {
  */
 export function combineRoots(roots: RootReplay[]): AnalysisResult {
   // A root replayed per environment is labelled by its var-file's name too.
-  const name = (r: RootReplay) => (r.varFile ? `${r.root}/${path.posix.basename(r.varFile)}` : r.root);
+  const name = (r: RootReplay) => (r.varFile ? `${r.root}/${path.posix.relative(r.root, r.varFile)}` : r.root);
   const labels = shortRootLabels(roots.map(name));
   const label = (root: string, r: string) => (labels[root] ? `${labels[root]}: ${r}` : r);
   const gate: Gate = { result: 'pass', reasons: [], items: [] };

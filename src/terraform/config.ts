@@ -266,17 +266,24 @@ const STATE_KEYS: Record<string, string[]> = {
  * path is relative to the directory).
  */
 function stateLocation(b: Block): string | undefined {
+  // Terraform Cloud and Enterprise: the same organization and workspace on another host is another state.
+  const hostname = () => {
+    const h = attr(b.body, 'hostname');
+    return h ? literalString(h.expr) : 'app.terraform.io';
+  };
   if (b.type === 'cloud') {
     const org = literalString(attr(b.body, 'organization')?.expr);
     const name = literalString(b.body.blocks.find((x) => x.type === 'workspaces')?.body.attributes.find((a) => a.name === 'name')?.expr);
-    return org && name ? JSON.stringify(['cloud', org, name]) : undefined;
+    const host = hostname();
+    return org && name && host ? JSON.stringify(['remote', host, org, name]) : undefined;
   }
   if (b.type !== 'backend') return undefined;
   const type = b.labels[0];
   if (type === 'remote') {
     const org = literalString(attr(b.body, 'organization')?.expr);
     const name = literalString(b.body.blocks.find((x) => x.type === 'workspaces')?.body.attributes.find((a) => a.name === 'name')?.expr);
-    return org && name ? JSON.stringify(['remote', org, name]) : undefined;
+    const host = hostname();
+    return org && name && host ? JSON.stringify(['remote', host, org, name]) : undefined;
   }
   const keys = type ? STATE_KEYS[type] : undefined;
   if (!keys) return undefined;
@@ -313,10 +320,19 @@ export function discoverRoots(source: FileSource, under?: string): string[] {
   const called = new Set<string>();
   for (const f of all) {
     if (skip(f) || !isConfigFile(f)) continue;
-    for (const call of loadModule(source, path.posix.dirname(f))?.moduleCalls.values() ?? []) if (call.localDir) called.add(call.localDir);
+    for (const call of loadModule(source, path.posix.dirname(f))?.moduleCalls.values() ?? []) {
+      if (!call.localDir) continue;
+      called.add(call.localDir);
+      // A module reached through a linked directory is the directory the link points at.
+      const targets = new Set((loadModule(source, call.localDir)?.files ?? []).map((n) => source.linkTarget?.(`${call.localDir}/${n}`)).map((t) => (t ? path.posix.dirname(t) : undefined)));
+      const [only] = [...targets];
+      if (targets.size === 1 && only) called.add(only);
+    }
     // Configuration linked into another directory is part of that directory, not a root of its own.
+    // Only a directory that holds nothing of its own (no backend, resources or module calls) is demoted.
     const target = source.linkTarget?.(f);
-    if (target) called.add(path.posix.dirname(target));
+    const shared = target ? loadModule(source, path.posix.dirname(target)) : undefined;
+    if (target && shared && !shared.hasBackend && !shared.resources.size && !shared.moduleCalls.size) called.add(shared.dir);
   }
   return [...dirs]
     .filter((d) => {

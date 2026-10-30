@@ -197,6 +197,71 @@
      "result": "review"
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review: linking a file of another root into a root keeps that other root a root",
+   "base": {
+    "staging/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type    = string\n  default = \"jobs\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n",
+    "prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"p\" {\n  name = var.queue_name\n}\n"
+   },
+   "head": {
+    "staging/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type    = string\n  default = \"jobs\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"jobs-v2\"\n}\n",
+    "prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"p\" {\n  name = var.queue_name\n}\n"
+   },
+   "baseLinks": {
+    "prod/variables.tf": "../staging/main.tf"
+   },
+   "headLinks": {
+    "prod/variables.tf": "../staging/main.tf"
+   },
+   "expect": {
+    "reasonsNotContain": [
+     "outside every analyzed root"
+    ],
+    "changes": [
+     {
+      "address": "staging: aws_sqs_queue.q",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review: a shared variables file linked into a root without a backend does not hide the target root's own resources",
+   "base": {
+    "a/main.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n",
+    "a/inputs.tf": "variable \"queue_name\" {\n  type    = string\n  default = \"jobs\"\n}\n",
+    "b/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"b\" {\n  name = var.queue_name\n}\n"
+   },
+   "head": {
+    "a/main.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"jobs-v2\"\n}\n",
+    "a/inputs.tf": "variable \"queue_name\" {\n  type    = string\n  default = \"jobs\"\n}\n",
+    "b/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"b\" {\n  name = var.queue_name\n}\n"
+   },
+   "baseLinks": {
+    "b/inputs.tf": "../a/inputs.tf"
+   },
+   "headLinks": {
+    "b/inputs.tf": "../a/inputs.tf"
+   },
+   "expect": {
+    "reasonsNotContain": [
+     "outside every analyzed root"
+    ],
+    "changes": [
+     {
+      "address": "aws_sqs_queue.q",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
   }
  ]
 }

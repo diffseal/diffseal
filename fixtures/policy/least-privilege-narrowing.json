@@ -119,6 +119,46 @@
      "result": "review"
     }
    }
+  },
+  {
+   "kind": "terraform",
+   "name": "review: a statement whose Effect is not known statically is never taken as a Deny or as covered",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"effect\" {\n  type = string\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Effect = \"Allow\", Action = \"s3:*\", Resource = \"arn:aws:s3:::b/*\" }]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"effect\" {\n  type = string\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"arn:aws:s3:::b/*\" }, { Effect = var.effect, Action = \"iam:*\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "expect": {
+    "gate": {
+     "resultNot": "pass"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "review: turning a Deny into an Effect not known statically is not a kept Deny",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"effect\" {\n  type = string\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"All\", Effect = \"Allow\", Action = \"s3:*\", Resource = \"arn:aws:s3:::*\" }, { Effect = \"Deny\", Action = \"s3:DeleteBucket\", Resource = \"arn:aws:s3:::*\" }]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"effect\" {\n  type = string\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"Put\", Effect = \"Allow\", Action = \"s3:PutObject\", Resource = \"arn:aws:s3:::*/*\" }, { Effect = var.effect, Action = \"s3:DeleteBucket\", Resource = \"arn:aws:s3:::*\" }]\n  })\n}\n"
+   },
+   "expect": {
+    "findings": [
+     {
+      "ruleId": "iam.least-privilege",
+      "resource": "aws_iam_policy.p",
+      "status": "FAIL",
+      "preExisting": null
+     }
+    ],
+    "gate": {
+     "result": "review"
+    }
+   }
   }
  ]
 }

@@ -85,7 +85,7 @@ export function evaluateRoot(source: FileSource, rootDir: string, rootVars: Reco
   if (!cfg) return result;
   result.accounts = [...new Set(cfg.providerAccounts)];
 
-  const fromFiles = (evidence: boolean) => Object.assign({}, ...varFiles.map((f) => readVarFile(source, f, evidence))) as Record<string, unknown>;
+  const fromFiles = (evidence: boolean) => Object.assign({}, ...varFiles.map((f) => readVarFile(source, f, evidence, evidence ? undefined : result.diagnostics))) as Record<string, unknown>;
   const vars = { ...readTfvars(source, root), ...fromFiles(false), ...rootVars };
   const inputs = new Map<string, () => unknown>(Object.entries(vars).map(([k, v]) => [k, () => v]));
   const top = new ModuleInstance(source, cfg, '', '', inputs, new Map(), root, 0, result.readFiles);
@@ -112,18 +112,22 @@ function readTfvars(source: FileSource, root: string, configurationEvidence = fa
 }
 
 /** The variables a tfvars file sets. An unreadable file leaves its variables unset (unknown), never guessed. */
-export function readVarFile(source: FileSource, file: string, configurationEvidence = false): Record<string, unknown> {
+export function readVarFile(source: FileSource, file: string, configurationEvidence = false, diagnostics?: string[]): Record<string, unknown> {
   const text = source.readFile(file) ?? '';
   if (file.endsWith('.json')) {
     try {
       const parsed = JSON.parse(text);
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-    } catch {
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+      diagnostics?.push(`${file}:1: a JSON var-file must hold an object`);
+      return {};
+    } catch (e) {
+      diagnostics?.push(`${file}:1: ${(e as Error).message}`);
       return {};
     }
   }
   const out: Record<string, unknown> = {};
-  const { body } = parseHcl(text);
+  const { body, diagnostics: parsed } = parseHcl(text, file);
+  for (const d of parsed) diagnostics?.push(`${file}:${d.range.start.line}: ${d.message}`);
   for (const a of body.attributes) out[a.name] = toPlain(evaluate(a.expr, { root: () => undefined, configurationEvidence }));
   return out;
 }

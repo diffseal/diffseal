@@ -260,6 +260,114 @@
      "new group"
     ]
    }
+  },
+  {
+   "kind": "replay",
+   "name": "a deleted root and an unrelated new root that share only boilerplate files are not a move",
+   "base": {
+    "old/backend.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "old/providers.tf": "provider \"aws\" {\n  region = \"eu-west-1\"\n}\n",
+    "old/versions.tf": "terraform {\n  required_providers {\n    aws = {\n      source = \"hashicorp/aws\"\n    }\n  }\n}\n",
+    "old/main.tf": "resource \"aws_secretsmanager_secret\" \"s\" {\n  name                    = \"old\"\n  recovery_window_in_days = 0\n}\n"
+   },
+   "head": {
+    "new/backend.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "new/providers.tf": "provider \"aws\" {\n  region = \"eu-west-1\"\n}\n",
+    "new/versions.tf": "terraform {\n  required_providers {\n    aws = {\n      source = \"hashicorp/aws\"\n    }\n  }\n}\n",
+    "new/main.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"fresh\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "new",
+     "old"
+    ],
+    "changes": [
+     {
+      "address": "old: aws_secretsmanager_secret.s",
+      "action": "delete",
+      "confidence": "likely"
+     }
+    ],
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "Root old is deleted"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review: move pairing ranks every pair, so a root is paired with the directory it really moved to",
+   "base": {
+    "stacks/api/backend.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "stacks/api/providers.tf": "provider \"aws\" {\n  region = \"eu-west-1\"\n}\n",
+    "stacks/api/main.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"api\"\n}\n",
+    "stacks/app/backend.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "stacks/app/providers.tf": "provider \"aws\" {\n  region = \"eu-west-1\"\n}\n",
+    "stacks/app/main.tf": "resource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"postgres\"\n}\n",
+    "stacks/app/versions.tf": "terraform {\n  required_providers {\n    aws = {\n      source = \"hashicorp/aws\"\n    }\n  }\n}\n"
+   },
+   "head": {
+    "stacks/api/backend.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "stacks/api/providers.tf": "provider \"aws\" {\n  region = \"eu-west-1\"\n}\n",
+    "stacks/api/main.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"api\"\n}\n",
+    "live/app/backend.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "live/app/providers.tf": "provider \"aws\" {\n  region = \"eu-west-1\"\n}\n",
+    "live/app/main.tf": "resource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"mysql\"\n}\n",
+    "live/app/versions.tf": "terraform {\n  required_providers {\n    aws = {\n      source = \"hashicorp/aws\"\n    }\n  }\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "live/app"
+    ],
+    "changes": [
+     {
+      "address": "aws_db_instance.main",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review: a root deleted with nothing in it adds no review line",
+   "base": {
+    "x/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  a = 1\n}\noutput \"a\" {\n  value = local.a\n}\n",
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"a\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"a\"\n}\n"
+   },
+   "expect": {
+    "reasonsNotContain": [
+     "Root x is deleted"
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review: a cloud block on another hostname is another state, even with the same organization and workspace",
+   "base": {
+    "old/main.tf": "terraform {\n  cloud {\n    hostname     = \"tfe-a.example.com\"\n    organization = \"org\"\n    workspaces {\n      name = \"svc\"\n    }\n  }\n}\n",
+    "old/q.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"a\"\n}\n"
+   },
+   "head": {
+    "new/main.tf": "terraform {\n  cloud {\n    hostname     = \"tfe-b.example.com\"\n    organization = \"org\"\n    workspaces {\n      name = \"svc\"\n    }\n  }\n}\n",
+    "new/q.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"a\"\n}\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "state"
+     ]
+    }
+   }
   }
  ]
 }

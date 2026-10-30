@@ -89,13 +89,15 @@ export function grantsWithin(before: unknown, after: unknown): boolean {
   if (b.kind !== 'ok' || a.kind !== 'ok') return false;
   const plain = (st: Statement) => st.NotAction === undefined && st.NotResource === undefined && st.NotPrincipal === undefined;
   if (![...b.statements, ...a.statements].every(plain)) return false;
+  // An Effect not known statically could be either; nothing about such a statement is certain.
+  if (![...b.statements, ...a.statements].every((st) => st.Effect === undefined || st.Effect === 'Allow' || st.Effect === 'Deny')) return false;
   // A value partly known at plan time stands for every value its pattern allows: each unknown part is a
   // wildcard. That only widens the new grants, so a containment found with it holds for the real value.
   const strings = (v: unknown, widen: boolean): string[] | undefined => {
     const xs = list(v).map((x) => (typeof x === 'string' ? x : widen && isUnknown(x) && x.pattern?.startsWith('arn:') ? x.pattern.replaceAll('{?}', '*') : undefined));
     return xs.every((x) => x !== undefined) ? (xs as string[]) : undefined;
   };
-  const allow = (st: Statement) => String(st.Effect ?? 'Allow') === 'Allow';
+  const allow = (st: Statement) => (st.Effect ?? 'Allow') === 'Allow';
   const denyKey = (st: Statement) => stableKey([st.Action ?? null, st.Resource ?? null, st.Condition ?? null, st.Principal ?? null]);
   const kept = new Set(a.statements.filter((st) => !allow(st)).map(denyKey));
   if (b.statements.some((st) => !allow(st) && !kept.has(denyKey(st)))) return false;

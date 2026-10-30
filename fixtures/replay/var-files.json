@@ -211,6 +211,129 @@
      ]
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review: adding the first var-file to a root compares it with the root as it was, so a replacement in the same commit still blocks",
+   "base": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"postgres\"\n}\n"
+   },
+   "head": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"mysql\"\n}\n",
+    "app/envs/prod.tfvars": "x = 1\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_db_instance.main",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review: a var-file renamed in the same commit as a deletion is the same environment, so the deletion still blocks",
+   "base": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type    = string\n  default = \"jobs\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\nresource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"postgres\"\n}\n",
+    "app/prod.tfvars": "queue_name = \"jobs-prod\"\n"
+   },
+   "head": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type    = string\n  default = \"jobs\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n",
+    "app/envs/prod.tfvars": "queue_name = \"jobs-prod\"\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_db_instance.main",
+      "action": "delete",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review: a var-file that no longer parses is reviewed, not treated as evaluated",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type    = string\n  default = \"jobs\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n",
+    "r/envs/prod.tfvars": "queue_name = \"jobs-prod\"\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type    = string\n  default = \"jobs\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n",
+    "r/envs/prod.tfvars": "queue_name = [\n"
+   },
+   "expect": {
+    "noProvenDelete": true,
+    "changes": [
+     {
+      "address": "aws_sqs_queue.q",
+      "confidenceNot": "proven"
+     }
+    ],
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "r/envs/prod.tfvars"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review: environments with the same file name in different directories keep distinct labels",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type    = string\n  default = \"jobs\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n",
+    "r/east/prod.tfvars": "queue_name = \"east\"\n",
+    "r/west/prod.tfvars": "queue_name = \"west\"\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type    = string\n  default = \"jobs\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.queue_name}-dlq\"\n}\n",
+    "r/east/prod.tfvars": "queue_name = \"east\"\n",
+    "r/west/prod.tfvars": "queue_name = \"west\"\n"
+   },
+   "expect": {
+    "changedAddresses": [
+     "create east: aws_sqs_queue.dlq",
+     "create west: aws_sqs_queue.dlq"
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review: a deleted var-file of a root that still exists does not say the root directory is deleted",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type    = string\n  default = \"jobs\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n",
+    "r/envs/dev.tfvars": "queue_name = \"d\"\n",
+    "r/envs/prod.tfvars": "queue_name = \"p\"\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type    = string\n  default = \"jobs\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n",
+    "r/envs/dev.tfvars": "queue_name = \"d\"\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_sqs_queue.q",
+      "action": "delete",
+      "confidence": "likely",
+      "actionReasonContains": "var-file"
+     }
+    ],
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "Var-file r/envs/prod.tfvars of root r is deleted"
+     ]
+    }
+   }
   }
  ]
 }
