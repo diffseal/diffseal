@@ -388,6 +388,35 @@
      ]
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 4: a repository-root root moved into a directory is compared with its old files",
+   "base": {
+    "main.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "table.tf": "resource \"aws_dynamodb_table\" \"t\" {\n  name     = \"orders\"\n  hash_key = \"id\"\n}\n",
+    "README.md": "x"
+   },
+   "head": {
+    "infra/main.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "infra/table.tf": "resource \"aws_dynamodb_table\" \"t\" {\n  name     = \"orders-v2\"\n  hash_key = \"id\"\n}\n",
+    "README.md": "x"
+   },
+   "expect": {
+    "replayedRoots": [
+     "infra"
+    ],
+    "changes": [
+     {
+      "address": "aws_dynamodb_table.t",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
   }
  ]
 }

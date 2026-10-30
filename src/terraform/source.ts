@@ -135,6 +135,8 @@ export class GitSource implements FileSource {
 
   /** Link path (or a path under a linked directory) -> the repository path it resolves to. */
   private readonly linkTargets = new Map<string, string>();
+  /** Link path (or a path under a linked directory) -> the links its resolution passes through. */
+  private readonly linkVia = new Map<string, string[]>();
   /** Links that are not followed -> why. */
   private readonly refused = new Map<string, string>();
 
@@ -154,7 +156,8 @@ export class GitSource implements FileSource {
     const isDir = (d: string) => files.some((f) => f.startsWith(d + '/'));
     // Resolve a path one component at a time, as the operating system does: a link is followed where it
     // is met, before any later `..` applies. At most 16 links in all.
-    const resolve = (p: string): { path?: string; problem?: string } => {
+    const resolve = (p: string): { path?: string; problem?: string; via: string[] } => {
+      const via: string[] = [];
       const stack: string[] = [];
       const queue = p.split('/');
       let hops = 0;
@@ -162,19 +165,20 @@ export class GitSource implements FileSource {
         const c = queue.shift()!;
         if (c === '' || c === '.') continue;
         if (c === '..') {
-          if (!stack.length) return { problem: 'it leaves the repository' };
+          if (!stack.length) return { problem: 'it leaves the repository', via };
           stack.pop();
           continue;
         }
         stack.push(c);
         const target = text.get(stack.join('/'));
         if (target === undefined) continue;
-        if (++hops > 16) return { problem: 'it is a chain of more than 16 links' };
-        if (target.startsWith('/')) return { problem: 'it leaves the repository' };
+        via.push(stack.join('/'));
+        if (++hops > 16) return { problem: 'it is a chain of more than 16 links', via };
+        if (target.startsWith('/')) return { problem: 'it leaves the repository', via };
         stack.pop();
         queue.unshift(...target.split('/'));
       }
-      return { path: stack.join('/') || '.' };
+      return { path: stack.join('/') || '.', via };
     };
     // File links first, so a linked directory also shows the file links inside it.
     const resolved = new Map(paths.map((link) => [link, resolve(link)]));
@@ -190,6 +194,7 @@ export class GitSource implements FileSource {
       if (sha) {
         this.blobs.set(link, sha);
         this.linkTargets.set(link, this.linkTargets.get(r.path) ?? r.path);
+        this.linkVia.set(link, r.via);
         continue;
       }
       if (r.path === '.') this.refused.set(link, `${label}: it points at the repository root`);
@@ -209,6 +214,7 @@ export class GitSource implements FileSource {
         if (this.blobs.has(alias)) continue;
         this.blobs.set(alias, this.blobs.get(f)!);
         this.linkTargets.set(alias, this.linkTargets.get(f) ?? f);
+        this.linkVia.set(alias, [...(resolved.get(link)?.via ?? []), ...(this.linkVia.get(f) ?? [])]);
         added++;
       }
     }
@@ -224,7 +230,8 @@ export class GitSource implements FileSource {
 
   linksTo(p: string): string[] {
     const target = normalize(p);
-    return [...this.linkTargets].filter(([, t]) => t === target).map(([l]) => l);
+    // A path reads `target` when it resolves to it, or when its resolution passes through the link `target`.
+    return [...this.linkTargets].filter(([l, t]) => t === target || this.linkVia.get(l)?.includes(target)).map(([l]) => l);
   }
 
   /** Contents of blobs by id, in order, with one `git cat-file --batch` call. */

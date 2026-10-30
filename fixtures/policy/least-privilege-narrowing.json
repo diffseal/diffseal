@@ -159,6 +159,29 @@
      "result": "review"
     }
    }
+  },
+  {
+   "kind": "terraform",
+   "name": "review 4: a change of policy language version is never taken as granting nothing new",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = jsonencode({\n    Version   = \"2008-10-17\"\n    Statement = [{ Sid = \"Old\", Effect = \"Allow\", Action = \"s3:*\", Resource = \"arn:aws:s3:::*\" }]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"New\", Effect = \"Allow\", Action = \"s3:*\", Resource = \"arn:aws:s3:::*\" }]\n  })\n}\n"
+   },
+   "expect": {
+    "findings": [
+     {
+      "ruleId": "iam.least-privilege",
+      "resource": "aws_iam_policy.p",
+      "preExisting": null
+     }
+    ],
+    "gate": {
+     "result": "review"
+    }
+   }
   }
  ]
 }

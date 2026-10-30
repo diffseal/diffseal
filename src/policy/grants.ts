@@ -1,4 +1,4 @@
-import { isUnknown } from '../core/model.js';
+import { isUnknown, reveal } from '../core/model.js';
 import { stableKey } from '../hcl/eval.js';
 import { parsePolicy, type Statement } from './iam.js';
 
@@ -64,6 +64,18 @@ export function describeGrants(gs: Grant[], max = 4): string {
   return parts.slice(0, max).join('; ') + (parts.length > max ? `; and ${parts.length - max} more` : '');
 }
 
+function policyVersion(policy: unknown): unknown {
+  let doc: unknown = reveal(policy);
+  if (typeof doc === 'string') {
+    try {
+      doc = JSON.parse(doc);
+    } catch {
+      return undefined;
+    }
+  }
+  return doc && typeof doc === 'object' && !isUnknown(doc) ? stableKey((doc as { Version?: unknown }).Version ?? null) : undefined;
+}
+
 /**
  * True when a glob (IAM `*` and `?`) matches everything `inner` can match. Exact for a literal `inner`,
  * and for an `outer` whose only wildcard is a trailing `*`; anything else is answered false.
@@ -87,6 +99,8 @@ export function grantsWithin(before: unknown, after: unknown): boolean {
   const b = parsePolicy(before);
   const a = parsePolicy(after);
   if (b.kind !== 'ok' || a.kind !== 'ok') return false;
+  // Policy variables are substituted only from 2012-10-17 on, so the same text can grant something else.
+  if (policyVersion(before) !== policyVersion(after)) return false;
   const plain = (st: Statement) => st.NotAction === undefined && st.NotResource === undefined && st.NotPrincipal === undefined;
   if (![...b.statements, ...a.statements].every(plain)) return false;
   // An Effect not known statically could be either; nothing about such a statement is certain.

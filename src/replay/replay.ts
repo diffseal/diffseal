@@ -97,6 +97,13 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     .flatMap((c) => [c.path, c.oldPath])
     .filter((p): p is string => Boolean(p) && !TF_FILE.test(p!))
     .flatMap(aliases);
+  // Files read through a changed directory link changed too.
+  for (const c of changed) {
+    for (const p of [c.path, c.oldPath]) {
+      if (!p || headSource.blobId(p) || baseSource.blobId(p)) continue;
+      for (const src of [headSource, baseSource]) dataChanged.push(...src.allFiles().filter((f) => f.startsWith(p + '/') && !TF_FILE.test(f)));
+    }
+  }
   const roots: RootReplay[] = [];
   const rootItems: GateItem[] = [];
   const touchedPaths = new Set(changed.flatMap((c) => [c.path, c.oldPath]).filter((p): p is string => Boolean(p)).flatMap(aliases));
@@ -119,7 +126,7 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
       const baseFiles = varFilesOf(baseSource, baseRoot, rootsSet);
       const rootAtBase = Boolean(loadModule(baseSource, baseRoot));
       const rootAtHead = Boolean(loadModule(headSource, root));
-      type Env = { headFile?: string; baseFile?: string; headMissing?: boolean; baseMissing?: boolean };
+      type Env = { headFile?: string; baseFile?: string; headMissing?: boolean; baseMissing?: boolean; dropped?: boolean };
       if (!headFiles.length && !baseFiles.length) return [{}] as Env[];
       const out: Env[] = [];
       const paired = new Set<string>();
@@ -134,7 +141,7 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
       }
       for (const b of baseFiles) {
         if (paired.has(b)) continue;
-        if (!headFiles.length && rootAtHead) out.push({ baseFile: b });
+        if (!headFiles.length && rootAtHead) out.push({ baseFile: b, dropped: true });
         else out.push({ baseFile: b, headMissing: true });
       }
       return out.sort((x, y) => (x.headFile ?? x.baseFile ?? '').localeCompare(y.headFile ?? y.baseFile ?? ''));
@@ -169,7 +176,9 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
         // A deleted root directory, or a deleted environment's var-file, plans nothing: the state is left
         // behind, and its resources are destroyed only if someone runs destroy against it. Possible
         // deletions, reviewed.
-        const envDeleted = Boolean(env.headMissing && baseFile);
+        // The root's last var-file deleted: compared with the root without one, but what goes away may only
+        // have been the file's values.
+        const envDeleted = Boolean((env.headMissing || env.dropped) && baseFile);
         if (rootDeleted || envDeleted) {
           for (const c of changes) {
             if (c.action !== 'delete') continue;
@@ -438,7 +447,7 @@ function movedRoots(base: GitSource, head: GitSource, baseRoots: string[], headR
   const blobRoots = new Map<string, Set<string>>();
   for (const r of baseRoots) {
     for (const name of loadModule(base, r)?.files ?? []) {
-      const blob = base.blobId(`${r}/${name}`);
+      const blob = base.blobId(path.posix.join(r, name));
       if (blob) blobRoots.set(blob, new Set([...(blobRoots.get(blob) ?? []), r]));
     }
   }
@@ -450,16 +459,16 @@ function movedRoots(base: GitSource, head: GitSource, baseRoots: string[], headR
       const hm = loadModule(head, f)!;
       const sameState = Boolean(bm.stateLocation) && bm.stateLocation === hm.stateLocation;
       const kept = bm.files.filter((name) => {
-        const was = `${g}/${name}`;
+        const was = path.posix.join(g, name);
         const blob = base.blobId(was);
-        if (blob && (blobRoots.get(blob)?.size ?? 0) <= 1 && hm.files.some((n) => head.blobId(`${f}/${n}`) === blob)) return true;
+        if (blob && (blobRoots.get(blob)?.size ?? 0) <= 1 && hm.files.some((n) => head.blobId(path.posix.join(f, n)) === blob)) return true;
         const to = renamed.get(was);
         return to !== undefined && path.posix.dirname(to) === f;
       });
       const matched = kept.length;
       const total = Math.max(bm.files.length, hm.files.length);
       const score = sameState ? 2 : matched / total;
-      if (!sameState && (score < 0.5 || !kept.some((name) => declaring.has(`${g}/${name}`)))) continue;
+      if (!sameState && (score < 0.5 || !kept.some((name) => declaring.has(path.posix.join(g, name))))) continue;
       pairs.push({ from: g, to: f, sameState, matched, total, score });
     }
   }

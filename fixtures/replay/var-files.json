@@ -402,6 +402,25 @@
      ]
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 4: deleting a root's last var-file is reviewed, even when it only repeated the defaults",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type    = string\n  default = \"jobs\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n",
+    "r/envs/prod.tfvars": "queue_name = \"jobs\"\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type    = string\n  default = \"jobs\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "Var-file r/envs/prod.tfvars of root r is deleted"
+     ]
+    }
+   }
   }
  ]
 }

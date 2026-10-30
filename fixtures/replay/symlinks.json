@@ -471,6 +471,68 @@
      "result": "pass"
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 4: retargeting a directory link replays roots that read files through it",
+   "base": {
+    "policies/a/policy.json": "{\"Version\": \"2012-10-17\", \"Statement\": [{\"Effect\": \"Allow\", \"Action\": \"s3:GetObject\", \"Resource\": \"arn:aws:s3:::b/*\"}]}",
+    "policies/b/policy.json": "{\"Version\": \"2012-10-17\", \"Statement\": [{\"Effect\": \"Allow\", \"Action\": \"*\", \"Resource\": \"*\"}]}",
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = file(\"${path.module}/current/policy.json\")\n}\n"
+   },
+   "head": {
+    "policies/a/policy.json": "{\"Version\": \"2012-10-17\", \"Statement\": [{\"Effect\": \"Allow\", \"Action\": \"s3:GetObject\", \"Resource\": \"arn:aws:s3:::b/*\"}]}",
+    "policies/b/policy.json": "{\"Version\": \"2012-10-17\", \"Statement\": [{\"Effect\": \"Allow\", \"Action\": \"*\", \"Resource\": \"*\"}]}",
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = file(\"${path.module}/current/policy.json\")\n}\n"
+   },
+   "baseLinks": {
+    "r/current": "../policies/a"
+   },
+   "headLinks": {
+    "r/current": "../policies/b"
+   },
+   "expect": {
+    "changedAddresses": [
+     "update aws_iam_policy.p"
+    ],
+    "gate": {
+     "result": "review"
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review 4: retargeting a link in the middle of a chain replays the roots at the end of it",
+   "base": {
+    "old.txt": "resource \"aws_dynamodb_table\" \"t\" {\n  name     = \"orders\"\n  hash_key = \"id\"\n}\n",
+    "new.txt": "resource \"aws_dynamodb_table\" \"t\" {\n  name     = \"orders-v2\"\n  hash_key = \"id\"\n}\n",
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+   },
+   "head": {
+    "old.txt": "resource \"aws_dynamodb_table\" \"t\" {\n  name     = \"orders\"\n  hash_key = \"id\"\n}\n",
+    "new.txt": "resource \"aws_dynamodb_table\" \"t\" {\n  name     = \"orders-v2\"\n  hash_key = \"id\"\n}\n",
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+   },
+   "baseLinks": {
+    "shared/active.txt": "../old.txt",
+    "r/table.tf": "../shared/active.txt"
+   },
+   "headLinks": {
+    "shared/active.txt": "../new.txt",
+    "r/table.tf": "../shared/active.txt"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_dynamodb_table.t",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
   }
  ]
 }
