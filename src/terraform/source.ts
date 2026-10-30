@@ -157,7 +157,8 @@ export class GitSource implements FileSource {
     const texts = this.catBlobs(paths.map((p) => links.get(p)!));
     const text = new Map(paths.map((p, i) => [p, texts[i] ?? '']));
     const files = [...this.blobs.keys()];
-    const isDir = (d: string) => files.some((f) => f.startsWith(d + '/'));
+    // A directory may hold only links.
+    const isDir = (d: string) => files.some((f) => f.startsWith(d + '/')) || paths.some((l) => l.startsWith(d + '/'));
     // Resolve a path one component at a time, as the operating system does: a link is followed where it
     // is met, before any later `..` applies. At most 16 links in all.
     const resolve = (p: string): { path?: string; problem?: string; via: string[] } => {
@@ -214,6 +215,8 @@ export class GitSource implements FileSource {
         this.refused.set(link, `symbolic link to ${text.get(link)} is not followed: its directory holds too many files`);
         continue;
       }
+      // A link inside the target that is not followed is not followed under the alias either.
+      for (const [f, why] of [...this.refused]) if (f.startsWith(dir + '/') && !this.refused.has(link + f.slice(dir.length))) this.refused.set(link + f.slice(dir.length), why);
       for (const f of under) {
         const alias = link + f.slice(dir.length);
         if (this.blobs.has(alias)) continue;

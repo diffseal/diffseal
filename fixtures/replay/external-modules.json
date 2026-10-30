@@ -113,6 +113,25 @@
      }
     ]
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 6: passing null to an external module input is a change of its inputs, not provider null semantics",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"eks\" {\n  source  = \"terraform-aws-modules/eks/aws\"\n  version = \"~> 20.0\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"eks\" {\n  source  = \"terraform-aws-modules/eks/aws\"\n  version = \"~> 20.0\"\n  cluster_name = null\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "module.eks",
+      "action": "update",
+      "confidence": "unknown"
+     }
+    ]
+   }
   }
  ]
 }

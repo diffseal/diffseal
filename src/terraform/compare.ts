@@ -451,6 +451,8 @@ function diffInstance(b: StaticInstance, a: StaticInstance): ResourceChange {
  */
 function nullSemantics(type: string, key: string, rawBefore: unknown, rawAfter: unknown): 'same' | 'possible' | undefined {
   // A sensitive value is judged by what it holds; an unknown one, or one whose value is hidden, is not decided.
+  // Inputs of a module call are not provider arguments: null passed to a nullable variable is not its default.
+  if (type === 'terraform_module_call') return undefined;
   const before = reveal(rawBefore);
   const after = reveal(rawAfter);
   if (isUnknown(before) || isUnknown(after) || isRedacted(before) || isRedacted(after)) return undefined;

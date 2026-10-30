@@ -588,6 +588,64 @@
      ]
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 6: a linked directory that holds only links is still a directory",
+   "base": {
+    "shared/main.tf": "variable \"name\" {\n  type = string\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket        = var.name\n  force_destroy = true\n}\n",
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"m\" {\n  source = \"./lib\"\n  name   = \"logs\"\n}\n"
+   },
+   "head": {
+    "shared/main.tf": "variable \"name\" {\n  type = string\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket        = var.name\n  force_destroy = true\n}\n",
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"m\" {\n  source = \"./lib\"\n  name   = \"logs-v2\"\n}\n"
+   },
+   "baseLinks": {
+    "lib/main.tf": "../shared/main.tf",
+    "r/lib": "../lib"
+   },
+   "headLinks": {
+    "lib/main.tf": "../shared/main.tf",
+    "r/lib": "../lib"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "module.m.aws_s3_bucket.b",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review 6: a link that is not followed inside a linked directory is reported under the link's path too",
+   "base": {
+    "a/main.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n}\n",
+    "b/main.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n}\n",
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"m\" {\n  source = \"./lib\"\n}\n"
+   },
+   "head": {
+    "a/main.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n}\n",
+    "b/main.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n}\n",
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"m\" {\n  source = \"./lib\"\n}\n"
+   },
+   "baseLinks": {
+    "r/lib": "../a"
+   },
+   "headLinks": {
+    "r/lib": "../b",
+    "b/inputs.tf": "../missing/inputs.tf"
+   },
+   "expect": {
+    "gate": {
+     "result": "review"
+    }
+   }
   }
  ]
 }
