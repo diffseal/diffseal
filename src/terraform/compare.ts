@@ -472,6 +472,8 @@ function nullSemantics(type: string, key: string, rawBefore: unknown, rawAfter: 
   }
   if (was === null && now === null) return 'same';
   if (facts.optionalComputed.has(key)) {
+    // Only an argument left out (or null) keeps the state value; "" is configured, and may be a change.
+    if (after === '' && before !== '') return 'possible';
     if (now === null) return sdk ? 'same' : 'possible';
     if (was === null) return 'possible';
   }

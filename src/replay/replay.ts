@@ -5,6 +5,7 @@ import { addGateItem, type GateItem, type AnalysisResult, type Gate, type Policy
 import { compareEvaluations } from '../terraform/compare.js';
 import { discoverRoots, isConfigFile, loadModule, moduleClosure } from '../terraform/config.js';
 import { parseHcl } from '../hcl/parser.js';
+import { stableKey } from '../hcl/eval.js';
 import { evaluateRoot } from '../terraform/expand.js';
 import { GitSource, changedPaths, commitInfo, type ChangedPath, type CommitInfo } from '../terraform/source.js';
 import { CONFIG_FILE, LEGACY_CONFIG_FILE, readConfigFile } from '../configFile.js';
@@ -135,7 +136,16 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
       const baseRoot = move?.from ?? root;
       const closure = new Set([...moduleClosure(headSource, root), ...moduleClosure(baseSource, baseRoot)]);
       const touchesConfig = moduleLockChanged || [...changedDirs].some((d) => closure.has(d));
-      const rootDeleted = !move && baseRoots.includes(root) && !loadModule(headSource, root);
+      // A root whose state location another root at the head now uses is not just deleted code: applying
+      // that root plans against this state.
+      const location = loadModule(baseSource, baseRoot)?.stateLocation;
+      const adopted = location !== undefined && headRoots.some((h) => h !== root && loadModule(headSource, h)?.stateLocation === location);
+      const rootDeleted = !move && !adopted && baseRoots.includes(root) && !loadModule(headSource, root);
+      const was = loadModule(baseSource, baseRoot)?.stateLocation;
+      const now = loadModule(headSource, root)?.stateLocation;
+      if (!move && was !== undefined && now !== undefined && was !== now && touchesConfig) {
+        rootItems.push({ kind: 'coverage', level: 'review', text: `Root ${root} changes its state location. Terraform then plans against the other state, which this replay does not compare; confirm the state was moved, or what the other state holds` });
+      }
       let deletedResources = 0;
       for (const env of environments(root, baseRoot, allRoots)) {
         const { headFile, baseFile } = env;
@@ -396,6 +406,10 @@ export function externalModuleItems(roots: RootReplay[]): GateItem[] {
         add(['one-side', c.address, now.source, now.version], root, (where) =>
           `External module ${quoted(now.source)} can be read offline in only one of the two commits (${c.address} in ${where}), so what changes inside it is not known; review a plan`);
         continue;
+      }
+      if (['count', 'for_each'].some((k) => stableKey(c.before?.[k] ?? null) !== stableKey(c.after?.[k] ?? null))) {
+        add(['instances', c.address], root, (where) =>
+          `count or for_each of external module ${quoted(now.source)} changes (${c.address} in ${where}): instances of it may be added or destroyed, and Diffseal cannot list their resources offline; review a plan`);
       }
       const sourceChanged = (was.source ?? null) !== (now.source ?? null);
       const versionChanged = (was.version ?? null) !== (now.version ?? null);

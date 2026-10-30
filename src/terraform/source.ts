@@ -206,25 +206,41 @@ export class GitSource implements FileSource {
       else if (isDir(r.path)) dirLinks.push([link, r.path]);
       else this.refused.set(link, `${label}: its target is not in the repository at this commit`);
     }
-    const all = [...this.blobs.keys()];
+    // Directory links, repeated so a directory link inside a linked directory is expanded too.
     let added = 0;
-    for (const [link, dir] of dirLinks) this.dirLinks.set(link, dir);
-    for (const [link, dir] of dirLinks) {
-      const under = all.filter((f) => f.startsWith(dir + '/'));
-      if (added + under.length > 20_000) {
-        this.refused.set(link, `symbolic link to ${text.get(link)} is not followed: its directory holds too many files`);
-        continue;
+    const done = new Set<string>();
+    for (let pass = 0; pass < 4; pass++) {
+      const all = [...this.blobs.keys()];
+      const allRefused = [...this.refused];
+      let progressed = false;
+      // Directory links found under an alias made in an earlier pass.
+      const pending: Array<[string, string]> = [...dirLinks];
+      for (const [link, dir] of [...this.dirLinks]) {
+        for (const [inner, innerDir] of dirLinks) if (inner.startsWith(dir + '/')) pending.push([link + inner.slice(dir.length), innerDir]);
       }
-      // A link inside the target that is not followed is not followed under the alias either.
-      for (const [f, why] of [...this.refused]) if (f.startsWith(dir + '/') && !this.refused.has(link + f.slice(dir.length))) this.refused.set(link + f.slice(dir.length), why);
-      for (const f of under) {
-        const alias = link + f.slice(dir.length);
-        if (this.blobs.has(alias)) continue;
-        this.blobs.set(alias, this.blobs.get(f)!);
-        this.linkTargets.set(alias, this.linkTargets.get(f) ?? f);
-        this.linkVia.set(alias, [...(resolved.get(link)?.via ?? []), ...(this.linkVia.get(f) ?? [])]);
-        added++;
+      for (const [link, dir] of pending) {
+        if (done.has(link)) continue;
+        const under = all.filter((f) => f.startsWith(dir + '/'));
+        if (added + under.length > 20_000) {
+          this.refused.set(link, `symbolic link to ${text.get(link) ?? dir} is not followed: its directory holds too many files`);
+          done.add(link);
+          continue;
+        }
+        done.add(link);
+        this.dirLinks.set(link, dir);
+        progressed = true;
+        // A link inside the target that is not followed is not followed under the alias either.
+        for (const [f, why] of allRefused) if (f.startsWith(dir + '/') && !this.refused.has(link + f.slice(dir.length))) this.refused.set(link + f.slice(dir.length), why);
+        for (const f of under) {
+          const alias = link + f.slice(dir.length);
+          if (this.blobs.has(alias)) continue;
+          this.blobs.set(alias, this.blobs.get(f)!);
+          this.linkTargets.set(alias, this.linkTargets.get(f) ?? f);
+          this.linkVia.set(alias, [...(resolved.get(link)?.via ?? [link]), ...(this.linkVia.get(f) ?? [])]);
+          added++;
+        }
       }
+      if (!progressed) break;
     }
   }
 

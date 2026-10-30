@@ -131,7 +131,7 @@ export async function evidencePack(opts: EvidenceOptions): Promise<EvidenceResul
         result: replay.combined,
         approvals,
         engine: { version: VERSION, replaceCatalog: REPLACE_CATALOG_SOURCE },
-        diagnostics: replay.roots.flatMap((r) => r.diagnostics),
+        diagnostics: [...new Set(replay.roots.flatMap((r) => r.diagnostics))],
       });
       emit(`records/${sha}.json`, json(record));
       records++;

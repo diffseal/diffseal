@@ -158,7 +158,7 @@ async function runReplay(args: Args): Promise<number> {
       result: r.combined,
       approvals: approvals.get(r.commit.sha) ?? approvals.get(name),
       engine: { version: VERSION, replaceCatalog: REPLACE_CATALOG_SOURCE },
-      diagnostics: r.roots.flatMap((x) => x.diagnostics),
+      diagnostics: [...new Set(r.roots.flatMap((x) => x.diagnostics))],
     });
     emit(`records/${r.commit.sha}.json`, json(record));
     rows.push(csvRow(r));

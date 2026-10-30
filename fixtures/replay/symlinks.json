@@ -646,6 +646,40 @@
      "result": "review"
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 7: a directory link inside a linked directory is followed too",
+   "base": {
+    "R/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"r\"\n  }\n}\nmodule \"app\" {\n  source = \"./app\"\n}\n",
+    "stacks/app/main.tf": "module \"db\" {\n  source = \"./db\"\n}\n",
+    "modules/db/main.tf": "resource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"postgres\"\n}\n"
+   },
+   "head": {
+    "R/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"r\"\n  }\n}\nmodule \"app\" {\n  source = \"./app\"\n}\n",
+    "stacks/app/main.tf": "module \"db\" {\n  source = \"./db\"\n}\n",
+    "modules/db/main.tf": "resource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"mysql\"\n}\n"
+   },
+   "baseLinks": {
+    "R/app": "../stacks/app",
+    "stacks/app/db": "../../modules/db"
+   },
+   "headLinks": {
+    "R/app": "../stacks/app",
+    "stacks/app/db": "../../modules/db"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "module.app.module.db.aws_db_instance.main",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
   }
  ]
 }

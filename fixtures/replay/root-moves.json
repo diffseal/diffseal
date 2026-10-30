@@ -436,6 +436,35 @@
      "resultNot": "pass"
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 7: a deleted root whose state another root now uses is not just deleted code",
+   "base": {
+    "A/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"a\"\n  }\n}\n",
+    "A/db.tf": "resource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"postgres\"\n}\n",
+    "E/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"e\"\n  }\n}\n",
+    "E/q.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n}\n"
+   },
+   "head": {
+    "E/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"a\"\n  }\n}\n",
+    "E/q.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "A: aws_db_instance.main",
+      "action": "delete",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block",
+     "reasonsContain": [
+      "Root E changes its state location"
+     ]
+    }
+   }
   }
  ]
 }

@@ -11,7 +11,7 @@ export function renderReplay(r: ReplayResult, opts: { commit?: boolean } = {}): 
   // Only facts about this change: which commits were compared, and the roots when the resource names do not say.
   const notes = [`Compared \`${r.base.slice(0, 9)}\` with \`${r.head.slice(0, 9)}\`.`];
   if (r.roots.length > 1 || r.roots.some((x) => x.movedFrom || x.deleted)) notes.push(`Roots: ${rootNames(r.roots).join(', ')}.`);
-  const diagnostics = r.roots.flatMap((x) => x.diagnostics);
+  const diagnostics = [...new Set(r.roots.flatMap((x) => x.diagnostics))];
   if (diagnostics.length) notes.push(`HCL diagnostics: ${diagnostics.slice(0, 3).join('; ')}${diagnostics.length > 3 ? ' ...' : ''}`);
   const c = r.commit;
   return renderMarkdown(r.combined, {
@@ -39,7 +39,7 @@ export function csvRow(r: ReplayResult): string[] {
     String(c.findings.filter((f) => f.status === 'FAIL' && !f.preExisting).length),
     String(c.findings.filter((f) => f.status === 'WARN' && !f.preExisting).length),
     c.cost.fixedMonthlyDeltaUsd.toFixed(2),
-    r.roots.map((x) => x.root).join(' '),
+    rootNames(r.roots).join(' '),
   ];
 }
 

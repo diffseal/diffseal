@@ -132,6 +132,24 @@
      }
     ]
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 7: changing count of an external module is reviewed: its instances may be destroyed",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"vpc\" {\n  source  = \"terraform-aws-modules/vpc/aws\"\n  version = \"~> 5.0\"\n  count = 1\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"vpc\" {\n  source  = \"terraform-aws-modules/vpc/aws\"\n  version = \"~> 5.0\"\n  count = 0\n}\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "module.vpc"
+     ]
+    }
+   }
   }
  ]
 }
