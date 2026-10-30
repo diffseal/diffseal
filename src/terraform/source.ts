@@ -179,7 +179,11 @@ export class GitSource implements FileSource {
         }
         stack.push(c);
         const target = text.get(stack.join('/'));
-        if (target === undefined) continue;
+        if (target === undefined) {
+          // A component with more to come must be a directory, as the operating system requires.
+          if (queue.some((x) => x !== '' && x !== '.') && !isDir(stack.join('/'))) return { problem: 'its target is not in the repository at this commit', via };
+          continue;
+        }
         via.push(stack.join('/'));
         if (++hops > 16) return { problem: 'it is a chain of more than 16 links', via };
         if (target.startsWith('/')) return { problem: 'it leaves the repository', via };

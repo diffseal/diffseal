@@ -347,8 +347,10 @@ export function discoverRoots(source: FileSource, under?: string): string[] {
   }
   return [...dirs]
     .filter((d) => {
-      // A directory seen through a directory link is its target's directory, not a root of its own.
-      if (source.linkedDir?.(d) !== undefined) return false;
+      // A directory below a directory link is its target's directory, not a root of its own; the link
+      // itself (`live/prod -> ../stacks/v1`) can be a root, and retargeting it changes what it plans.
+      const real = source.linkedDir?.(d);
+      if (real !== undefined && source.linkedDir?.(path.posix.dirname(d)) !== undefined) return false;
       const mod = loadModule(source, d);
       if (!mod) return false;
       if (mod.hasBackend || terragrunt.has(d)) return true;

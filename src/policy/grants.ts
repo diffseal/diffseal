@@ -80,7 +80,11 @@ function policyVersion(policy: unknown): unknown {
  * True when a glob (IAM `*` and `?`) matches everything `inner` can match. Exact for a literal `inner`,
  * and for an `outer` whose only wildcard is a trailing `*`; anything else is answered false.
  */
-function covers(outer: string, inner: string, caseless: boolean): boolean {
+function covers(outer: string, innerRaw: string, caseless: boolean): boolean {
+  // An IAM policy variable (`${aws:username}`) is a value at request time: in the new grant it can be
+  // anything, and an old grant that holds one covers only the identical text.
+  if (outer.includes('${')) return outer === innerRaw;
+  const inner = innerRaw.replace(/\$\{[^}]*\}/g, '*');
   const o = caseless ? outer.toLowerCase() : outer;
   const i = caseless ? inner.toLowerCase() : inner;
   if (o === i || o === '*') return true;

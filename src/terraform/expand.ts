@@ -125,14 +125,16 @@ export function readVarFile(source: FileSource, file: string, configurationEvide
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
       diagnostics?.push(`${file}:1: a JSON var-file must hold an object`);
       return {};
-    } catch (e) {
-      diagnostics?.push(`${file}:1: ${(e as Error).message}`);
+    } catch {
+      // The parser's message can quote the file, and a var-file may hold secrets.
+      diagnostics?.push(`${file}:1: the var-file is not valid JSON`);
       return {};
     }
   }
   const out: Record<string, unknown> = {};
   const { body, diagnostics: parsed } = parseHcl(text, file);
-  for (const d of parsed) diagnostics?.push(`${file}:${d.range.start.line}: ${d.message}`);
+  // Content-free: a var-file may hold secrets, and parser messages can quote the text.
+  for (const d of parsed) diagnostics?.push(`${file}:${d.range.start.line}: the var-file does not parse here`);
   for (const a of body.attributes) out[a.name] = toPlain(evaluate(a.expr, { root: () => undefined, configurationEvidence }));
   return out;
 }

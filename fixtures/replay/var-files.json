@@ -483,6 +483,29 @@
      "result": "block"
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 11: a var-file that does not parse never quotes its text",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"password\" {\n  type      = string\n  sensitive = true\n}\n",
+    "r/envs/prod.tfvars.json": "{\"password\":\"a\"}"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"password\" {\n  type      = string\n  sensitive = true\n}\n",
+    "r/envs/prod.tfvars.json": "{\"password\":hunter2}"
+   },
+   "expect": {
+    "gate": {
+     "result": "review"
+    },
+    "forbiddenSubstrings": [
+     "hunter2"
+    ],
+    "reasonsNotContain": [
+     "hunter2"
+    ]
+   }
   }
  ]
 }

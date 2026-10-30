@@ -707,7 +707,7 @@
    "expect": {
     "changes": [
      {
-      "address": "module.m.aws_db_instance.main",
+      "address": "r: module.m.aws_db_instance.main",
       "action": "replace",
       "confidence": "proven"
      }
@@ -834,7 +834,7 @@
    "expect": {
     "changes": [
      {
-      "address": "module.db.aws_db_instance.main",
+      "address": "app: module.db.aws_db_instance.main",
       "action": "replace",
       "confidence": "proven"
      }
@@ -909,6 +909,59 @@
     "replayedRoots": [
      "modules/m2"
     ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review 11: retargeting a directory link that is a root replays it",
+   "base": {
+    "stacks/v1/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"postgres\"\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"b\"\n}\n",
+    "stacks/v2/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"b\"\n}\n"
+   },
+   "head": {
+    "stacks/v1/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"postgres\"\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"b\"\n}\n",
+    "stacks/v2/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"b\"\n}\n"
+   },
+   "baseLinks": {
+    "live/prod": "../stacks/v1"
+   },
+   "headLinks": {
+    "live/prod": "../stacks/v2"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_db_instance.main",
+      "action": "delete",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review 11: a link through a directory that does not exist is not followed",
+   "base": {
+    "shared/config.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n}\n",
+    "live/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+   },
+   "head": {
+    "shared/config.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n}\n",
+    "live/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+   },
+   "baseLinks": {
+    "live/q.tf": "../shared/config.tf"
+   },
+   "headLinks": {
+    "live/q.tf": "../shared/nonexistent/../config.tf"
+   },
+   "expect": {
+    "gate": {
+     "resultNot": "pass"
+    }
    }
   }
  ]
