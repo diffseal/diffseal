@@ -1,0 +1,118 @@
+{
+ "suite": "replay/external-modules",
+ "description": "External modules Diffseal cannot read offline: a change to their source or version, or their removal, is reviewed and never passed.",
+ "cases": [
+  {
+   "kind": "replay",
+   "name": "a registry module version bump is reviewed, naming the module, both versions and every root (source case: terraform-aws-eks-blueprints ce2d1e58f, EKS module 19 to 20 in 35 roots)",
+   "base": {
+    "envs/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"eks\" {\n  source  = \"terraform-aws-modules/eks/aws\"\n  version = \"~> 19.21\"\n  cluster_name = \"c\"\n}\n",
+    "envs/staging/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"eks\" {\n  source  = \"terraform-aws-modules/eks/aws\"\n  version = \"~> 19.21\"\n  cluster_name = \"c\"\n}\n"
+   },
+   "head": {
+    "envs/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"eks\" {\n  source  = \"terraform-aws-modules/eks/aws\"\n  version = \"~> 20.0\"\n  cluster_name = \"c\"\n}\n",
+    "envs/staging/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"eks\" {\n  source  = \"terraform-aws-modules/eks/aws\"\n  version = \"~> 20.0\"\n  cluster_name = \"c\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "envs/prod",
+     "envs/staging"
+    ],
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "terraform-aws-modules/eks/aws",
+      "~> 19.21",
+      "~> 20.0",
+      "envs/prod",
+      "envs/staging",
+      "module.eks"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a git module ref bump is reviewed, naming the old and new source (source case: terraform-aws-rds-aurora 959228c5f, VPC module to v5)",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"net\" {\n  source = \"git::https://example.com/org/network.git?ref=v1.2.0\"\n  cidr   = \"10.0.0.0/16\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"net\" {\n  source = \"git::https://example.com/org/network.git?ref=v1.3.0\"\n  cidr   = \"10.0.0.0/16\"\n}\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "git::https://example.com/org/network.git?ref=v1.2.0",
+      "git::https://example.com/org/network.git?ref=v1.3.0",
+      "module.net"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "adding a version to an unversioned registry module is reviewed",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"eks\" {\n  source = \"terraform-aws-modules/eks/aws\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"eks\" {\n  source  = \"terraform-aws-modules/eks/aws\"\n  version = \"20.1.0\"\n  cluster_name = \"c\"\n}\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "terraform-aws-modules/eks/aws",
+      "20.1.0"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "removing an external module call is reviewed: its resources are destroyed and cannot be listed offline",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"eks\" {\n  source  = \"terraform-aws-modules/eks/aws\"\n  version = \"~> 20.0\"\n  cluster_name = \"c\"\n}\n",
+    "r/queue.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "r/queue.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n}\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "terraform-aws-modules/eks/aws",
+      "removed",
+      "module.eks"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "changing only the inputs of an external module keeps today's gate (an unknown update)",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"eks\" {\n  source  = \"terraform-aws-modules/eks/aws\"\n  version = \"~> 20.0\"\n  cluster_name = \"c\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"eks\" {\n  source  = \"terraform-aws-modules/eks/aws\"\n  version = \"~> 20.0\"\n  cluster_name = \"c\"\n  enable_irsa = true\n}\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "pass"
+    },
+    "changes": [
+     {
+      "address": "module.eks",
+      "action": "update",
+      "confidence": "unknown"
+     }
+    ]
+   }
+  }
+ ]
+}

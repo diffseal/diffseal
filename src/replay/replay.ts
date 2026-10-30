@@ -103,6 +103,12 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     .filter((p): p is string => Boolean(p))
     .filter((p) => /(^|\/)terragrunt\.hcl$/.test(p) || (/\.tfvars(\.json)?$/.test(p) && !(autoLoaded.test(p) && evaluatedRoots.has(path.posix.dirname(p)))));
   const combined = combineRoots(roots);
+  // An external module Diffseal cannot read offline: a new source or version can replace or delete
+  // anything inside it, so the change is reviewed, never passed.
+  for (const item of externalModuleItems(roots)) {
+    if (combined.gate.result === 'pass') combined.gate.result = 'review';
+    addGateItem(combined.gate, item);
+  }
   if (moduleLockChanged && roots.some((root) => root.changes.some((change) => change.type === 'terraform_module_call'))) {
     if (combined.gate.result === 'pass') combined.gate.result = 'review';
     addGateItem(combined.gate, { kind: 'coverage', level: 'review', text: 'Module lock changed while module source remains unavailable offline; review the dependency change' });
@@ -137,6 +143,52 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     headSource,
     baseSource,
   };
+}
+
+const listRoots = (roots: string[]) => (roots.length > 5 ? `${roots.slice(0, 5).join(', ')} and ${roots.length - 5} more` : roots.join(', '));
+const quoted = (v: unknown) => (typeof v === 'string' && v !== '' ? v : '(none)');
+
+/**
+ * Gate items for external module calls (registry or git sources not in the offline module cache)
+ * whose source or version changes, that are removed, or that only one commit can read. One item per
+ * module address and change, naming every root that has it.
+ */
+export function externalModuleItems(roots: RootReplay[]): GateItem[] {
+  const groups = new Map<string, { roots: string[]; text: (where: string) => string }>();
+  const add = (key: unknown[], root: string, text: (where: string) => string) => {
+    const k = JSON.stringify(key);
+    const g = groups.get(k) ?? { roots: [], text };
+    if (!g.roots.includes(root)) g.roots.push(root);
+    groups.set(k, g);
+  };
+  for (const { root, changes } of roots) {
+    for (const c of changes) {
+      if (c.type !== 'terraform_module_call' || c.mode !== 'managed') continue;
+      const was = { source: c.before?.source, version: c.before?.version };
+      const now = { source: c.after?.source, version: c.after?.version };
+      if (c.action === 'delete') {
+        add(['removed', c.address, was.source, was.version], root, (where) =>
+          `External module ${quoted(was.source)}${was.version ? ` (version ${was.version})` : ''} is removed (${c.address} in ${where}): every resource it manages is destroyed, and Diffseal cannot list them offline; review a plan`);
+        continue;
+      }
+      if (c.action !== 'update' && c.action !== 'move') continue;
+      if (c.actionReason?.startsWith('Module source is available in only one snapshot')) {
+        add(['one-side', c.address, now.source, now.version], root, (where) =>
+          `External module ${quoted(now.source)} can be read offline in only one of the two commits (${c.address} in ${where}), so what changes inside it is not known; review a plan`);
+        continue;
+      }
+      const sourceChanged = (was.source ?? null) !== (now.source ?? null);
+      const versionChanged = (was.version ?? null) !== (now.version ?? null);
+      if (!sourceChanged && !versionChanged) continue;
+      const parts = [
+        ...(sourceChanged ? [`source from ${quoted(was.source)} to ${quoted(now.source)}`] : []),
+        ...(versionChanged ? [`version from ${quoted(was.version)} to ${quoted(now.version)}`] : []),
+      ];
+      add(['bump', c.address, was.source, was.version, now.source, now.version], root, (where) =>
+        `External module ${sourceChanged ? '' : `${quoted(now.source)} `}changes ${parts.join(' and ')} (${c.address} in ${where}). Diffseal cannot read it offline, so what it replaces or deletes is not known; read the module's release notes or a plan, or run diffseal modules fetch to look inside`);
+    }
+  }
+  return [...groups.values()].map((g) => ({ kind: 'coverage', level: 'review', text: g.text(listRoots(g.roots)) }));
 }
 
 function parsePolicyFile(text: string | undefined): PolicyConfig {

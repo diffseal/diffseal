@@ -6,7 +6,7 @@ In the TypeScript implementation, `src/testing/fixtures.test.ts` loads every `.j
 
 ## Case Kinds
 
-Every case has a `kind` field with one of two values:
+Every case has a `kind` field with one of three values:
 
 1. `"terraform"`
    - Inputs:
@@ -35,3 +35,13 @@ Every case has a `kind` field with one of two values:
      - `now` (optional): ISO date string.
    - Expected outputs (`expect`):
      - Same `AnalysisExpectation` fields as `"terraform"` (`changedAddresses`, `changes`, `findings`, `noFindingFor`, `blast`, `cost`, `gate`, `forbiddenSubstrings`).
+
+3. `"replay"`
+   - Inputs:
+     - `base`, `head`: whole snapshots of a repository (file path to contents). The runner commits the base, replaces the tree with the head, commits it, and replays the head commit as `diffseal replay` does, with an empty module cache.
+     - `baseLinks`, `headLinks` (optional): symbolic links in each snapshot (link path to link text).
+   - Expected outputs (`expect`):
+     - The `AnalysisExpectation` fields, checked against the combined result of every replayed root. With more than one root, change addresses carry a root label.
+     - `replayedRoots`: the roots replayed, in order.
+     - `rootDiagnostics`: every diagnostic of every replayed root.
+     - `reasonsNotContain`: substrings no gate reason may contain.

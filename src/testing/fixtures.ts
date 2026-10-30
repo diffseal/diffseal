@@ -6,6 +6,11 @@ import { compareEvaluations } from '../terraform/compare.js';
 import { discoverRoots } from '../terraform/config.js';
 import { evaluateRoot } from '../terraform/expand.js';
 import { MemorySource } from '../terraform/source.js';
+import { replayCommit } from '../replay/replay.js';
+import { spawnSync } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
 export interface ChangeExpectation {
   address: string;
@@ -91,7 +96,29 @@ export interface PlanFixtureCase {
   expect: AnalysisExpectation;
 }
 
-export type FixtureCase = TerraformFixtureCase | PlanFixtureCase;
+/**
+ * A commit replayed from a git repository: `base` and `head` are whole snapshots of the repository
+ * (path -> contents), `baseLinks` and `headLinks` symbolic links (path -> link text). The base is
+ * committed first, then the tree is replaced by the head and committed, and the head is replayed.
+ */
+export interface ReplayFixtureCase {
+  kind: 'replay';
+  name: string;
+  base: Record<string, string>;
+  head: Record<string, string>;
+  baseLinks?: Record<string, string>;
+  headLinks?: Record<string, string>;
+  expect: AnalysisExpectation & {
+    /** Roots replayed, in order. */
+    replayedRoots?: string[];
+    /** Every diagnostic of every replayed root. */
+    rootDiagnostics?: string[];
+    /** Substrings no gate reason may contain. */
+    reasonsNotContain?: string[];
+  };
+}
+
+export type FixtureCase = TerraformFixtureCase | PlanFixtureCase | ReplayFixtureCase;
 
 export interface FixtureSuite {
   suite: string;
@@ -253,6 +280,43 @@ export async function runFixtureCase(tc: FixtureCase): Promise<void> {
       ...(baseEval ? [JSON.stringify(baseEval.instances.map((i) => i.attrs))] : []),
     ];
     checkAnalysisExpectations(changes, result, tc.expect, extraPrinted);
+    return;
+  }
+
+  if (tc.kind === 'replay') {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'diffseal-fixture-'));
+    const git = (...args: string[]) => {
+      const r = spawnSync('git', ['-C', dir, '-c', 'user.email=t@t', '-c', 'user.name=t', '-c', 'commit.gpgsign=false', '-c', 'core.symlinks=true', ...args], { encoding: 'utf8' });
+      if (r.status !== 0) throw new Error(`git ${args[0]}: ${r.stderr}`);
+    };
+    const snapshot = (files: Record<string, string>, links: Record<string, string> = {}, msg: string) => {
+      for (const entry of fs.readdirSync(dir)) if (entry !== '.git') fs.rmSync(path.join(dir, entry), { recursive: true, force: true });
+      for (const [f, c] of Object.entries(files)) {
+        fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true });
+        fs.writeFileSync(path.join(dir, f), c);
+      }
+      for (const [f, target] of Object.entries(links)) {
+        fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true });
+        fs.symlinkSync(target, path.join(dir, f));
+      }
+      git('add', '-A');
+      git('commit', '-q', '--allow-empty', '-m', msg);
+    };
+    try {
+      git('init', '-q');
+      snapshot(tc.base, tc.baseLinks, 'base');
+      snapshot(tc.head, tc.headLinks, 'head');
+      const r = await replayCommit({ repo: dir, head: 'HEAD', moduleCache: path.join(dir, '.no-module-cache') });
+      if (tc.expect.replayedRoots !== undefined) expect(r.roots.map((x) => x.root)).toEqual(tc.expect.replayedRoots);
+      if (tc.expect.rootDiagnostics !== undefined) expect(r.roots.flatMap((x) => x.diagnostics)).toEqual(tc.expect.rootDiagnostics);
+      if (tc.expect.reasonsNotContain) {
+        const joined = r.combined.gate.reasons.join(' ');
+        for (const s of tc.expect.reasonsNotContain) expect(joined).not.toContain(s);
+      }
+      checkAnalysisExpectations(r.combined.changes, r.combined, tc.expect);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
     return;
   }
 
