@@ -109,6 +109,11 @@ export function loadModule(source: FileSource, dir: string): ModuleConfig | unde
   for (const file of [...files.filter((f) => !isOverride(f)), ...files.filter(isOverride)]) {
     if (file.endsWith('.tf') && tofuStems.has(file.slice(0, -3))) continue;
     const rel = path.posix.join(d, file);
+    const problem = source.linkProblem?.(rel);
+    if (problem) {
+      const at = { offset: 0, line: 1, col: 1 };
+      mod.diagnostics.push({ message: problem, range: { start: at, end: at }, file: rel });
+    }
     const src = source.readFile(rel) ?? '';
     mod.sources.set(rel, src);
     const { body, diagnostics } = file.endsWith('.json') ? parseJsonConfig(src, rel) : parseHcl(src, rel);
@@ -263,6 +268,9 @@ export function discoverRoots(source: FileSource, under?: string): string[] {
   for (const f of all) {
     if (skip(f) || !isConfigFile(f)) continue;
     for (const call of loadModule(source, path.posix.dirname(f))?.moduleCalls.values() ?? []) if (call.localDir) called.add(call.localDir);
+    // Configuration linked into another directory is part of that directory, not a root of its own.
+    const target = source.linkTarget?.(f);
+    if (target) called.add(path.posix.dirname(target));
   }
   return [...dirs]
     .filter((d) => {

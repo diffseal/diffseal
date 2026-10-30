@@ -58,7 +58,9 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   const changed = changedPaths(opts.repo, baseSource.sha, headSource.sha);
   const moduleLockChanged = readModuleLock(headSource) !== readModuleLock(baseSource);
   const tfChanged = changed.filter((c) => TF_FILE.test(c.path) || (c.oldPath && TF_FILE.test(c.oldPath)));
-  const changedDirs = new Set(tfChanged.flatMap((c) => [c.path, c.oldPath].filter((p): p is string => Boolean(p)).map((p) => path.posix.dirname(p))));
+  // A changed file is also changed wherever a symbolic link inside the repository makes it appear.
+  const aliases = (p: string) => [...new Set([p, ...headSource.linksTo(p), ...baseSource.linksTo(p)])];
+  const changedDirs = new Set(tfChanged.flatMap((c) => [c.path, c.oldPath].filter((p): p is string => Boolean(p)).flatMap(aliases).map((p) => path.posix.dirname(p))));
 
   // Policy and exceptions come from the base commit: a change must not be able to accept its own findings.
   const policyFileAtBase = opts.policyFile ? parsePolicyFile(baseSource.readFile(opts.policyFile)) : {};
@@ -70,7 +72,8 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   // (user_data = file("bootstrap.py")). Which roots read them is known only by evaluating.
   const dataChanged = changed
     .flatMap((c) => [c.path, c.oldPath])
-    .filter((p): p is string => Boolean(p) && !TF_FILE.test(p!));
+    .filter((p): p is string => Boolean(p) && !TF_FILE.test(p!))
+    .flatMap(aliases);
   const roots: RootReplay[] = [];
   if (changedDirs.size || dataChanged.length || moduleLockChanged) {
     const candidates = new Set([...discoverRoots(headSource, opts.rootsUnder), ...discoverRoots(baseSource, opts.rootsUnder)]);
@@ -94,7 +97,7 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   const uncovered = tfChanged
     .flatMap((c) => [c.path, c.oldPath])
     .filter((p): p is string => Boolean(p) && /\.(tf|tofu|tf\.json)$/.test(p!))
-    .filter((p) => !covered.has(path.posix.dirname(p)));
+    .filter((p) => !aliases(p).some((a) => covered.has(path.posix.dirname(a))));
   // Inputs static replay does not evaluate: Terragrunt inputs, and tfvars passed with -var-file.
   const evaluatedRoots = new Set(roots.map((r) => r.root));
   const autoLoaded = /(^|\/)(terraform\.tfvars|[^/]*\.auto\.tfvars)(\.json)?$/;

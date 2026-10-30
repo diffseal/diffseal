@@ -17,6 +17,12 @@ export interface FileSource {
   listFiles(relDir: string): string[];
   /** Every file path in the snapshot. */
   allFiles(): string[];
+  /** Why a path that exists cannot be read (a symbolic link Diffseal does not follow). */
+  linkProblem?(relPath: string): string | undefined;
+  /** Paths of symbolic links (or files reached through a linked directory) that resolve to this path. */
+  linksTo?(relPath: string): string[];
+  /** The repository path a symbolic link (or a file reached through a linked directory) resolves to. */
+  linkTarget?(relPath: string): string | undefined;
 }
 
 export const normalize = (p: string) => path.posix.normalize(p).replace(/^\.\//, '').replace(/\/$/, '') || '.';
@@ -108,18 +114,127 @@ export class GitSource implements FileSource {
     this.sha = resolveCommit(repo, rev);
     this.label = `${rev}@${this.sha.slice(0, 9)}`;
     const out = git(repo, ['ls-tree', '-r', '-z', '--full-tree', this.sha]);
+    const links = new Map<string, string>();
     for (const entry of out.split('\0')) {
       if (!entry) continue;
       const tab = entry.indexOf('\t');
-      const [, type, sha] = entry.slice(0, tab).split(' ');
+      const [mode, type, sha] = entry.slice(0, tab).split(' ');
       if (type !== 'blob') continue;
       const p = entry.slice(tab + 1);
-      this.blobs.set(p, sha);
+      if (mode === '120000') links.set(p, sha);
+      else this.blobs.set(p, sha);
+    }
+    this.resolveLinks(links);
+    for (const p of [...this.blobs.keys(), ...this.refused.keys()]) {
       const d = path.posix.dirname(p);
       const list = this.dirs.get(d) ?? [];
       list.push(path.posix.basename(p));
       this.dirs.set(d, list);
     }
+  }
+
+  /** Link path (or a path under a linked directory) -> the repository path it resolves to. */
+  private readonly linkTargets = new Map<string, string>();
+  /** Links that are not followed -> why. */
+  private readonly refused = new Map<string, string>();
+
+  /**
+   * Symbolic links (git mode 120000) are followed the way a checkout would follow them, but only inside
+   * the repository: the target path is resolved against the link's directory, through further links,
+   * and must name a file or directory of the same commit. A file link reads its target's blob; a
+   * directory link lists the target's files under the link's path. A link that leaves the repository,
+   * or whose target is missing, is listed but not read, and says why.
+   */
+  private resolveLinks(links: Map<string, string>) {
+    if (!links.size) return;
+    const paths = [...links.keys()];
+    const texts = this.catBlobs(paths.map((p) => links.get(p)!));
+    const text = new Map(paths.map((p, i) => [p, texts[i] ?? '']));
+    const files = [...this.blobs.keys()];
+    const isDir = (d: string) => files.some((f) => f.startsWith(d + '/'));
+    // Resolve a path whose components may pass through links, following at most 16 links in all.
+    const resolve = (p: string): { path?: string; problem?: string } => {
+      let cur = p;
+      for (let hops = 0; hops <= 16; hops++) {
+        const parts = cur.split('/');
+        let hit: { at: number; target: string } | undefined;
+        for (let i = 1; i <= parts.length; i++) {
+          const prefix = parts.slice(0, i).join('/');
+          if (text.has(prefix)) {
+            hit = { at: i, target: text.get(prefix)! };
+            break;
+          }
+        }
+        if (!hit) return { path: cur };
+        const linkDir = path.posix.dirname(parts.slice(0, hit.at).join('/'));
+        const joined = path.posix.normalize(path.posix.join(linkDir, hit.target));
+        if (hit.target.startsWith('/') || joined === '..' || joined.startsWith('../')) return { problem: 'it leaves the repository' };
+        cur = [joined, ...parts.slice(hit.at)].filter((x) => x !== '' && x !== '.').join('/') || '.';
+      }
+      return { problem: 'it is a chain of more than 16 links' };
+    };
+    let added = 0;
+    for (const link of paths) {
+      const label = `symbolic link to ${text.get(link)} is not followed`;
+      const r = resolve(link);
+      if (!r.path) {
+        this.refused.set(link, `${label}: ${r.problem}`);
+        continue;
+      }
+      const sha = this.blobs.get(r.path);
+      if (sha) {
+        this.blobs.set(link, sha);
+        this.linkTargets.set(link, r.path);
+        continue;
+      }
+      if (r.path !== '.' && isDir(r.path)) {
+        for (const f of files) {
+          if (!f.startsWith(r.path + '/') || added >= 20_000) continue;
+          const alias = link + f.slice(r.path.length);
+          if (this.blobs.has(alias)) continue;
+          this.blobs.set(alias, this.blobs.get(f)!);
+          this.linkTargets.set(alias, f);
+          added++;
+        }
+        continue;
+      }
+      this.refused.set(link, `${label}: its target is not in the repository at this commit`);
+    }
+  }
+
+  linkProblem(p: string): string | undefined {
+    return this.refused.get(normalize(p));
+  }
+
+  linkTarget(p: string): string | undefined {
+    return this.linkTargets.get(normalize(p));
+  }
+
+  linksTo(p: string): string[] {
+    const target = normalize(p);
+    return [...this.linkTargets].filter(([, t]) => t === target).map(([l]) => l);
+  }
+
+  /** Contents of blobs by id, in order, with one `git cat-file --batch` call. */
+  private catBlobs(shas: string[]): Array<string | undefined> {
+    const res = spawnSync('git', ['-C', this.repo, ...SAFE_CONFIG, 'cat-file', '--batch'], { input: shas.join('\n') + '\n', env: SAFE_ENV, maxBuffer: 1 << 30 });
+    if (res.status !== 0) throw new Error(`git cat-file failed: ${res.stderr.toString()}`);
+    const buf = res.stdout;
+    const out: Array<string | undefined> = [];
+    let offset = 0;
+    for (let i = 0; i < shas.length; i++) {
+      const nl = buf.indexOf(10, offset);
+      const header = buf.subarray(offset, nl).toString();
+      if (header.endsWith(' missing')) {
+        out.push(undefined);
+        offset = nl + 1;
+        continue;
+      }
+      const size = Number(header.split(' ')[2]);
+      out.push(buf.subarray(nl + 1, nl + 1 + size).toString('utf8'));
+      offset = nl + 1 + size + 1;
+    }
+    return out;
   }
 
   blobId(p: string): string | undefined {
@@ -139,26 +254,10 @@ export class GitSource implements FileSource {
   prefetch(paths: string[]) {
     const wanted = paths.map(normalize).filter((p) => this.blobs.has(p) && !this.contents.has(p));
     if (!wanted.length) return;
-    const input = wanted.map((p) => this.blobs.get(p)).join('\n') + '\n';
-    const res = spawnSync('git', ['-C', this.repo, ...SAFE_CONFIG, 'cat-file', '--batch'], {
-      input,
-      env: SAFE_ENV,
-      maxBuffer: 1 << 30,
+    const texts = this.catBlobs(wanted.map((p) => this.blobs.get(p)!));
+    wanted.forEach((p, i) => {
+      if (texts[i] !== undefined) this.contents.set(p, texts[i]!);
     });
-    if (res.status !== 0) throw new Error(`git cat-file failed: ${res.stderr.toString()}`);
-    const buf = res.stdout;
-    let offset = 0;
-    for (const p of wanted) {
-      const nl = buf.indexOf(10, offset);
-      const header = buf.subarray(offset, nl).toString();
-      if (header.endsWith(' missing')) {
-        offset = nl + 1;
-        continue;
-      }
-      const size = Number(header.split(' ')[2]);
-      this.contents.set(p, buf.subarray(nl + 1, nl + 1 + size).toString('utf8'));
-      offset = nl + 1 + size + 1;
-    }
   }
 
   listFiles(dir: string) {
@@ -167,7 +266,7 @@ export class GitSource implements FileSource {
   }
 
   allFiles() {
-    return [...this.blobs.keys()];
+    return [...this.blobs.keys(), ...this.refused.keys()];
   }
 }
 

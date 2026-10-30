@@ -1,0 +1,202 @@
+{
+ "suite": "replay/symlinks",
+ "description": "Symbolic links in the repository: links to files and directories inside it are followed at the replayed commit; links that leave it are refused.",
+ "cases": [
+  {
+   "kind": "replay",
+   "name": "a symlinked .tf file is read from its target, not parsed as link text (source case: forms-deploy 86d2c17f8, inputs.tf symlinked into every root)",
+   "base": {
+    "shared/versions.tf": "terraform {\n  required_providers {\n    aws = {\n      source  = \"hashicorp/aws\"\n      version = \"6.66.0\"\n    }\n  }\n}\n",
+    "shared/inputs.tf": "variable \"bucket_name\" {\n  type    = string\n  default = \"logs\"\n}\n",
+    "envs/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = var.bucket_name\n}\n"
+   },
+   "head": {
+    "shared/versions.tf": "terraform {\n  required_providers {\n    aws = {\n      source  = \"hashicorp/aws\"\n      version = \"6.66.0\"\n    }\n  }\n}\n",
+    "shared/inputs.tf": "variable \"bucket_name\" {\n  type    = string\n  default = \"logs\"\n}\n",
+    "envs/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = var.bucket_name\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n}\n"
+   },
+   "baseLinks": {
+    "envs/prod/versions.tf": "../../shared/versions.tf",
+    "envs/prod/inputs.tf": "../../shared/inputs.tf"
+   },
+   "headLinks": {
+    "envs/prod/versions.tf": "../../shared/versions.tf",
+    "envs/prod/inputs.tf": "../../shared/inputs.tf"
+   },
+   "expect": {
+    "replayedRoots": [
+     "envs/prod"
+    ],
+    "rootDiagnostics": [],
+    "changedAddresses": [
+     "create aws_sqs_queue.q"
+    ],
+    "changes": [
+     {
+      "address": "aws_s3_bucket.b",
+      "action": "no-op",
+      "after": {
+       "bucket": "logs"
+      }
+     }
+    ],
+    "gate": {
+     "result": "pass"
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "changing the target of a symlinked .tf file replays the roots that link to it, and is not outside every root (source case: forms-deploy 6a1e90d65, provider bump in a symlinked versions.tf)",
+   "base": {
+    "shared/versions.tf": "terraform {\n  required_providers {\n    aws = {\n      source  = \"hashicorp/aws\"\n      version = \"6.66.0\"\n    }\n  }\n}\n",
+    "shared/inputs.tf": "variable \"bucket_name\" {\n  type    = string\n  default = \"logs\"\n}\n",
+    "envs/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = var.bucket_name\n}\n"
+   },
+   "head": {
+    "shared/versions.tf": "terraform {\n  required_providers {\n    aws = {\n      source  = \"hashicorp/aws\"\n      version = \"6.67.0\"\n    }\n  }\n}\n",
+    "shared/inputs.tf": "variable \"bucket_name\" {\n  type    = string\n  default = \"logs\"\n}\n",
+    "envs/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = var.bucket_name\n}\n"
+   },
+   "baseLinks": {
+    "envs/prod/versions.tf": "../../shared/versions.tf",
+    "envs/prod/inputs.tf": "../../shared/inputs.tf"
+   },
+   "headLinks": {
+    "envs/prod/versions.tf": "../../shared/versions.tf",
+    "envs/prod/inputs.tf": "../../shared/inputs.tf"
+   },
+   "expect": {
+    "replayedRoots": [
+     "envs/prod"
+    ],
+    "rootDiagnostics": [],
+    "changedAddresses": [],
+    "gate": {
+     "result": "pass"
+    },
+    "reasonsNotContain": [
+     "outside every analyzed root"
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a change that flows through a symlinked file is analysed: a new bucket name replaces the bucket",
+   "base": {
+    "shared/versions.tf": "terraform {\n  required_providers {\n    aws = {\n      source  = \"hashicorp/aws\"\n      version = \"6.66.0\"\n    }\n  }\n}\n",
+    "shared/inputs.tf": "variable \"bucket_name\" {\n  type    = string\n  default = \"logs\"\n}\n",
+    "envs/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = var.bucket_name\n}\n"
+   },
+   "head": {
+    "shared/versions.tf": "terraform {\n  required_providers {\n    aws = {\n      source  = \"hashicorp/aws\"\n      version = \"6.66.0\"\n    }\n  }\n}\n",
+    "shared/inputs.tf": "variable \"bucket_name\" {\n  type    = string\n  default = \"logs-v2\"\n}\n",
+    "envs/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = var.bucket_name\n}\n"
+   },
+   "baseLinks": {
+    "envs/prod/versions.tf": "../../shared/versions.tf",
+    "envs/prod/inputs.tf": "../../shared/inputs.tf"
+   },
+   "headLinks": {
+    "envs/prod/versions.tf": "../../shared/versions.tf",
+    "envs/prod/inputs.tf": "../../shared/inputs.tf"
+   },
+   "expect": {
+    "replayedRoots": [
+     "envs/prod"
+    ],
+    "changes": [
+     {
+      "address": "aws_s3_bucket.b",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "Replaces aws_s3_bucket (forced by changing bucket)"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a symlinked directory is followed inside the repository: a local module reached through it is read",
+   "base": {
+    "lib/main.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"jobs\"\n}\n",
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"m\" {\n  source = \"./lib\"\n}\n"
+   },
+   "head": {
+    "lib/main.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"jobs-v2\"\n}\n",
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"m\" {\n  source = \"./lib\"\n}\n"
+   },
+   "baseLinks": {
+    "r/lib": "../lib"
+   },
+   "headLinks": {
+    "r/lib": "../lib"
+   },
+   "expect": {
+    "replayedRoots": [
+     "r"
+    ],
+    "changes": [
+     {
+      "address": "module.m.aws_sqs_queue.q",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ],
+    "reasonsNotContain": [
+     "outside every analyzed root"
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a symlink that leaves the repository is refused, reported, and reviewed",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+   },
+   "headLinks": {
+    "r/secrets.tf": "../../../../etc/terraform/secrets.tf"
+   },
+   "expect": {
+    "rootDiagnostics": [
+     "r/secrets.tf:1: symbolic link to ../../../../etc/terraform/secrets.tf is not followed: it leaves the repository"
+    ],
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "r/secrets.tf"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a symlink to a file missing at that commit is reported, not parsed as link text",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+   },
+   "headLinks": {
+    "r/inputs.tf": "../shared/inputs.tf"
+   },
+   "expect": {
+    "rootDiagnostics": [
+     "r/inputs.tf:1: symbolic link to ../shared/inputs.tf is not followed: its target is not in the repository at this commit"
+    ],
+    "gate": {
+     "result": "review"
+    }
+   }
+  }
+ ]
+}
