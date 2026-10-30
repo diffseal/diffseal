@@ -1,0 +1,348 @@
+{
+ "suite": "analysis/null-and-defaults",
+ "description": "What null means in a plan: absent and null are the same, null meets the provider default, and null on an Optional+Computed argument keeps the state value. Facts come from the provider source catalogue (aws-replace.json).",
+ "cases": [
+  {
+   "kind": "terraform",
+   "name": "an argument added as null is no change, even when it forces replacement (source case: terraform-aws-rds-aurora 683c06916, log_group_class wired to a null variable)",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_cloudwatch_log_group\" \"l\" {\n  name = \"/aws/rds/orders\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"x\" {\n  type    = string\n  default = null\n}\nresource \"aws_cloudwatch_log_group\" \"l\" {\n  name            = \"/aws/rds/orders\"\n  log_group_class = var.x\n}\n"
+   },
+   "expect": {
+    "changedAddresses": [],
+    "changes": [
+     {
+      "address": "aws_cloudwatch_log_group.l",
+      "action": "no-op"
+     }
+    ],
+    "gate": {
+     "result": "pass"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "a new Optional+Computed ForceNew argument set to null is no change (source case: terraform-aws-rds-aurora cf965379f, cluster_scalability_type)",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"orders\"\n  engine             = \"aurora-postgresql\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"x\" {\n  type    = string\n  default = null\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"orders\"\n  engine             = \"aurora-postgresql\"\n  cluster_scalability_type = var.x\n}\n"
+   },
+   "expect": {
+    "changedAddresses": [],
+    "changes": [
+     {
+      "address": "aws_rds_cluster.c",
+      "action": "no-op"
+     }
+    ],
+    "gate": {
+     "result": "pass"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "an Optional argument without a default added as null is no change",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"orders\"\n  engine             = \"aurora-postgresql\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"orders\"\n  engine             = \"aurora-postgresql\"\n  source_region = null\n}\n"
+   },
+   "expect": {
+    "changedAddresses": [],
+    "changes": [
+     {
+      "address": "aws_rds_cluster.c",
+      "action": "no-op"
+     }
+    ],
+    "gate": {
+     "result": "pass"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "null meeting the provider default is no change (source case: terraform-aws-rds-aurora 7ffa33f82, engine_mode null to \"provisioned\")",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"orders\"\n  engine             = \"aurora-postgresql\"\n  engine_mode = null\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"orders\"\n  engine             = \"aurora-postgresql\"\n  engine_mode = \"provisioned\"\n}\n"
+   },
+   "expect": {
+    "changedAddresses": [],
+    "changes": [
+     {
+      "address": "aws_rds_cluster.c",
+      "action": "no-op"
+     }
+    ],
+    "gate": {
+     "result": "pass"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "the provider default meeting an absent argument is no change",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"orders\"\n  engine             = \"aurora-postgresql\"\n  engine_mode = \"provisioned\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"orders\"\n  engine             = \"aurora-postgresql\"\n}\n"
+   },
+   "expect": {
+    "changedAddresses": [],
+    "changes": [
+     {
+      "address": "aws_rds_cluster.c",
+      "action": "no-op"
+     }
+    ],
+    "gate": {
+     "result": "pass"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "an Optional+Computed argument set to null keeps the state value: no change (source case: terraform-aws-rds-aurora e054f77c7, master_username \"root\" to null)",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"orders\"\n  engine             = \"aurora-postgresql\"\n  master_username = \"root\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"x\" {\n  type    = string\n  default = null\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"orders\"\n  engine             = \"aurora-postgresql\"\n  master_username = var.x\n}\n"
+   },
+   "expect": {
+    "changedAddresses": [],
+    "changes": [
+     {
+      "address": "aws_rds_cluster.c",
+      "action": "no-op"
+     }
+    ],
+    "gate": {
+     "result": "pass"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "an Optional+Computed argument going from \"\" to null is no change (source case: terraform-aws-rds-aurora 52b2a14ec, database_name)",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"orders\"\n  engine             = \"aurora-postgresql\"\n  database_name = \"\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"orders\"\n  engine             = \"aurora-postgresql\"\n  database_name = null\n}\n"
+   },
+   "expect": {
+    "changedAddresses": [],
+    "changes": [
+     {
+      "address": "aws_rds_cluster.c",
+      "action": "no-op"
+     }
+    ],
+    "gate": {
+     "result": "pass"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "an Optional+Computed ForceNew argument going from null to a value is a possible replacement, reviewed not blocked (source case: terraform-aws-rds-aurora b792d84b6)",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"orders\"\n  engine             = \"aurora-postgresql\"\n  master_username = null\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"orders\"\n  engine             = \"aurora-postgresql\"\n  master_username = \"root\"\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_rds_cluster.c",
+      "action": "replace",
+      "confidence": "likely"
+     }
+    ],
+    "gate": {
+     "result": "review"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "guard: a real change of an Optional+Computed ForceNew argument is still a proven replacement that blocks",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"orders\"\n  engine             = \"aurora-postgresql\"\n  master_username = \"root\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"orders\"\n  engine             = \"aurora-postgresql\"\n  master_username = \"admin\"\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_rds_cluster.c",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "guard: null meeting a value other than the provider default is still a proven replacement",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"orders\"\n  engine             = \"aurora-postgresql\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"orders\"\n  engine             = \"aurora-postgresql\"\n  engine_mode = \"serverless\"\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_rds_cluster.c",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "guard: an Optional argument without a default going from null to a value is still a proven replacement",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"orders\"\n  engine             = \"aurora-postgresql\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"orders\"\n  engine             = \"aurora-postgresql\"\n  source_region = \"eu-west-1\"\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_rds_cluster.c",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "guard: \"\" and null are not equal when the argument has a provider default",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"orders\"\n  engine             = \"aurora-postgresql\"\n  engine_mode = \"\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"orders\"\n  engine             = \"aurora-postgresql\"\n  engine_mode = \"serverless\"\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_rds_cluster.c",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ]
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "in a plugin-framework resource an Optional+Computed ForceNew argument set to null may still be replaced: likely, not proven",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_codeguruprofiler_profiling_group\" \"p\" {\n  name             = \"p\"\n  compute_platform = \"Default\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_codeguruprofiler_profiling_group\" \"p\" {\n  name             = \"p\"\n  compute_platform = null\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_codeguruprofiler_profiling_group.p",
+      "action": "replace",
+      "confidence": "likely"
+     }
+    ]
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "an in-place argument added as null is no update",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name          = \"q\"\n  delay_seconds = null\n}\n"
+   },
+   "expect": {
+    "changedAddresses": [],
+    "changes": [
+     {
+      "address": "aws_sqs_queue.q",
+      "action": "no-op"
+     }
+    ],
+    "gate": {
+     "result": "pass"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "a forcing argument that only goes from absent to null is not named among the arguments that force a real replacement (source case: terraform-aws-rds-aurora 52b2a14ec)",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"orders\"\n  engine             = \"aurora-postgresql\"\n  database_name = \"\"\n  engine_mode   = \"provisioned\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"orders-v2\"\n  engine             = \"aurora-postgresql\"\n  database_name = null\n  source_region = null\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_rds_cluster.c",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ],
+    "blast": [
+     {
+      "resource": "aws_rds_cluster.c",
+      "reasonContains": "(forced by changing cluster_identifier)"
+     }
+    ]
+   }
+  }
+ ]
+}

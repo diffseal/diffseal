@@ -2,6 +2,7 @@ import { isRedacted, isUnknown, reveal, type Action, type Attrs, type ResourceCh
 import { containsUnknown, redact, stableKey } from '../hcl/eval.js';
 import type { ReplaceTrigger, RootEvaluation, StaticInstance } from './expand.js';
 import { CONDITIONAL_REPLACE, NESTED_REPLACE, REPLACE_ON_CHANGE, REPLACE_SETS } from './replaceCatalog.js';
+import { argumentFacts } from './schemaCatalog.js';
 
 /**
  * Turn two static evaluations of the same root into ResourceChanges, the way `terraform plan` would
@@ -345,10 +346,14 @@ function toChange(i: StaticInstance, action: Action, before: Attrs | null, after
 function diffInstance(b: StaticInstance, a: StaticInstance): ResourceChange {
   const ignored = a.ignoreChanges;
   const keys = new Set([...Object.keys(b.attrs), ...Object.keys(a.attrs)]);
+  // What null means in a plan decides some arguments before their values are compared.
+  const semantics = new Map([...keys].map((k) => [k, nullSemantics(a.type, k, b.attrs[k], a.attrs[k])]));
+  const possible = new Set([...keys].filter((k) => semantics.get(k) === 'possible'));
   const changed =
     ignored === 'all'
       ? []
       : [...keys].filter((k) => {
+          if (semantics.get(k) === 'same') return false;
           const paths = ignored.filter((p) => p[0] === k);
           if (paths.some((p) => p.length === 1)) return false;
           // A set-typed block in another order is the same set.
@@ -366,7 +371,7 @@ function diffInstance(b: StaticInstance, a: StaticInstance): ResourceChange {
   }
 
   const catalogued = REPLACE_ON_CHANGE[a.type];
-  const uncertain = changed.some((k) => containsUnknown(b.attrs[k]) || containsUnknown(a.attrs[k]));
+  const uncertain = changed.some((k) => possible.has(k) || containsUnknown(b.attrs[k]) || containsUnknown(a.attrs[k]));
   const forcing = catalogued ? changed.filter((k) => catalogued.includes(k)) : [];
   if (forcing.length) {
     // A change in a ForceNew argument that is not known statically (a referenced ARN, or a block with an
@@ -378,6 +383,7 @@ function diffInstance(b: StaticInstance, a: StaticInstance): ResourceChange {
     // change there is a possible replacement. Ignored paths are masked first.
     const paths = (k: string) => (ignored === 'all' ? [] : ignored.filter((p) => p[0] === k));
     const certain = forcing.filter((k) => {
+      if (possible.has(k)) return false;
       const was = masked(b.attrs[k], paths(k));
       const now = masked(a.attrs[k], paths(k));
       const nested = NESTED_REPLACE[a.type]?.[k];
@@ -429,6 +435,46 @@ function diffInstance(b: StaticInstance, a: StaticInstance): ResourceChange {
     confidence: !catalogued ? 'likely' : uncertain ? 'likely' : 'proven',
     actionReason: catalogued ? undefined : `replacement rules for ${a.type} are not catalogued; reported as an in-place update`,
   };
+}
+
+/**
+ * How the provider plans a top-level argument when one side is null (absent and null are the same in
+ * Terraform), before values are compared:
+ * - `same`: no change. Both null; null meets the provider default; a value goes to null on an
+ *   Optional+Computed argument of an SDKv2 resource (state keeps it); in SDKv2, "" is null for a string
+ *   argument without a default.
+ * - `possible`: the planned value depends on state: null becomes a value on an Optional+Computed
+ *   argument (state holds whatever the provider computed), or a plugin-framework resource drops one
+ *   (the framework may plan it as unknown).
+ * - undefined: compare the values as they are.
+ * Unknown and sensitive values are never decided here.
+ */
+function nullSemantics(type: string, key: string, before: unknown, after: unknown): 'same' | 'possible' | undefined {
+  if (isUnknown(before) || isUnknown(after) || isRedacted(before) || isRedacted(after)) return undefined;
+  const nullish = (v: unknown) => v === undefined || v === null;
+  if (nullish(before) && nullish(after)) return 'same';
+  const facts = argumentFacts(type);
+  if (!facts) return undefined;
+  const fallback = facts.defaults.get(key);
+  const sdk = !facts.framework;
+  // SDKv2 cannot tell "" from null in a string argument; with a default, "" is a value of its own.
+  const norm = (v: unknown) => (nullish(v) || (sdk && fallback === undefined && v === '') ? null : v);
+  let was = norm(before);
+  let now = norm(after);
+  if (fallback !== undefined) {
+    was ??= fallback;
+    now ??= fallback;
+  }
+  if (was === null && now === null) return 'same';
+  if (facts.optionalComputed.has(key)) {
+    if (now === null) return sdk ? 'same' : 'possible';
+    if (was === null) return 'possible';
+  }
+  if (was === null || now === null) return undefined;
+  const scalar = (v: unknown) => typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean';
+  // Terraform converts a configured "30" to the number 30 of the schema, so the default is matched the same way.
+  if (fallback !== undefined && scalar(was) && scalar(now) && String(was) === String(now)) return 'same';
+  return undefined;
 }
 
 /**

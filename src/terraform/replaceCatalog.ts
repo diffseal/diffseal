@@ -10,7 +10,44 @@ import generated from './aws-replace.json' with { type: 'json' };
  * A type listed here is "catalogued": a change to any other argument is an in-place update. For types
  * that are not, static replay reports the action as an update with `likely` confidence.
  */
-const resources = (generated as { resources: Record<string, { replace: string[]; conditional: string[]; nested?: Record<string, string[]>; sets?: string[] }> }).resources;
+const resources = (generated as {
+  resources: Record<
+    string,
+    {
+      replace: string[];
+      conditional: string[];
+      nested?: Record<string, string[]>;
+      sets?: string[];
+      optional_computed?: string[];
+      defaults?: Record<string, string | number | boolean>;
+      framework?: boolean;
+    }
+  >;
+}).resources;
+
+/** What `null` means for a resource's top-level arguments, from the same provider source. */
+export interface ArgumentFacts {
+  /** Optional and Computed: null in configuration keeps the value in state. */
+  optionalComputed: Set<string>;
+  /** Literal provider defaults: null in configuration plans this value. */
+  defaults: Map<string, string | number | boolean>;
+  /** Plugin framework resource; SDKv2 otherwise, where "" in configuration is the same as null for a string. */
+  framework: boolean;
+}
+
+const factsCache = new Map<string, ArgumentFacts | undefined>();
+
+export function argumentFacts(type: string): ArgumentFacts | undefined {
+  if (factsCache.has(type)) return factsCache.get(type);
+  const e = resources[type];
+  const facts = e && {
+    optionalComputed: new Set(e.optional_computed ?? []),
+    defaults: new Map(Object.entries(e.defaults ?? {})),
+    framework: e.framework === true,
+  };
+  factsCache.set(type, facts);
+  return facts;
+}
 
 /**
  * For a ForceNew nested block (an SDKv2 list or set of resources), the fields inside it that force

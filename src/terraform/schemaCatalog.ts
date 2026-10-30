@@ -1,4 +1,5 @@
 import generated from './aws-schema.json' with { type: 'json' };
+export { argumentFacts, type ArgumentFacts } from './replaceCatalog.js';
 
 export interface RawResourceSchema {
   bool?: string[];

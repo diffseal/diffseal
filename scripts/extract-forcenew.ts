@@ -9,6 +9,12 @@
  * ForceNew fields are recorded under `nested`; its other fields update in place. Plugin-framework resources:
  * top-level attributes with a `RequiresReplace()` plan modifier. `RequiresReplaceIf*` and ForceNew on
  * nested block attributes are recorded as conditional: a change there may or may not replace.
+ *
+ * It also records, for top-level arguments, the facts that decide what `null` means in a plan: which
+ * arguments are Optional and Computed (null keeps the value in state), and literal provider defaults
+ * (SDKv2 `Default:`, framework `stringdefault.StaticString(...)` and friends), with package constants
+ * resolved when they are string, number or bool literals. `terraform providers schema -json` carries
+ * neither defaults nor the SDK a resource is written in.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -94,6 +100,60 @@ interface Entry {
   /** ForceNew nested blocks that are sets (no order). */
   sets?: string[];
   conditional: string[];
+  /** Top-level arguments that are both Optional and Computed: null in configuration keeps the state value. */
+  optionalComputed?: string[];
+  /** Literal provider defaults of top-level arguments. */
+  defaults?: Record<string, string | number | boolean>;
+  /** Written with the plugin framework (not SDKv2). */
+  framework?: boolean;
+}
+
+/** A Go literal or package constant as a JSON value, or undefined when it is not a plain literal. */
+function goLiteral(expr: string, pkgSrc: string, depth = 0): string | number | boolean | undefined {
+  const e = expr.trim();
+  if (e === 'true' || e === 'false') return e === 'true';
+  if (/^-?\d+(\.\d+)?$/.test(e)) return Number(e);
+  if (/^"(?:[^"\\]|\\.)*"$/.test(e)) {
+    try {
+      return JSON.parse(e) as string;
+    } catch {
+      return undefined;
+    }
+  }
+  const framework = e.match(/^(?:string|bool|int64|int32|float64|float32|number)default\.Static(?:String|Bool|Int64|Int32|Float64|Float32)\((.*)\)$/s);
+  if (framework) return goLiteral(framework[1], pkgSrc, depth + 1);
+  if (/^[a-zA-Z_]\w*$/.test(e) && depth < 3) {
+    const m = pkgSrc.match(new RegExp(`(?:^|\\n)\\s*(?:const\\s+)?${e}(?:\\s+\\w+)?\\s*=\\s*([^\\n]+)`));
+    if (m) return goLiteral(m[1].replace(/\/\/.*$/, ''), pkgSrc, depth + 1);
+  }
+  return undefined;
+}
+
+/** The value expression of a top-level `Default:` field, up to its closing comma. */
+function defaultExpr(own: string): string | undefined {
+  const m = own.match(/(?:^|\n)\s*Default\s*:\s*/);
+  if (!m) return undefined;
+  const rest = own.slice(m.index! + m[0].length);
+  let depth = 0;
+  for (let i = 0; i < rest.length; i++) {
+    const c = rest[i];
+    if (c === '"') {
+      for (i++; i < rest.length && rest[i] !== '"'; i++) if (rest[i] === '\\') i++;
+    } else if (c === '(') depth++;
+    else if (c === ')') depth--;
+    else if ((c === ',' || c === '\n') && depth === 0) return rest.slice(0, i);
+  }
+  return rest;
+}
+
+/** Records Optional+Computed and the literal default of one top-level argument. */
+function recordArgumentFacts(entry: Entry, key: string, value: string, pkgSrc: string) {
+  const own = ownFields(value);
+  if (/Optional\s*:\s*true/.test(own) && /Computed\s*:\s*true/.test(own)) (entry.optionalComputed ??= []).push(key);
+  const expr = defaultExpr(own);
+  if (expr === undefined) return;
+  const v = goLiteral(expr, pkgSrc);
+  if (v !== undefined) (entry.defaults ??= {})[key] = v;
 }
 
 const result: Record<string, Entry> = {};
@@ -138,6 +198,7 @@ for (const svc of fs.readdirSync(serviceDir)) {
       if (!schemaBody) continue;
       const entry: Entry = { replace: [], conditional: [] };
       for (const { key, value } of entries(schemaBody)) {
+        recordArgumentFacts(entry, key, value, pkgSrc);
         if (/ForceNew\s*:\s*true/.test(ownFields(value))) {
           entry.replace.push(key);
           const fields = nestedForceNew(value);
@@ -157,8 +218,9 @@ for (const svc of fs.readdirSync(serviceDir)) {
       if (!attrs) continue;
       const open = attrs.index! + attrs[0].length - 1;
       const body = src.slice(open + 1, matchBrace(src, open));
-      const entry: Entry = { replace: [], conditional: [] };
+      const entry: Entry = { replace: [], conditional: [], framework: true };
       for (const { key, value } of entries(body)) {
+        recordArgumentFacts(entry, key, value, pkgSrc);
         if (/planmodifier\.RequiresReplace\(\)/.test(value)) entry.replace.push(key);
         else if (/RequiresReplaceIf/.test(value)) entry.conditional.push(key);
       }
@@ -184,6 +246,9 @@ const sorted = Object.fromEntries(
         conditional: [...new Set(result[k].conditional)].sort(),
         ...(result[k].nested ? { nested: Object.fromEntries(Object.keys(result[k].nested!).sort().map((b) => [b, result[k].nested![b]])) } : {}),
         ...(result[k].sets ? { sets: [...new Set(result[k].sets)].sort() } : {}),
+        ...(result[k].optionalComputed ? { optional_computed: [...new Set(result[k].optionalComputed)].sort() } : {}),
+        ...(result[k].defaults ? { defaults: Object.fromEntries(Object.keys(result[k].defaults!).sort().map((a) => [a, result[k].defaults![a]])) } : {}),
+        ...(result[k].framework ? { framework: true } : {}),
       },
     ])
 );
