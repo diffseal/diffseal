@@ -18,6 +18,11 @@ export interface ModuleConfig {
   removed: Array<{ from: string; destroy: boolean }>;
   imports: Array<{ to: string }>;
   hasBackend: boolean;
+  /**
+   * Where the root keeps its state, when the configuration fixes it with literal values: the backend
+   * type and its location arguments, or the cloud block's organization and workspace name.
+   */
+  stateLocation?: string;
   /** AWS account ids this module's provider blocks target (assume_role ARNs, allowed_account_ids). */
   providerAccounts: string[];
   providers: Map<string, Block>;
@@ -234,8 +239,49 @@ function indexBlock(mod: ModuleConfig, b: Block, file: string, src: string) {
     }
     case 'terraform':
       if (b.body.blocks.some((x) => x.type === 'backend' || x.type === 'cloud')) mod.hasBackend = true;
+      for (const x of b.body.blocks) {
+        const location = stateLocation(x);
+        if (location) mod.stateLocation = location;
+      }
       break;
   }
+}
+
+/** Arguments that name a state object, per backend type; a backend is identified only when they are all literal. */
+const STATE_KEYS: Record<string, string[]> = {
+  s3: ['bucket', 'key'],
+  gcs: ['bucket', 'prefix'],
+  azurerm: ['storage_account_name', 'container_name', 'key'],
+  oss: ['bucket', 'prefix', 'key'],
+  cos: ['bucket', 'prefix', 'key'],
+  consul: ['path'],
+  http: ['address'],
+  pg: ['conn_str', 'schema_name'],
+  kubernetes: ['secret_suffix', 'namespace'],
+};
+
+/**
+ * A literal state location of a `backend` or `cloud` block, or undefined when any part of it is
+ * set elsewhere (partial configuration with -backend-config, a workspace prefix, a local file whose
+ * path is relative to the directory).
+ */
+function stateLocation(b: Block): string | undefined {
+  if (b.type === 'cloud') {
+    const org = literalString(attr(b.body, 'organization')?.expr);
+    const name = literalString(b.body.blocks.find((x) => x.type === 'workspaces')?.body.attributes.find((a) => a.name === 'name')?.expr);
+    return org && name ? JSON.stringify(['cloud', org, name]) : undefined;
+  }
+  if (b.type !== 'backend') return undefined;
+  const type = b.labels[0];
+  if (type === 'remote') {
+    const org = literalString(attr(b.body, 'organization')?.expr);
+    const name = literalString(b.body.blocks.find((x) => x.type === 'workspaces')?.body.attributes.find((a) => a.name === 'name')?.expr);
+    return org && name ? JSON.stringify(['remote', org, name]) : undefined;
+  }
+  const keys = type ? STATE_KEYS[type] : undefined;
+  if (!keys) return undefined;
+  const values = keys.map((k) => literalString(attr(b.body, k)?.expr));
+  return values.every((v) => v) ? JSON.stringify([type, ...values]) : undefined;
 }
 
 /** Local module directories this module calls, recursively (including itself). */

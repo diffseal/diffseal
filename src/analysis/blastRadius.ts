@@ -189,7 +189,11 @@ export function analyzeBlastRadius(changes: ResourceChange[]): BlastFinding[] {
         }
         out.push({ severity, resource: c.address, type: c.type, action: c.action, reason: reason + order + note, dataLoss: !guard, downtime: 'yes' });
       } else if (identity) {
-        out.push({ severity: 'HIGH', resource: c.address, type: c.type, action: c.action, reason: `${verb} ${c.type}${forcedBy}: ${identity}${order}${note}`, dataLoss: false, downtime: c.replaceOrder === 'create-first' ? 'possible' : 'yes' });
+        // What a replacement breaks is the swap to a new object; a deletion has no new object.
+        const what = c.action === 'replace' ? `: ${identity}` : ': whatever still refers to it fails';
+        const possibly = c.confidence !== 'proven' ? 'Possibly ' : '';
+        const text = `${verb} ${c.type}${forcedBy}${what}${order}${note}`;
+        out.push({ severity: 'HIGH', resource: c.address, type: c.type, action: c.action, reason: possibly ? possibly + text[0].toLowerCase() + text.slice(1) : text, dataLoss: false, downtime: c.replaceOrder === 'create-first' ? 'possible' : 'yes' });
       } else if (c.action === 'replace' && ROUTINE_REPLACE.has(c.type)) {
         const env = envChange(c);
         out.push({ severity: 'INFO', resource: c.address, type: c.type, action: c.action, reason: `Recreates ${c.type}${forcedBy}${order}${env ? `; ${env}` : ''}${note}`, dataLoss: false, downtime: 'no' });

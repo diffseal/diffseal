@@ -32,7 +32,14 @@ export interface RootReplay {
   changes: ResourceChange[];
   result: AnalysisResult;
   diagnostics: string[];
+  /** The directory this root had at the base, when the change moved it. */
+  movedFrom?: string;
+  /** True when the change deleted the root's directory. */
+  deleted?: boolean;
 }
+
+/** actionReason of the resources of a root whose directory the change deleted. */
+export const DELETED_ROOT_REASON = 'its root directory is deleted; it is destroyed only if someone runs terraform destroy against that state';
 
 export interface ReplayResult {
   commit: CommitInfo;
@@ -75,25 +82,51 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     .filter((p): p is string => Boolean(p) && !TF_FILE.test(p!))
     .flatMap(aliases);
   const roots: RootReplay[] = [];
+  const rootItems: GateItem[] = [];
   if (changedDirs.size || dataChanged.length || moduleLockChanged) {
-    const candidates = new Set([...discoverRoots(headSource, opts.rootsUnder), ...discoverRoots(baseSource, opts.rootsUnder)]);
+    const headRoots = discoverRoots(headSource, opts.rootsUnder);
+    const baseRoots = discoverRoots(baseSource, opts.rootsUnder);
+    const moves = movedRoots(baseSource, headSource, baseRoots, headRoots, changed);
+    const movedFrom = new Map([...moves].map(([from, m]) => [m.to, { ...m, from }]));
+    const candidates = new Set([...headRoots, ...baseRoots]);
     for (const root of [...candidates].sort()) {
-      const closure = new Set([...moduleClosure(headSource, root), ...moduleClosure(baseSource, root)]);
+      if (moves.has(root)) continue; // replayed under the directory it moved to
+      const move = movedFrom.get(root);
+      const baseRoot = move?.from ?? root;
+      const closure = new Set([...moduleClosure(headSource, root), ...moduleClosure(baseSource, baseRoot)]);
       const touchesConfig = moduleLockChanged || [...changedDirs].some((d) => closure.has(d));
       if (!touchesConfig && !(dataChanged.length && readsFiles(closure, headSource, baseSource))) continue;
-      const baseEval = evaluateRoot(baseSource, root);
+      const baseEval = evaluateRoot(baseSource, baseRoot);
       const headEval = evaluateRoot(headSource, root);
       if (!touchesConfig && !dataChanged.some((p) => headEval.readFiles.has(p) || baseEval.readFiles.has(p))) continue;
       // An evaluation with no instances still carries removed, moved and prevent_destroy blocks.
       const changes = compareEvaluations(baseEval, headEval);
+      // A deleted root directory plans nothing: its state is left behind, and its resources are destroyed
+      // only if someone runs destroy against that state before or after. Possible deletions, reviewed.
+      const deleted = !move && baseRoots.includes(root) && !loadModule(headSource, root);
+      if (deleted) {
+        for (const c of changes) {
+          if (c.action !== 'delete') continue;
+          c.confidence = 'likely';
+          c.actionReason = DELETED_ROOT_REASON;
+        }
+        const n = changes.filter((c) => c.action === 'delete' && c.mode === 'managed').length;
+        rootItems.push({ kind: 'coverage', level: 'review', text: `Root ${root} is deleted with ${n} resource${n === 1 ? '' : 's'} in its configuration. Deleting the directory destroys nothing by itself: they are destroyed only if someone runs terraform destroy against its state, and otherwise stay in AWS without Terraform managing them; confirm which is intended` });
+      }
+      if (move && !move.sameState) {
+        rootItems.push({ kind: 'coverage', level: 'review', text: `Root ${move.from} moved to ${root} (${move.matched} of ${move.total} files kept or renamed). Its state location is not fixed in the configuration, so the existing resources carry over only if its state moves with it; moving the code destroys nothing, but without the state ${root} would create new copies and leave the old resources unmanaged` });
+      }
       // Exceptions are judged on the date of the change, so replaying history reproduces its gate.
-      roots.push({ root, changes, result: analyze(changes, { policy, now: opts.now ?? new Date(commit.date) }), diagnostics: headEval.diagnostics });
+      roots.push({ root, changes, result: analyze(changes, { policy, now: opts.now ?? new Date(commit.date) }), diagnostics: headEval.diagnostics, ...(move ? { movedFrom: move.from } : {}), ...(deleted ? { deleted } : {}) });
     }
   }
 
   // Terraform that changed but that no evaluated root covers is reviewed, never silently passed.
   const covered = new Set<string>();
-  for (const r of roots) for (const src of [headSource, baseSource]) for (const d of moduleClosure(src, r.root)) covered.add(d);
+  for (const r of roots) {
+    for (const d of moduleClosure(headSource, r.root)) covered.add(d);
+    for (const d of moduleClosure(baseSource, r.movedFrom ?? r.root)) covered.add(d);
+  }
   const uncovered = tfChanged
     .flatMap((c) => [c.path, c.oldPath])
     .filter((p): p is string => Boolean(p) && /\.(tf|tofu|tf\.json)$/.test(p!))
@@ -108,7 +141,7 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   const combined = combineRoots(roots);
   // An external module Diffseal cannot read offline: a new source or version can replace or delete
   // anything inside it, so the change is reviewed, never passed.
-  for (const item of externalModuleItems(roots)) {
+  for (const item of [...rootItems, ...externalModuleItems(roots)]) {
     if (combined.gate.result === 'pass') combined.gate.result = 'review';
     addGateItem(combined.gate, item);
   }
@@ -170,6 +203,7 @@ export function externalModuleItems(roots: RootReplay[]): GateItem[] {
       const was = { source: c.before?.source, version: c.before?.version };
       const now = { source: c.after?.source, version: c.after?.version };
       if (c.action === 'delete') {
+        if (c.actionReason === DELETED_ROOT_REASON) continue; // said once for the whole root
         add(['removed', c.address, was.source, was.version], root, (where) =>
           `External module ${quoted(was.source)}${was.version ? ` (version ${was.version})` : ''} is removed (${c.address} in ${where}): every resource it manages is destroyed, and Diffseal cannot list them offline; review a plan`);
         continue;
@@ -192,6 +226,44 @@ export function externalModuleItems(roots: RootReplay[]): GateItem[] {
     }
   }
   return [...groups.values()].map((g) => ({ kind: 'coverage', level: 'review', text: g.text(listRoots(g.roots)) }));
+}
+
+/**
+ * Root directories the change moved: a base root whose directory has no configuration at the head,
+ * paired with a new head root that has the same literal state location, or failing that, keeps at
+ * least half of its files (identical, or renamed by git). Each new root is paired at most once.
+ */
+function movedRoots(base: GitSource, head: GitSource, baseRoots: string[], headRoots: string[], changed: ChangedPath[]) {
+  const out = new Map<string, { to: string; sameState: boolean; matched: number; total: number }>();
+  const gone = baseRoots.filter((r) => !loadModule(head, r));
+  const fresh = headRoots.filter((r) => !loadModule(base, r));
+  if (!gone.length || !fresh.length) return out;
+  const renamed = new Map(changed.filter((c) => c.status === 'R' && c.oldPath).map((c) => [c.oldPath!, c.path]));
+  const taken = new Set<string>();
+  for (const g of gone) {
+    const bm = loadModule(base, g)!;
+    let best: { to: string; sameState: boolean; matched: number; total: number; score: number } | undefined;
+    for (const f of fresh) {
+      if (taken.has(f)) continue;
+      const hm = loadModule(head, f)!;
+      const sameState = Boolean(bm.stateLocation) && bm.stateLocation === hm.stateLocation;
+      const matched = bm.files.filter((name) => {
+        const was = `${g}/${name}`;
+        const blob = base.blobId(was);
+        if (blob && hm.files.some((n) => head.blobId(`${f}/${n}`) === blob)) return true;
+        const to = renamed.get(was);
+        return to !== undefined && path.posix.dirname(to) === f;
+      }).length;
+      const total = Math.max(bm.files.length, hm.files.length);
+      const score = sameState ? 2 : matched / total;
+      if (!sameState && score < 0.5) continue;
+      if (!best || score > best.score) best = { to: f, sameState, matched, total, score };
+    }
+    if (!best) continue;
+    taken.add(best.to);
+    out.set(g, { to: best.to, sameState: best.sameState, matched: best.matched, total: best.total });
+  }
+  return out;
 }
 
 function parsePolicyFile(text: string | undefined): PolicyConfig {

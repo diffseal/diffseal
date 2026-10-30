@@ -1,0 +1,265 @@
+{
+ "suite": "replay/root-moves",
+ "description": "Terraform root directories that are deleted or moved: a move is compared with its old directory, and a deleted directory's resources are destroyed only if someone runs destroy against its state.",
+ "cases": [
+  {
+   "kind": "replay",
+   "name": "a root moved to a new directory unchanged destroys nothing; with no fixed state location it is reviewed, not blocked (source case: terraform-aws-eks-blueprints 8aa4515b4, examples/ moved to patterns/)",
+   "base": {
+    "examples/argocd/main.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "examples/argocd/secrets.tf": "resource \"aws_secretsmanager_secret\" \"argocd\" {\n  name                    = \"argocd\"\n  recovery_window_in_days = 0\n}\nresource \"aws_route53_zone\" \"z\" {\n  name = \"example.com\"\n}\n",
+    "other/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"other\"\n}\n"
+   },
+   "head": {
+    "patterns/argocd/main.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "patterns/argocd/secrets.tf": "resource \"aws_secretsmanager_secret\" \"argocd\" {\n  name                    = \"argocd\"\n  recovery_window_in_days = 0\n}\nresource \"aws_route53_zone\" \"z\" {\n  name = \"example.com\"\n}\n",
+    "other/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"other\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "patterns/argocd"
+    ],
+    "changedAddresses": [],
+    "noProvenDelete": true,
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "examples/argocd",
+      "patterns/argocd",
+      "state"
+     ]
+    },
+    "reasonsNotContain": [
+     "CRITICAL",
+     "Deletes"
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a root moved with the same literal backend state key is the same state: an unchanged move passes",
+   "base": {
+    "svc/old/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc.tfstate\"\n  }\n}\n",
+    "svc/old/q.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"jobs\"\n}\n",
+    "other/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"other\"\n}\n"
+   },
+   "head": {
+    "svc/new/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc.tfstate\"\n  }\n}\n",
+    "svc/new/q.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"jobs\"\n}\n",
+    "other/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"other\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "svc/new"
+    ],
+    "changedAddresses": [],
+    "gate": {
+     "result": "pass"
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a moved root is compared with its old directory, so a real replacement inside it is still found",
+   "base": {
+    "svc/old/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc.tfstate\"\n  }\n}\n",
+    "svc/old/q.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"jobs\"\n}\n",
+    "other/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"other\"\n}\n"
+   },
+   "head": {
+    "svc/new/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc.tfstate\"\n  }\n}\n",
+    "svc/new/q.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"jobs-v2\"\n}\n",
+    "other/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"other\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "svc/new"
+    ],
+    "changes": [
+     {
+      "address": "aws_sqs_queue.q",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a moved root that renames a stateful resource with the same state key still blocks",
+   "base": {
+    "svc/old/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc.tfstate\"\n  }\n}\n",
+    "svc/old/s.tf": "resource \"aws_secretsmanager_secret\" \"argocd\" {\n  name                    = \"argocd\"\n  recovery_window_in_days = 0\n}\nresource \"aws_route53_zone\" \"z\" {\n  name = \"example.com\"\n}\n",
+    "other/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"other\"\n}\n"
+   },
+   "head": {
+    "svc/new/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"state\"\n    key    = \"svc.tfstate\"\n  }\n}\n",
+    "svc/new/s.tf": "resource \"aws_secretsmanager_secret\" \"argocd\" {\n  name                    = \"argocd-v2\"\n  recovery_window_in_days = 0\n}\nresource \"aws_route53_zone\" \"z\" {\n  name = \"example.com\"\n}\n",
+    "other/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"other\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "svc/new"
+    ],
+    "changes": [
+     {
+      "address": "aws_secretsmanager_secret.argocd",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a root directory that is deleted lists its resources as possible deletes and says they go only if someone runs destroy against its state (source cases: terraform-aws-eks-blueprints d6d8c4f7f, terraform-aws-eks 416515a0d)",
+   "base": {
+    "patterns/argocd/main.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "patterns/argocd/secrets.tf": "resource \"aws_secretsmanager_secret\" \"argocd\" {\n  name                    = \"argocd\"\n  recovery_window_in_days = 0\n}\nresource \"aws_route53_zone\" \"z\" {\n  name = \"example.com\"\n}\n",
+    "other/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"other\"\n}\n"
+   },
+   "head": {
+    "other/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"other\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "patterns/argocd"
+    ],
+    "noProvenDelete": true,
+    "changes": [
+     {
+      "address": "aws_secretsmanager_secret.argocd",
+      "action": "delete",
+      "confidence": "likely"
+     },
+     {
+      "address": "aws_route53_zone.z",
+      "action": "delete",
+      "confidence": "likely"
+     }
+    ],
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "patterns/argocd",
+      "destroy"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a deleted root with only non-stateful resources is still reviewed, never passed",
+   "base": {
+    "jobs/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"jobs\"\n}\n",
+    "other/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"other\"\n}\n"
+   },
+   "head": {
+    "other/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"other\"\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_sqs_queue.q",
+      "action": "delete",
+      "confidence": "likely"
+     }
+    ],
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "jobs"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a root moved to a directory whose content is mostly new is a deletion and a new root, not a move",
+   "base": {
+    "a/main.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "a/secrets.tf": "resource \"aws_secretsmanager_secret\" \"argocd\" {\n  name                    = \"argocd\"\n  recovery_window_in_days = 0\n}\nresource \"aws_route53_zone\" \"z\" {\n  name = \"example.com\"\n}\n",
+    "other/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"other\"\n}\n"
+   },
+   "head": {
+    "b/main.tf": "terraform {\n  backend \"s3\" {}\n}\n# new stack\n",
+    "b/q.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"fresh\"\n}\n",
+    "b/more.tf": "resource \"aws_sqs_queue\" \"r\" {\n  name = \"x\"\n}\n",
+    "other/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"other\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "a",
+     "b"
+    ],
+    "noProvenDelete": true,
+    "changes": [
+     {
+      "address": "a: aws_secretsmanager_secret.argocd",
+      "action": "delete",
+      "confidence": "likely"
+     }
+    ],
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "destroy"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "removing a resource from a root that still exists is still a proven deletion that blocks",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "r/secrets.tf": "resource \"aws_secretsmanager_secret\" \"argocd\" {\n  name                    = \"argocd\"\n  recovery_window_in_days = 0\n}\nresource \"aws_route53_zone\" \"z\" {\n  name = \"example.com\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "r/secrets.tf": "resource \"aws_route53_zone\" \"z\" {\n  name = \"example.com\"\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_secretsmanager_secret.argocd",
+      "action": "delete",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "deleting a security group says what breaks, not that ENIs move to a new group (source case: terraform-provision 1e6038711)",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_security_group\" \"db\" {\n  name = \"db\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+   },
+   "expect": {
+    "blast": [
+     {
+      "resource": "aws_security_group.db",
+      "action": "delete",
+      "severity": "HIGH",
+      "reasonContains": "whatever still refers to it fails"
+     }
+    ],
+    "reasonsNotContain": [
+     "new group"
+    ]
+   }
+  }
+ ]
+}
