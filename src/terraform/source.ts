@@ -176,10 +176,12 @@ export class GitSource implements FileSource {
       }
       return { path: stack.join('/') || '.' };
     };
-    let added = 0;
+    // File links first, so a linked directory also shows the file links inside it.
+    const resolved = new Map(paths.map((link) => [link, resolve(link)]));
+    const dirLinks: Array<[string, string]> = [];
     for (const link of paths) {
       const label = `symbolic link to ${text.get(link)} is not followed`;
-      const r = resolve(link);
+      const r = resolved.get(link)!;
       if (!r.path) {
         this.refused.set(link, `${label}: ${r.problem}`);
         continue;
@@ -187,25 +189,28 @@ export class GitSource implements FileSource {
       const sha = this.blobs.get(r.path);
       if (sha) {
         this.blobs.set(link, sha);
-        this.linkTargets.set(link, r.path);
+        this.linkTargets.set(link, this.linkTargets.get(r.path) ?? r.path);
         continue;
       }
-      if (r.path === '.') {
-        this.refused.set(link, `${label}: it points at the repository root`);
+      if (r.path === '.') this.refused.set(link, `${label}: it points at the repository root`);
+      else if (isDir(r.path)) dirLinks.push([link, r.path]);
+      else this.refused.set(link, `${label}: its target is not in the repository at this commit`);
+    }
+    const all = [...this.blobs.keys()];
+    let added = 0;
+    for (const [link, dir] of dirLinks) {
+      const under = all.filter((f) => f.startsWith(dir + '/'));
+      if (added + under.length > 20_000) {
+        this.refused.set(link, `symbolic link to ${text.get(link)} is not followed: its directory holds too many files`);
         continue;
       }
-      if (isDir(r.path)) {
-        for (const f of files) {
-          if (!f.startsWith(r.path + '/') || added >= 20_000) continue;
-          const alias = link + f.slice(r.path.length);
-          if (this.blobs.has(alias)) continue;
-          this.blobs.set(alias, this.blobs.get(f)!);
-          this.linkTargets.set(alias, f);
-          added++;
-        }
-        continue;
+      for (const f of under) {
+        const alias = link + f.slice(dir.length);
+        if (this.blobs.has(alias)) continue;
+        this.blobs.set(alias, this.blobs.get(f)!);
+        this.linkTargets.set(alias, this.linkTargets.get(f) ?? f);
+        added++;
       }
-      this.refused.set(link, `${label}: its target is not in the repository at this commit`);
     }
   }
 

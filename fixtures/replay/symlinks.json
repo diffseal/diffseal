@@ -411,6 +411,66 @@
      ]
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 3: retargeting a link to a parent of module directories replays the roots that read below it",
+   "base": {
+    "lib-v1/db/main.tf": "resource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"postgres\"\n}\n",
+    "lib-v2/db/main.tf": "resource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"mysql\"\n}\n",
+    "envs/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"db\" {\n  source = \"./lib/db\"\n}\n"
+   },
+   "head": {
+    "lib-v1/db/main.tf": "resource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"postgres\"\n}\n",
+    "lib-v2/db/main.tf": "resource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"mysql\"\n}\n",
+    "envs/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"db\" {\n  source = \"./lib/db\"\n}\n"
+   },
+   "baseLinks": {
+    "envs/prod/lib": "../../lib-v1"
+   },
+   "headLinks": {
+    "envs/prod/lib": "../../lib-v2"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "module.db.aws_db_instance.main",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review 3: a linked directory shows the file links inside its target",
+   "base": {
+    "shared/real.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n}\n",
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"m\" {\n  source = \"./lib\"\n}\n"
+   },
+   "head": {
+    "shared/real.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n}\n",
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"m\" {\n  source = \"./lib\"\n}\nresource \"aws_sqs_queue\" \"extra\" {\n  name = \"x\"\n}\n"
+   },
+   "baseLinks": {
+    "lib/q.tf": "../shared/real.tf",
+    "r/lib": "../lib"
+   },
+   "headLinks": {
+    "lib/q.tf": "../shared/real.tf",
+    "r/lib": "../lib"
+   },
+   "expect": {
+    "changedAddresses": [
+     "create aws_sqs_queue.extra"
+    ],
+    "gate": {
+     "result": "pass"
+    }
+   }
   }
  ]
 }

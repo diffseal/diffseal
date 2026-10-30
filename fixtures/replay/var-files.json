@@ -29,12 +29,10 @@
     "gate": {
      "result": "block",
      "reasonsContain": [
-      "aws_sqs_queue.q"
+      "aws_sqs_queue.q",
+      "evaluated only in part: spokes/workspaces/prod.tfvars (sets queue_name) with spokes"
      ]
-    },
-    "reasonsNotContain": [
-     "does not evaluate"
-    ]
+    }
    }
   },
   {
@@ -95,7 +93,10 @@
      "create aws_sqs_queue.q"
     ],
     "gate": {
-     "result": "pass"
+     "result": "review",
+     "reasonsContain": [
+      "evaluated only in part"
+     ]
     }
    }
   },
@@ -352,6 +353,52 @@
      "result": "review",
      "reasonsContain": [
       "r/env/prod.tfvars sets image_tag, which r does not declare"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review 3: a var-file below one root that another root also declares stays reviewed, because that other root may load it",
+   "base": {
+    "infra/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"db_engine\" {\n  type = string\n}\n",
+    "infra/db/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"db_engine\" {\n  type = string\n}\nresource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = var.db_engine\n}\n",
+    "infra/envs/prod.tfvars": "db_engine = \"postgres\"\n"
+   },
+   "head": {
+    "infra/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"db_engine\" {\n  type = string\n}\n",
+    "infra/db/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"db_engine\" {\n  type = string\n}\nresource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = var.db_engine\n}\n",
+    "infra/envs/prod.tfvars": "db_engine = \"mysql\"\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "infra/envs/prod.tfvars"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review 3: a shared var-file layered with per-environment files stays reviewed",
+   "base": {
+    "infra/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"create_db\" {\n  type    = bool\n  default = false\n}\nvariable \"db_engine\" {\n  type = string\n}\nresource \"aws_db_instance\" \"main\" {\n  count      = var.create_db ? 1 : 0\n  identifier = \"main\"\n  engine     = var.db_engine\n}\n",
+    "infra/envs/common.tfvars": "db_engine = \"postgres\"\n",
+    "infra/envs/prod.tfvars": "create_db = true\n",
+    "infra/envs/dev.tfvars": "create_db = false\n"
+   },
+   "head": {
+    "infra/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"create_db\" {\n  type    = bool\n  default = false\n}\nvariable \"db_engine\" {\n  type = string\n}\nresource \"aws_db_instance\" \"main\" {\n  count      = var.create_db ? 1 : 0\n  identifier = \"main\"\n  engine     = var.db_engine\n}\n",
+    "infra/envs/common.tfvars": "db_engine = \"mysql\"\n",
+    "infra/envs/prod.tfvars": "create_db = true\n",
+    "infra/envs/dev.tfvars": "create_db = false\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "infra/envs/common.tfvars"
      ]
     }
    }

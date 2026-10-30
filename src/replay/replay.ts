@@ -78,8 +78,11 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   const tfChanged = changed.filter((c) => [c.path, c.oldPath].filter((p): p is string => Boolean(p)).flatMap(aliases).some((p) => TF_FILE.test(p)));
   const changedDirs = new Set(tfChanged.flatMap((c) => [c.path, c.oldPath].filter((p): p is string => Boolean(p)).flatMap(aliases).map((p) => path.posix.dirname(p))));
   // A changed link to a directory changes everything read through it.
+  const dirsUnder = (p: string) =>
+    [headSource, baseSource].flatMap((src) => src.allFiles().filter((f) => f.startsWith(p + '/')).map((f) => path.posix.dirname(f)));
   for (const c of changed) {
-    for (const p of [c.path, c.oldPath]) if (p && (headSource.listFiles(p).length || baseSource.listFiles(p).length)) changedDirs.add(p);
+    // A path that is a file at neither commit is a link to a directory (or a link that was refused).
+    for (const p of [c.path, c.oldPath]) if (p && !headSource.blobId(p) && !baseSource.blobId(p)) for (const d of dirsUnder(p)) changedDirs.add(d);
   }
 
   // Policy and exceptions come from the base commit: a change must not be able to accept its own findings.
@@ -196,7 +199,7 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
         rootItems.push({ kind: 'coverage', level: 'review', text: `Root ${root} is deleted with ${n} resource${n === 1 ? '' : 's'} in its configuration. Deleting the directory destroys nothing by itself: they are destroyed only if someone runs terraform destroy against its state, and otherwise stay in AWS without Terraform managing them; confirm which is intended` });
       }
       if (move && !move.sameState && roots.some((r) => r.root === root)) {
-        rootItems.push({ kind: 'coverage', level: 'review', text: `Root ${move.from} moved to ${root} (${move.matched} of ${move.total} files kept or renamed). Its state location is not fixed in the configuration, so the existing resources carry over only if its state moves with it; moving the code destroys nothing, but without the state ${root} would create new copies and leave the old resources unmanaged` });
+        rootItems.push({ kind: 'coverage', level: 'review', text: `Root ${move.from} moved to ${root} (${move.matched} of ${move.total} files kept or renamed). The configuration does not show that both use the same state, so the existing resources carry over only if its state moves with it; moving the code destroys nothing, but without the state ${root} would create new copies and leave the old resources unmanaged` });
       }
     }
   }
@@ -224,6 +227,9 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   const inputPaths = [...new Set(changed.flatMap((c) => [c.path, c.oldPath]).filter((p): p is string => Boolean(p)))];
   const terragrunt = inputPaths.filter((p) => /(^|\/)terragrunt\.hcl$/.test(p));
   const unattributed = inputPaths.filter((p) => /\.tfvars(\.json)?$/.test(p) && !aliases(p).some((a) => evaluatedInputs.has(a)));
+  // A changed var-file found below a root is evaluated with that root, on its own. Which roots load it,
+  // and with which other var-files, is set outside the configuration, so the change stays reviewed.
+  const partly = [...new Set(roots.filter((r) => r.varFile && [r.varFile, r.baseVarFile].some((f) => f && touchedPaths.has(f))).map((r) => `${r.varFile} (${describeVarChanges(baseSource, headSource, r.varFile!)}) with ${r.root}`))];
   // A var-file evaluated with a root that does not declare a variable it changes: that value goes elsewhere.
   const undeclared: string[] = [];
   for (const r of roots) {
@@ -250,6 +256,10 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     if (combined.gate.result === 'pass') combined.gate.result = 'review';
     const files = unattributed.slice(0, 5).map((f) => `${f} (${describeVarChanges(baseSource, headSource, f)})`);
     addGateItem(combined.gate, { kind: 'coverage', level: 'review', text: `Inputs changed that static replay does not evaluate: ${files.join('; ')}${unattributed.length > 5 ? `; and ${unattributed.length - 5} more` : ''}. No root loads ${unattributed.length === 1 ? 'this file' : 'these files'} automatically or from a directory below it, so the roots that use ${unattributed.length === 1 ? 'it' : 'them'} were not evaluated with ${unattributed.length === 1 ? 'it' : 'them'}; review by hand or with a plan` });
+  }
+  if (partly.length) {
+    if (combined.gate.result === 'pass') combined.gate.result = 'review';
+    addGateItem(combined.gate, { kind: 'coverage', level: 'review', text: `Inputs changed that were evaluated only in part: ${partly.slice(0, 5).join('; ')}${partly.length > 5 ? `; and ${partly.length - 5} more` : ''}. Each var-file was evaluated on its own with the root it sits in; a root that loads it from elsewhere, or together with other var-files, was not evaluated; review by hand or with a plan` });
   }
   if (undeclared.length) {
     if (combined.gate.result === 'pass') combined.gate.result = 'review';
