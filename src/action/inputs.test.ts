@@ -53,7 +53,6 @@ describe('Action inputs (round 3)', () => {
     expect(needsBase('plan', '')).toBe(false);
     expect(needsBase('plan', 'policy.json')).toBe(true);
     expect(needsBase('pr', '')).toBe(true);
-    expect(needsBase('app', '')).toBe(true);
   });
 
   test('a policy file outside the workspace is an error, not silently no policy', () => {

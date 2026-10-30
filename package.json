@@ -1,7 +1,7 @@
 {
   "name": "diffseal",
   "version": "0.5.5-beta",
-  "description": "Change review for Terraform on AWS: blast radius, policy evidence, and the IAM that application code needs",
+  "description": "Change review for Terraform on AWS: blast radius, policy checks and change evidence",
   "type": "module",
   "bin": {
     "diffseal": "dist/cli.js",
@@ -10,7 +10,6 @@
   "files": [
     "dist/cli.js",
     "dist/mcp.js",
-    "dist/*.wasm-*.gz",
     "LICENSE",
     "README.md"
   ],
@@ -34,9 +33,7 @@
     "demo": "bun run src/cli.ts demo",
     "typecheck": "tsc --noEmit -p .",
     "mcp": "bun run src/mcp.ts",
-    "test": "bun test",
-    "vendor:parsers": "bun scripts/vendor-parsers.ts",
-    "generate:aws-actions": "bun scripts/generate-aws-actions.ts"
+    "test": "bun test"
   },
   "keywords": [
     "terraform",
@@ -52,16 +49,9 @@
   "license": "FSL-1.1-ALv2",
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
-    "@tree-sitter-grammars/tree-sitter-kotlin": "1.1.0",
     "@types/bun": "1.3.1",
     "@types/node": "22",
-    "tree-sitter-c-sharp": "0.23.5",
-    "tree-sitter-go": "0.25.0",
-    "tree-sitter-java": "0.23.5",
-    "tree-sitter-python": "0.25.0",
-    "tree-sitter-typescript": "0.23.2",
     "typescript": "5.9.3",
-    "web-tree-sitter": "0.25.10",
     "yaml": "2.9.1",
     "zod": "4.6.5"
   }

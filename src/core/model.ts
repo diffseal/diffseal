@@ -1,5 +1,5 @@
 /**
- * Core contracts shared by plan review, static replay and app-to-infra reconciliation.
+ * Core contracts shared by plan review and static replay.
  * Every analyzer consumes ResourceChange[]; where it came from (plan JSON or static HCL) does not matter.
  */
 
@@ -242,7 +242,7 @@ export interface CostSummary {
 
 export interface GateItem {
   level: 'block' | 'review';
-  kind: 'risk' | 'control' | 'access' | 'exception' | 'coverage' | 'policy';
+  kind: 'risk' | 'control' | 'exception' | 'coverage' | 'policy';
   rule?: string;
   resource?: string;
   text: string;

@@ -10,13 +10,11 @@ if (destination === root || (destination.startsWith(root + path.sep) && !destina
 if (fs.existsSync(destination) && (!fs.statSync(destination).isDirectory() || fs.readdirSync(destination).length)) throw Error('Pilot output must be a new or empty folder');
 if (JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version !== VERSION) throw Error('Package and engine versions differ');
 const dist = path.join(root, 'dist');
-// The pilot vendors only the Action, whose bundle and parser assets are committed, so this works from a fresh clone.
-const files = fs.readdirSync(dist).filter((file) => file === 'action.js' || /\.wasm(?:-[^.]+\.gz)?$/.test(file));
-if (files.filter((file) => /\.wasm(?:-[^.]+\.gz)?$/.test(file)).length !== 8 || !files.includes('action.js')) throw Error('dist/ is incomplete; the package needs action.js and eight parser assets');
+// The pilot vendors only the Action, whose bundle is committed, so this works from a fresh clone.
+if (!fs.existsSync(path.join(dist, 'action.js'))) throw Error('dist/ is incomplete; the package needs action.js');
 const tool = path.join(destination, '.github/actions/diffseal');
-fs.mkdirSync(path.join(tool, 'dist/licenses'), { recursive: true });
-for (const file of files) fs.copyFileSync(path.join(dist, file), path.join(tool, 'dist', file));
-for (const file of fs.readdirSync(path.join(root, 'src/app/grammars')).filter((file) => file.endsWith('.LICENSE') || file === 'manifest.json')) fs.copyFileSync(path.join(root, 'src/app/grammars', file), path.join(tool, 'dist/licenses', file));
+fs.mkdirSync(path.join(tool, 'dist'), { recursive: true });
+fs.copyFileSync(path.join(dist, 'action.js'), path.join(tool, 'dist', 'action.js'));
 for (const file of ['action.yml', 'LICENSE']) fs.copyFileSync(path.join(root, file), path.join(tool, file));
 fs.writeFileSync(path.join(destination, 'VERSION'), VERSION + '\n');
 fs.writeFileSync(path.join(tool, 'VERSION'), VERSION + '\n');

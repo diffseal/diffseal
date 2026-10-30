@@ -1,16 +1,7 @@
-import { prepareLanguages, languageForFile } from '../app/parser.js';
-import { extractManaged } from '../app/managed.js';
 import { expect } from 'bun:test';
 import { analyze } from '../analysis/analyze.js';
-import type { AccessFact, EnvRead, ResourceRef } from '../app/facts.js';
-import { GoIndex, extractGo } from '../app/go.js';
-import { extractPython } from '../app/python.js';
-import { scanApp } from '../app/scan.js';
-import { extractTs } from '../app/typescript.js';
 import { reveal, type AnalysisResult, type PolicyConfig, type ResourceChange } from '../core/model.js';
 import { readPlan } from '../plan/readPlan.js';
-import { InfraIndex } from '../reconcile/infraIndex.js';
-import { reconcile } from '../reconcile/reconcile.js';
 import { compareEvaluations } from '../terraform/compare.js';
 import { discoverRoots } from '../terraform/config.js';
 import { evaluateRoot } from '../terraform/expand.js';
@@ -100,69 +91,7 @@ export interface PlanFixtureCase {
   expect: AnalysisExpectation;
 }
 
-export interface AppFixtureCase {
-  kind: 'app';
-  name: string;
-  files: Record<string, string>;
-  entryFiles?: string[];
-  goModule?: string;
-  addedLines?: Record<string, number[]>;
-  expect: {
-    facts?: Array<{
-      service?: string;
-      operation?: string;
-      actions?: string[];
-      resource?: ResourceRef;
-      index?: string;
-      file?: string;
-    }>;
-    exactResources?: ResourceRef[];
-    resourceKinds?: Array<ResourceRef['kind']>;
-    exactActionResourcePairs?: Array<[string, ResourceRef]>;
-    forbiddenResources?: ResourceRef[];
-    forbiddenActions?: string[];
-    envReads?: Array<{ name: string; hasDefault?: boolean }>;
-    exactEnvReadNames?: string[];
-  };
-}
-
-export interface ReconcileFixtureCase {
-  kind: 'reconcile';
-  name: string;
-  infra: Record<string, string>;
-  roots?: string[];
-  app?: Record<string, string>;
-  facts?: Array<Partial<AccessFact> & Pick<AccessFact, 'actions' | 'resource' | 'service'>>;
-  envReads?: EnvRead[];
-  options?: {
-    roleNames?: string[];
-    entries?: string[];
-    rootsUnder?: string;
-    pairWithChangedEnv?: boolean;
-    fileEnv?: Record<string, string[]>;
-    externallyDefinedEnv?: string[];
-  };
-  expect: {
-    exactStatuses?: string[];
-    forbiddenStatuses?: string[];
-    links?: Array<{
-      status?: string;
-      statusNot?: string;
-      access?: string;
-      actionContains?: string;
-      role?: string;
-      root?: string;
-      detailContains?: string;
-      suggestion?: {
-        file?: string;
-        target?: string;
-        code?: string;
-      };
-    }>;
-  };
-}
-
-export type FixtureCase = TerraformFixtureCase | PlanFixtureCase | AppFixtureCase | ReconcileFixtureCase;
+export type FixtureCase = TerraformFixtureCase | PlanFixtureCase;
 
 export interface FixtureSuite {
   suite: string;
@@ -282,7 +211,6 @@ function checkAnalysisExpectations(
 }
 
 export async function runFixtureCase(tc: FixtureCase): Promise<void> {
-  if (tc.kind === 'app') await prepareLanguages(Object.keys(tc.files).filter((p) => /\.(go|ts|tsx|js|jsx|mjs|cjs|py|java|kt|cs)$/.test(p)).map(languageForFile));
   if (tc.kind === 'terraform') {
     const headSource = new MemorySource(tc.head);
     if (tc.expect.roots !== undefined) {
@@ -336,154 +264,5 @@ export async function runFixtureCase(tc: FixtureCase): Promise<void> {
     });
     checkAnalysisExpectations(changes, result, tc.expect);
     return;
-  }
-
-  if (tc.kind === 'app') {
-    const allFiles = Object.entries(tc.files).map(([path, content]) => ({ path, content }));
-    const targetFiles = tc.entryFiles
-      ? allFiles.filter((f) => tc.entryFiles!.includes(f.path))
-      : allFiles;
-    const addedLines = tc.addedLines
-      ? new Map(Object.entries(tc.addedLines).map(([k, v]) => [k, new Set(v)]))
-      : undefined;
-
-    const facts: AccessFact[] = [];
-    const envReads: EnvRead[] = [];
-    if (tc.files['go.mod'] !== undefined) {
-      const r = await scanApp(new MemorySource(tc.files), { entries: tc.entryFiles, addedLines });
-      facts.push(...r.facts);
-      envReads.push(...r.envReads);
-    } else {
-      const goFiles = targetFiles.filter((f) => f.path.endsWith('.go'));
-      const tsFiles = targetFiles.filter((f) => /\.(ts|tsx|js|mjs)$/.test(f.path));
-      const pyFiles = targetFiles.filter((f) => f.path.endsWith('.py'));
-
-      if (goFiles.length) {
-        const index = tc.goModule ? new GoIndex(tc.goModule, allFiles.filter((f) => f.path.endsWith('.go'))) : undefined;
-        const r = extractGo(goFiles, { addedLines, index });
-        facts.push(...r.facts);
-        envReads.push(...r.envReads);
-      }
-      if (tsFiles.length) {
-        const r = extractTs(tsFiles, { addedLines });
-        facts.push(...r.facts);
-        envReads.push(...r.envReads);
-      }
-      const managedFiles = targetFiles.filter(f=>/\.(java|kt|cs)$/.test(f.path));
-      if(managedFiles.length){const r=extractManaged(managedFiles,{addedLines});facts.push(...r.facts);envReads.push(...r.envReads);}
-      if (pyFiles.length) {
-        const r = extractPython(pyFiles, { addedLines });
-        facts.push(...r.facts);
-        envReads.push(...r.envReads);
-      }
-    }
-
-    if (tc.expect.exactResources !== undefined) {
-      expect(facts.map((f) => f.resource)).toEqual(tc.expect.exactResources);
-    }
-    if (tc.expect.resourceKinds !== undefined) {
-      expect(facts.map((f) => f.resource.kind)).toEqual(tc.expect.resourceKinds);
-    }
-    if (tc.expect.exactActionResourcePairs !== undefined) {
-      expect(facts.map((f) => [f.actions[0], f.resource])).toEqual(tc.expect.exactActionResourcePairs);
-    }
-    if (tc.expect.facts) {
-      expect(facts.length).toBeGreaterThanOrEqual(tc.expect.facts.length);
-      tc.expect.facts.forEach((fe, idx) => {
-        const f = facts[idx];
-        if (fe.service !== undefined) expect(f.service).toBe(fe.service);
-        if (fe.operation !== undefined) expect(f.operation).toBe(fe.operation);
-        if (fe.actions !== undefined) expect(f.actions).toEqual(fe.actions);
-        if (fe.resource !== undefined) expect(f.resource).toEqual(fe.resource);
-        if (fe.index !== undefined) expect(f.index).toBe(fe.index);
-        if (fe.file !== undefined) expect(f.file).toBe(fe.file);
-      });
-    }
-    if (tc.expect.forbiddenResources) {
-      for (const bad of tc.expect.forbiddenResources) {
-        expect(facts.some((f) => JSON.stringify(f.resource) === JSON.stringify(bad))).toBe(false);
-      }
-    }
-    if (tc.expect.forbiddenActions) {
-      const allActions = facts.flatMap((f) => f.actions);
-      for (const bad of tc.expect.forbiddenActions) {
-        expect(allActions).not.toContain(bad);
-      }
-    }
-    if (tc.expect.envReads !== undefined) {
-      expect(envReads.length).toBe(tc.expect.envReads.length);
-      tc.expect.envReads.forEach((ee, idx) => {
-        const actual = envReads[idx];
-        expect(actual.name).toBe(ee.name);
-        if (ee.hasDefault !== undefined) expect(Boolean(actual.hasDefault)).toBe(ee.hasDefault);
-      });
-    }
-    if (tc.expect.exactEnvReadNames !== undefined) {
-      expect(envReads.map((e) => e.name)).toEqual(tc.expect.exactEnvReadNames);
-    }
-    return;
-  }
-
-  if (tc.kind === 'reconcile') {
-    const infraSource = new MemorySource(tc.infra);
-    const roots = tc.roots ?? (discoverRoots(infraSource).length ? discoverRoots(infraSource) : ['infra/prod']);
-    const idx = new InfraIndex(roots.map((r) => evaluateRoot(infraSource, r)));
-    let facts: AccessFact[] = [];
-    let envReads: EnvRead[] = tc.envReads ?? [];
-    let fileEnv: Map<string, string[]> | undefined = tc.options?.fileEnv
-      ? new Map(Object.entries(tc.options.fileEnv))
-      : undefined;
-    if (tc.app) {
-      const scan = await scanApp(new MemorySource(tc.app), { entries: tc.options?.entries });
-      facts = scan.facts;
-      envReads = scan.envReads;
-      fileEnv = scan.fileEnv;
-    } else if (tc.facts) {
-      facts = tc.facts.map((f) => ({
-        operation: f.operation ?? f.actions[0]?.split(':')[1] ?? 'Op',
-        file: f.file ?? 'app.go',
-        line: f.line ?? 1,
-        ...f,
-      }));
-    }
-    const links = reconcile(facts, envReads, idx, {
-      roleNames: tc.options?.roleNames,
-      fileEnv,
-      ...(tc.options?.externallyDefinedEnv ? { externallyDefinedEnv: new Set(tc.options.externallyDefinedEnv) } : {}),
-      pairWithChangedEnv: tc.options?.pairWithChangedEnv,
-    });
-    if (tc.expect.exactStatuses !== undefined) {
-      expect(links.map((l) => l.status)).toEqual(tc.expect.exactStatuses as typeof links[number]['status'][]);
-    }
-    if (tc.expect.forbiddenStatuses) {
-      for (const s of tc.expect.forbiddenStatuses) {
-        expect(links.map((l) => l.status)).not.toContain(s as typeof links[number]['status']);
-      }
-    }
-    if (tc.expect.links) {
-      for (let i = 0; i < tc.expect.links.length; i++) {
-        const le = tc.expect.links[i];
-        const l =
-          le.actionContains !== undefined
-            ? links.find((x) => x.actions.some((a) => a.includes(le.actionContains!)))
-            : links.length === tc.expect.links.length
-              ? links[i]
-              : le.access !== undefined
-                ? links.find((x) => x.access === le.access)
-                : links[0];
-        expect(l).toBeDefined();
-        if (!l) continue;
-        if (le.status !== undefined) expect(l.status).toBe(le.status as typeof l.status);
-        if (le.statusNot !== undefined) expect(l.status).not.toBe(le.statusNot as typeof l.status);
-        if (le.role !== undefined) expect(l.role).toBe(le.role);
-        if (le.root !== undefined) expect(l.root).toBe(le.root);
-        if (le.detailContains !== undefined) expect(l.detail).toContain(le.detailContains);
-        if (le.suggestion) {
-          if (le.suggestion.file !== undefined) expect(l.suggestion?.file).toBe(le.suggestion.file);
-          if (le.suggestion.target !== undefined) expect(l.suggestion?.target).toBe(le.suggestion.target);
-          if (le.suggestion.code !== undefined) expect(l.suggestion?.code).toBe(le.suggestion.code);
-        }
-      }
-    }
   }
 }

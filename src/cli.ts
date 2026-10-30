@@ -13,10 +13,8 @@ import { renderMarkdown } from './report/markdown.js';
 import { CSV_HEADER, VERSION, csvRow, renderReplay, toCsv } from './replay/render.js';
 import { replayCommit, type ReplayResult } from './replay/replay.js';
 import { git } from './terraform/source.js';
-import { checkApp } from './app/checkApp.js';
 import { changeRecord, loadApprovals, manifest } from './evidence/changeRecord.js';
 import { REPLACE_CATALOG_SOURCE } from './terraform/replaceCatalog.js';
-import { renderAppCheck } from './report/appCheck.js';
 
 const HELP = `Diffseal ${VERSION}: change review for Terraform on AWS
 
@@ -24,8 +22,6 @@ Usage:
   diffseal review    --plan <plan.json> [--out <report.md>] [--json <result.json>] [--policy <policy.json>] [--strict]
   diffseal replay    --repo <path> (--commit <rev> | --range <a..b> | --since <date>) [--limit <n>]
                        [--base <rev>] [--roots-under <dir>] [--out-dir <dir>] [--policy <policy.json>] [--approvals <file.json>]
-  diffseal check-app --app <path> [--rev <rev> | --worktree] [--base <rev>] [--infra <path>] [--infra-rev <rev>]
-                       [--roots-under <dir>] [--role <name,...>] [--entry <dir,...>] [--out <report.md>] [--json <file>] [--strict]
   diffseal evidence --since <date> --until <date> --repo <path> [--approvals <file.json>] [--out-dir <folder>]
   diffseal verify <folder> [--keys <file>] [--account <login>] [--period <label>] [--allow-unsigned] [--json]
   diffseal modules fetch [--repo <path>] [--cache <dir>]
@@ -38,15 +34,12 @@ Commands:
              checks out, writes to, or sends anything from the repository. Reports go to --out-dir (default ./dry-runs):
              one Markdown report per commit, a change record per commit in records/ (ISO 27001 A.8.32 evidence),
              summary.csv (the change population) and MANIFEST.sha256. --approvals adds who approved each change.
-  check-app  Check the AWS calls in an application against the IAM roles that run it. The application repository
-             needs no Terraform: point --infra at the repository that has it, or add .diffseal.json.
-             With --base, only calls added since that commit are checked.
   evidence   Export an unsigned audit period, inclusive since and exclusive until in UTC.
              Replays every first-parent commit in that period. An incomplete export exits 1; historic gates do not fail export.
   verify     Verify manifest, file set, Ed25519 signature, key validity and optional scope offline.
   modules    Fetch public module packages and write a verified lock file. This command uses the network.
-             replay and check-app accept --module-cache <dir> and never fetch implicitly.
-  demo       Run review and check-app on the examples in a repository checkout (development only).
+             replay accepts --module-cache <dir> and never fetches implicitly.
+  demo       Run review on the example plan in a repository checkout (development only).
 
 Exit codes: 0 pass, 1 error, 2 gate failed (BLOCK, or REVIEW with --strict).
 `;
@@ -56,7 +49,7 @@ interface Args {
   flags: Map<string, string | true>;
 }
 
-const BOOLEAN_FLAGS = new Set(['--strict', '--help', '-h', '--version', '-v', '--worktree', '--allow-unsigned']);
+const BOOLEAN_FLAGS = new Set(['--strict', '--help', '-h', '--version', '-v', '--allow-unsigned']);
 
 function parseArgs(argv: string[]): Args {
   const out: Args = { _: [], flags: new Map() };
@@ -154,7 +147,7 @@ async function runReplay(args: Args): Promise<number> {
       continue;
     }
     // Commits with nothing to report are left out of a range; anything with a gate reason stays in the evidence.
-    if (!r.roots.length && !r.appLinks.length && !r.combined.gate.reasons.length && commits.length > 1) continue;
+    if (!r.roots.length && !r.combined.gate.reasons.length && commits.length > 1) continue;
     const name = r.commit.sha.slice(0, 9);
     emit(`${name}.md`, renderReplay(r));
     emit(`${name}.json`, json(serializable(r)));
@@ -163,7 +156,6 @@ async function runReplay(args: Args): Promise<number> {
       base: r.base,
       roots: r.roots.map((x) => x.root),
       result: r.combined,
-      appLinks: r.appLinks,
       approvals: approvals.get(r.commit.sha) ?? approvals.get(name),
       engine: { version: VERSION, replaceCatalog: REPLACE_CATALOG_SOURCE },
       diagnostics: r.roots.flatMap((x) => x.diagnostics),
@@ -198,41 +190,12 @@ async function runEvidence(args: Args): Promise<number> {
   return result.failures ? 1 : 0;
 }
 
-async function runCheckApp(args: Args): Promise<number> {
-  const app = str(args, '--app');
-  if (!app) throw new Error('check-app needs --app <path to the application repository>');
-  const r = await checkApp({
-    moduleCache: str(args, '--module-cache'),
-    app,
-    rev: str(args, '--rev'),
-    base: str(args, '--base'),
-    worktree: args.flags.has('--worktree'),
-    infra: str(args, '--infra'),
-    infraRev: str(args, '--infra-rev'),
-    rootsUnder: str(args, '--roots-under'),
-    roles: str(args, '--role')?.split(',').map((x) => x.trim()).filter(Boolean),
-    entries: str(args, '--entry')?.split(',').map((x) => x.trim()).filter(Boolean),
-  });
-  const md = renderAppCheck(r);
-  const out = str(args, '--out');
-  const protect = protectedRoots([app, ...(r.infraPath ? [r.infraPath] : [])]);
-  if (out) writeOutput(out, md, protect);
-  else process.stdout.write(md);
-  const jsonOut = str(args, '--json');
-  if (jsonOut) writeOutput(jsonOut, json(r), protect);
-  console.error(`Gate: ${r.gate.result}`);
-  return args.flags.has('--strict') && r.gate.result !== 'pass' ? 2 : 0;
-}
-
 async function runDemo(): Promise<number> {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
   const plan = path.join(root, 'examples', 'unsafe-tfplan.json');
   if (!fs.existsSync(plan)) throw new Error('demo needs a repository checkout. Clone https://github.com/diffseal/diffseal and run bun run demo.');
   const result = analyze(readPlan(JSON.parse(fs.readFileSync(plan, 'utf8'))));
   process.stdout.write(renderMarkdown(result, { title: 'Plan review of `examples/unsafe-tfplan.json`.', version: VERSION }));
-  process.stdout.write('\n');
-  const app = await checkApp({ app: path.join(root, 'examples', 'orders-service'), infra: path.join(root, 'examples', 'demo-infra'), worktree: true });
-  process.stdout.write(renderAppCheck(app));
   return 0;
 }
 
@@ -248,7 +211,14 @@ function serializable(r: ReplayResult) {
   return { version: VERSION, ...rest, roots: rest.roots.map(({ root, result, diagnostics }) => ({ root, result, diagnostics })) };
 }
 
+/** Printed when a removed command is used, so an old script fails with one clear line. */
+const CHECK_APP_REMOVED = 'check-app was removed in the next release; Diffseal reviews Terraform only';
+
 export async function main(argv: string[]): Promise<number> {
+  if (argv[0] === 'check-app') {
+    console.error(CHECK_APP_REMOVED);
+    return 1;
+  }
   let args: Args;
   try {
     args = parseArgs(argv);
@@ -290,7 +260,6 @@ export async function main(argv: string[]): Promise<number> {
     if (cmd === 'review') return runReview(args);
     if (cmd === 'replay') return await runReplay(args);
     if (cmd === 'evidence') return await runEvidence(args);
-    if (cmd === 'check-app') return await runCheckApp(args);
     if (cmd === 'demo') return await runDemo();
     console.error(`Unknown command "${cmd}".\n`);
     process.stdout.write(HELP);

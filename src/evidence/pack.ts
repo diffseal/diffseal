@@ -129,7 +129,6 @@ export async function evidencePack(opts: EvidenceOptions): Promise<EvidenceResul
         base: replay.base,
         roots: replay.roots.map((r) => r.root),
         result: replay.combined,
-        appLinks: replay.appLinks,
         approvals,
         engine: { version: VERSION, replaceCatalog: REPLACE_CATALOG_SOURCE },
         diagnostics: replay.roots.flatMap((r) => r.diagnostics),

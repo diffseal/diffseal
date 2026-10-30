@@ -1241,7 +1241,7 @@ test('encryption findings preserve pre-existing detection, exceptions, Markdown 
   expect(markdown).toContain('A.8.24, SOC 2 CC6.1');
   const record = changeRecord({
     commit: { sha: 'a'.repeat(40), parents: ['b'.repeat(40)], subject: 'encryption settings', author: 'Dev', date: '2026-10-29T00:00:00Z' },
-    base: 'b'.repeat(40), roots: [], result, appLinks: [], engine: { version: 'test', replaceCatalog: 'test' },
+    base: 'b'.repeat(40), roots: [], result, engine: { version: 'test', replaceCatalog: 'test' },
   });
   expect(record.schema).toBe('diffseal.change-record/v1');
   expect(record.controls).toHaveLength(4);

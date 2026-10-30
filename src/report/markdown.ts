@@ -1,47 +1,11 @@
 import type { AnalysisResult, BlastFinding, Finding, Severity } from '../core/model.js';
 
-export interface AppLinkRow {
-  status: 'GRANTED' | 'NOT_GRANTED' | 'MISSING' | 'UNRESOLVED';
-  callsite: string;
-  access: string;
-  detail: string;
-}
-
 export interface ReportMeta {
   /** One line of context under the heading, e.g. "Plan review of `tfplan.json`." Markdown, not escaped. */
   title?: string;
   /** Short caveats for the footer, e.g. static-analysis assumptions. */
   notes?: string[];
-  appLinks?: AppLinkRow[];
-  suggestions?: Suggestion[];
   version?: string;
-}
-
-export interface Suggestion {
-  target: string;
-  file: string;
-  line: number;
-  code: string;
-}
-
-/** "Suggested fixes" section: one code block per policy, statements deduplicated. */
-export function renderSuggestions(suggestions: Suggestion[]): string[] {
-  if (!suggestions.length) return [];
-  const byTarget = new Map<string, { s: Suggestion; code: Set<string> }>();
-  for (const s of suggestions) {
-    const k = `${s.file}:${s.line}:${s.target}`;
-    const e = byTarget.get(k) ?? { s, code: new Set<string>() };
-    e.code.add(s.code);
-    byTarget.set(k, e);
-  }
-  const out = ['', byTarget.size === 1 ? '### Suggested fix' : '### Suggested fixes', ''];
-  for (const { s, code } of byTarget.values()) {
-    out.push(`Add to \`${s.target}\` in \`${s.file}:${s.line}\`:`, '', '```hcl', ...[...code].join('\n\n').split('\n'), '```', '');
-  }
-  if (suggestions.some((x) => x.code.includes('<region>') || x.code.includes('<account-id>'))) {
-    out.push('<sub>Replace the `<region>` and `<account-id>` placeholders, or use a reference to the resource if Terraform manages it.</sub>');
-  }
-  return out;
 }
 
 /** GitHub rejects comment bodies over 65,536 characters. */
@@ -81,13 +45,9 @@ export function renderMarkdown(result: AnalysisResult, meta: ReportMeta): string
 
   out.push(`## Diffseal: ${GATE_LABEL[result.gate.result]}`);
   if (meta.title) out.push('', meta.title);
-  const callout = renderCallout(result.gate, { blast: result.blast, findings: result.findings, links: meta.appLinks ?? [] });
+  const callout = renderCallout(result.gate, { blast: result.blast, findings: result.findings });
   if (callout.length) out.push('', ...callout);
   out.push('', summaryLine(result, attention));
-
-  if (meta.appLinks?.length) out.push('', '### What the code needs from AWS', ...renderAppLinks(meta.appLinks));
-
-  out.push(...renderSuggestions(meta.suggestions ?? []));
 
   const notable = result.blast.filter((b) => b.severity !== 'INFO' || b.action !== 'create');
   if (result.blast.length) {
@@ -130,7 +90,7 @@ export function renderMarkdown(result: AnalysisResult, meta: ReportMeta): string
 }
 
 /** "1 change", "2 changes". */
-export const plural = (n: number, word: string, many = word + 's') => `${n} ${n === 1 ? word : many}`;
+const plural = (n: number, word: string, many = word + 's') => `${n} ${n === 1 ? word : many}`;
 
 /** Explains what the footer leaves out: how Diffseal reads Terraform, proven and likely, the controls. */
 export const HOW_IT_WORKS = 'https://github.com/diffseal/diffseal/blob/main/docs/guide/faq.md';
@@ -146,12 +106,12 @@ const CALLOUT: Record<'review' | 'block', [kind: string, lead: string]> = {
 };
 
 /**
- * The gate's reasons as a GitHub alert box. Reasons built from a change, finding or code link are
+ * The gate's reasons as a GitHub alert box. Reasons built from a change or finding are
  * rewritten as a sentence naming it; any other reason is shown as written.
  */
-export function renderCallout(
+function renderCallout(
   gate: AnalysisResult['gate'],
-  from: { blast?: BlastFinding[]; findings?: Finding[]; links?: AppLinkRow[] }
+  from: { blast?: BlastFinding[]; findings?: Finding[] }
 ): string[] {
   if (gate.result === 'pass') return [];
   const known = new Map<string, string>();
@@ -162,7 +122,6 @@ export function renderCallout(
   for (const f of from.findings ?? []) {
     for (const [label, addr] of labelSplits(f.resource)) known.set(`${label}FAIL ${f.ruleId}: ${addr}: ${f.detail}`, `${rootLabel(label)}${code(addr)}: ${cell(f.title)}. ${cell(f.detail)}`);
   }
-  for (const l of from.links ?? []) known.set(`${l.status}: ${l.callsite}: ${l.access}`, linkSentence(l));
   const items = [...new Set(gate.reasons.map((r) => known.get(r) ?? cell(r)))];
   const [kind, lead] = CALLOUT[gate.result];
   return [
@@ -180,35 +139,6 @@ const rootLabel = (label: string) => (label ? `${cell(label)} ` : '');
 function labelSplits(resource: string): [label: string, address: string][] {
   const out: [string, string][] = [['', resource]];
   for (let i = resource.indexOf(': '); i >= 0; i = resource.indexOf(': ', i + 1)) out.push([resource.slice(0, i + 2), resource.slice(i + 2)]);
-  return out;
-}
-
-function linkSentence(l: AppLinkRow): string {
-  if (l.status === 'NOT_GRANTED') return `${code(l.callsite)} needs ${cell(l.access)}, but its role does not allow it.`;
-  if (l.status === 'MISSING') return `${code(l.callsite)} ${cell(l.access)}, but no analyzed compute sets it.`;
-  return `${code(l.callsite)}: ${cell(l.access)}`;
-}
-
-const LINK_ORDER = ['NOT_GRANTED', 'MISSING', 'UNRESOLVED', 'GRANTED'];
-
-/** Calls that need work as a list with their detail; granted and unresolved calls folded into a table. */
-export function renderAppLinks(links: AppLinkRow[]): string[] {
-  const out: string[] = [];
-  const act = links.filter((l) => l.status === 'NOT_GRANTED' || l.status === 'MISSING');
-  if (act.length) {
-    out.push('');
-    for (const l of act.slice(0, MAX_ROWS)) out.push(`- **${l.status === 'MISSING' ? 'Missing' : 'Not granted'}** ${code(l.callsite)} ${cell(l.access)}. ${cell(l.detail)}`);
-    if (act.length > MAX_ROWS) out.push(`- ...and ${act.length - MAX_ROWS} more`);
-  }
-  const rest = links.filter((l) => !act.includes(l)).sort((a, b) => LINK_ORDER.indexOf(a.status) - LINK_ORDER.indexOf(b.status));
-  if (rest.length) {
-    const n = (st: string) => rest.filter((l) => l.status === st).length;
-    const label = [n('GRANTED') && `${n('GRANTED')} granted`, n('UNRESOLVED') && `${n('UNRESOLVED')} unresolved`].filter(Boolean).join(', ');
-    out.push('', `<details><summary>${label}</summary>`, '', '| Status | Code | Access | Detail |', '| :-- | :-- | :-- | :-- |');
-    for (const l of rest.slice(0, MAX_ROWS)) out.push(`| ${l.status.toLowerCase()} | ${codeCell(l.callsite)} | ${cell(l.access)} | ${cell(l.detail)} |`);
-    if (rest.length > MAX_ROWS) out.push(`| | ...and ${rest.length - MAX_ROWS} more | | |`);
-    out.push('', '</details>');
-  }
   return out;
 }
 

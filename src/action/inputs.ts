@@ -22,7 +22,7 @@ export function pullRequestBase(workspace: string, explicit: string, eventBaseSh
   return git(workspace, ['merge-base', '--end-of-options', resolve(eventBaseSha), 'HEAD']).trim();
 }
 
-/** pr and app modes compare with the base; plan mode only needs it to read the policy file. */
+/** pr mode compares with the base; plan mode only needs it to read the policy file. */
 export function needsBase(mode: string, policyPath: string): boolean {
   return mode !== 'plan' || Boolean(policyPath);
 }

@@ -17,9 +17,8 @@ test('the vendored pilot workflow and isolated package review all three demo sce
     expect(step['continue-on-error']).toBe(true);
     expect(step.with).toEqual({ mode: 'pr', advisory: 'true', strict: 'false' });
     const tool = path.join(out, '.github/actions/diffseal');
-    expect(fs.readdirSync(path.join(tool, 'dist')).filter((name) => /\.wasm(?:-[^.]+\.gz)?$/.test(name)).length).toBe(8);
+    expect(fs.readdirSync(path.join(tool, 'dist'))).toEqual(['action.js']);
     expect(fs.existsSync(path.join(tool, 'LICENSE'))).toBe(true);
-    expect(fs.existsSync(path.join(tool, 'dist/licenses/web-tree-sitter.LICENSE'))).toBe(true);
     const fixture = JSON.parse(fs.readFileSync(path.join(root, 'fixtures/demo/snapshots.fixture'), 'utf8'));
     for (const scenario of fixture.heads) {
       const repo = path.join(dir, scenario.name); fs.mkdirSync(repo);
@@ -37,7 +36,6 @@ test('the vendored pilot workflow and isolated package review all three demo sce
       expect(r.status).toBe(0); // Advisory mode preserves a BLOCK report without failing the job.
       expect(fs.readFileSync(output, 'utf8')).toContain(`gate=${scenario.gate}`);
       const markdown = fs.readFileSync(summary, 'utf8'); expect(markdown).toContain(scenario.finding); expect(markdown).toContain('0.5.5-beta');
-      if (scenario.name === 'missing-iam-permission') expect(markdown).toContain('statement {');
       expect(r.stderr).not.toContain('network forbidden');
     }
     expect(spawnSync('bun', [path.join(root, 'scripts/prepare-pilot.ts'), out], { encoding: 'utf8' }).status).toBe(1);

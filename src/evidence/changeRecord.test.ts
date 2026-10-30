@@ -21,7 +21,6 @@ describe('changeRecord', () => {
       base: 'b'.repeat(40),
       roots: ['envs/prod/svc'],
       result,
-      appLinks: [],
       approvals: { pr: 42, approvedBy: [{ login: 'reviewer', at: '2026-10-01T09:00:00Z' }], mergedBy: 'reviewer' },
       engine: { version: 'test', replaceCatalog: 'x@1' },
     });
@@ -37,14 +36,14 @@ describe('changeRecord', () => {
   });
 
   test('controls carry the verified references of other frameworks for the rule category', () => {
-    const r = changeRecord({ commit, base: 'b'.repeat(40), roots: [], result, appLinks: [], engine: { version: 't', replaceCatalog: 'x' } });
+    const r = changeRecord({ commit, base: 'b'.repeat(40), roots: [], result, engine: { version: 't', replaceCatalog: 'x' } });
     const rds = r.controls.find((c) => c.rule === 'rds.encryption')!;
     expect(rds.category).toBe('encryption-at-rest');
     expect(rds.frameworks.nis2?.some((x) => x.ref.includes('21(2)(h)'))).toBe(true);
   });
 
   test('v1 JSON keeps one row per ISO control with SOC 2 in the existing frameworks field', () => {
-    const r = changeRecord({ commit, base: 'b'.repeat(40), roots: [], result, appLinks: [], engine: { version: 't', replaceCatalog: 'x' } });
+    const r = changeRecord({ commit, base: 'b'.repeat(40), roots: [], result, engine: { version: 't', replaceCatalog: 'x' } });
     const rows = r.controls.filter((c) => c.rule === 'rds.encryption');
     expect(JSON.parse(JSON.stringify(rows))).toEqual([{
       control: 'ISO27001:A.8.24', rule: 'rds.encryption', resource: 'aws_db_instance.db', status: 'PASS', detail: 'Storage encrypted',
@@ -58,7 +57,7 @@ describe('changeRecord', () => {
       rc('aws_s3_bucket_logging.logs', 'aws_s3_bucket_logging', ['create'], {}),
       rc('aws_securityhub_account.account', 'aws_securityhub_account', ['delete'], null),
     ])));
-    const r = changeRecord({ commit, base: 'b'.repeat(40), roots: [], result, appLinks: [], engine: { version: 't', replaceCatalog: 'x' } });
+    const r = changeRecord({ commit, base: 'b'.repeat(40), roots: [], result, engine: { version: 't', replaceCatalog: 'x' } });
     expect(JSON.parse(JSON.stringify(r.controls))).toEqual([
       {
         control: 'SOC2:CC7.2', rule: 's3.access-logging', resource: 'aws_s3_bucket_logging.logs',
@@ -75,13 +74,13 @@ describe('changeRecord', () => {
   });
 
   test('says when approvals are unknown instead of leaving them out silently', () => {
-    const r = changeRecord({ commit, base: 'b'.repeat(40), roots: [], result, appLinks: [], engine: { version: 't', replaceCatalog: 'x' } });
+    const r = changeRecord({ commit, base: 'b'.repeat(40), roots: [], result, engine: { version: 't', replaceCatalog: 'x' } });
     expect(r.approvals).toBeNull();
     expect(r.notes.join(' ')).toContain('approvals');
   });
 
   test('notes Terraform that did not parse, by file and line (round 3)', () => {
-    const r = changeRecord({ commit, base: 'b'.repeat(40), roots: [], result, appLinks: [], diagnostics: ['main.tf:7: expected "}"'], engine: { version: 't', replaceCatalog: 'x' } });
+    const r = changeRecord({ commit, base: 'b'.repeat(40), roots: [], result, diagnostics: ['main.tf:7: expected "}"'], engine: { version: 't', replaceCatalog: 'x' } });
     expect(r.notes.join(' ')).toContain('main.tf:7');
   });
 

@@ -217,35 +217,6 @@ export function changedPaths(repo: string, base: string, head: string): ChangedP
   return result;
 }
 
-/** Unified diff of selected paths, used to scope app-code extraction to changed lines. */
-export function unifiedDiff(repo: string, base: string, head: string, paths: string[]): string {
-  if (!paths.length) return '';
-  return git(repo, ['diff', '--no-ext-diff', '--no-textconv', '--no-color', '--src-prefix=a/', '--dst-prefix=b/', '-U0', base, head, '--', ...paths]);
-}
-
-/** Files changed between a commit and the working tree, plus untracked files (not ignored). */
-export function worktreeChanges(repo: string, base: string): { changed: ChangedPath[]; untracked: string[] } {
-  // --relative: paths relative to `repo`, which may be a subdirectory of the work tree (as FsSource reads it).
-  const out = git(repo, ['diff', '--relative', '--name-status', '-M', '-z', '--no-ext-diff', '--no-textconv', base, '--']);
-  const parts = out.split('\0').filter((x) => x !== '');
-  const changed: ChangedPath[] = [];
-  for (let i = 0; i < parts.length; ) {
-    const status = parts[i++][0] as ChangedPath['status'];
-    if (status === 'R' || status === 'C') {
-      const oldPath = parts[i++];
-      changed.push({ status, oldPath, path: parts[i++] });
-    } else changed.push({ status, path: parts[i++] });
-  }
-  const untracked = git(repo, ['ls-files', '--others', '--exclude-standard', '-z']).split('\0').filter(Boolean);
-  return { changed, untracked };
-}
-
-/** Unified diff of selected paths between a commit and the working tree. */
-export function worktreeDiff(repo: string, base: string, paths: string[]): string {
-  if (!paths.length) return '';
-  return git(repo, ['diff', '--relative', '--no-ext-diff', '--no-textconv', '--no-color', '--src-prefix=a/', '--dst-prefix=b/', '-U0', base, '--', ...paths]);
-}
-
 export interface CommitInfo {
   sha: string;
   parents: string[];

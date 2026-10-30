@@ -1,17 +1,11 @@
 import { defaultModuleCache, readModuleLock } from '../terraform/moduleCache.js';
-import { deploymentIndex } from '../app/deployments.js';
 import * as path from 'node:path';
 import { analyze } from '../analysis/analyze.js';
 import { addGateItem, type GateItem, type AnalysisResult, type Gate, type PolicyConfig, type ResourceChange } from '../core/model.js';
 import { compareEvaluations } from '../terraform/compare.js';
 import { discoverRoots, loadModule, moduleClosure } from '../terraform/config.js';
 import { evaluateRoot } from '../terraform/expand.js';
-import { GitSource, changedPaths, commitInfo, unifiedDiff, type ChangedPath, type CommitInfo } from '../terraform/source.js';
-import { parseAddedLines } from '../app/diff.js';
-import { isAppFile, scanApp } from '../app/scan.js';
-import { InfraIndex } from '../reconcile/infraIndex.js';
-import { reconcile, type AppLink } from '../reconcile/reconcile.js';
-import type { RootEvaluation } from '../terraform/expand.js';
+import { GitSource, changedPaths, commitInfo, type ChangedPath, type CommitInfo } from '../terraform/source.js';
 import { CONFIG_FILE, LEGACY_CONFIG_FILE, readConfigFile } from '../configFile.js';
 
 export interface ReplayOptions {
@@ -49,8 +43,6 @@ export interface ReplayResult {
   terraformFiles: string[];
   roots: RootReplay[];
   combined: AnalysisResult;
-  /** What changed application code needs from AWS, checked against the infrastructure at head. */
-  appLinks: AppLink[];
   headSource: GitSource;
   baseSource: GitSource;
 }
@@ -74,13 +66,12 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   const changedConfig = [CONFIG_FILE, LEGACY_CONFIG_FILE, ...(opts.policyFile ? [opts.policyFile] : [])].filter(
     (f) => baseSource.readFile(f) !== headSource.readFile(f)
   );
-  // Files a configuration may read with file() or templatefile(), application code included
+  // Files a configuration may read with file() or templatefile(), scripts included
   // (user_data = file("bootstrap.py")). Which roots read them is known only by evaluating.
   const dataChanged = changed
     .flatMap((c) => [c.path, c.oldPath])
     .filter((p): p is string => Boolean(p) && !TF_FILE.test(p!));
   const roots: RootReplay[] = [];
-  const headEvals = new Map<string, RootEvaluation>();
   if (changedDirs.size || dataChanged.length || moduleLockChanged) {
     const candidates = new Set([...discoverRoots(headSource, opts.rootsUnder), ...discoverRoots(baseSource, opts.rootsUnder)]);
     for (const root of [...candidates].sort()) {
@@ -90,7 +81,6 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
       const baseEval = evaluateRoot(baseSource, root);
       const headEval = evaluateRoot(headSource, root);
       if (!touchesConfig && !dataChanged.some((p) => headEval.readFiles.has(p) || baseEval.readFiles.has(p))) continue;
-      headEvals.set(root, headEval);
       // An evaluation with no instances still carries removed, moved and prevent_destroy blocks.
       const changes = compareEvaluations(baseEval, headEval);
       // Exceptions are judged on the date of the change, so replaying history reproduces its gate.
@@ -112,7 +102,6 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     .flatMap((c) => [c.path, c.oldPath])
     .filter((p): p is string => Boolean(p))
     .filter((p) => /(^|\/)terragrunt\.hcl$/.test(p) || (/\.tfvars(\.json)?$/.test(p) && !(autoLoaded.test(p) && evaluatedRoots.has(path.posix.dirname(p)))));
-  const appLinks = await checkAppChanges(opts, headSource, baseSource, changed, headEvals);
   const combined = combineRoots(roots);
   if (moduleLockChanged && roots.some((root) => root.changes.some((change) => change.type === 'terraform_module_call'))) {
     if (combined.gate.result === 'pass') combined.gate.result = 'review';
@@ -137,10 +126,6 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     if (combined.gate.result === 'pass') combined.gate.result = 'review';
     addGateItem(combined.gate, { kind: 'policy', level: 'review', text: `${f} changed: its policy and exceptions apply from the next change on, after this one is reviewed` });
   }
-  const attention = appLinks.filter((l) => l.status === 'NOT_GRANTED' || l.status === 'MISSING');
-  if (attention.length && combined.gate.result === 'pass') combined.gate.result = 'review';
-  for (const l of attention) addGateItem(combined.gate, { kind: 'access', level: 'review', rule: l.status, resource: l.callsite, text: `${l.status}: ${l.callsite}: ${l.access}` });
-
   return {
     commit,
     base: baseSource.sha,
@@ -149,7 +134,6 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     terraformFiles: tfChanged.map((c) => c.path),
     roots,
     combined,
-    appLinks,
     headSource,
     baseSource,
   };
@@ -174,26 +158,6 @@ function repoPolicy(source: GitSource): PolicyConfig {
   } catch {
     return {};
   }
-}
-
-/** Reconcile the app code a commit adds against every root's infrastructure at head. */
-async function checkAppChanges(
-  opts: ReplayOptions,
-  head: GitSource,
-  base: GitSource,
-  changed: ChangedPath[],
-  evaluated: Map<string, RootEvaluation>
-): Promise<AppLink[]> {
-  const appFiles = changed.filter((c) => c.status !== 'D' && isAppFile(c.path)).map((c) => c.path);
-  if (!appFiles.length) return [];
-  const addedLines = parseAddedLines(unifiedDiff(opts.repo, base.sha, head.sha, appFiles));
-  const scan = await scanApp(head, { addedLines });
-  if (!scan.facts.length && !scan.envReads.length) return [];
-  const evals = discoverRoots(head, opts.rootsUnder).map((r) => evaluated.get(r) ?? evaluateRoot(head, r));
-  const index = new InfraIndex(evals);
-  const deployments = deploymentIndex(head, index);
-  index.computes.push(...deployments.computes);
-  return reconcile(scan.facts, scan.envReads, index, { fileEnv: scan.fileEnv, fileComputes: deployments.files, pairWithChangedEnv: true });
 }
 
 const FILE_FUNCTIONS = /\b(file|templatefile|fileexists|filebase64|filebase64sha256|filebase64sha512|filemd5|filesha1|filesha256|filesha512)\s*\(/;

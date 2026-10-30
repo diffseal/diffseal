@@ -3,7 +3,6 @@ import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { gunzipSync } from 'node:zlib';
 
 // The Action runs the committed bundle, so it must match the source. Run `bun run build` after changes.
 test('dist/action.js is built from the current source', () => {
@@ -18,13 +17,9 @@ test('dist/action.js is built from the current source', () => {
   const fresh = fs.readFileSync(path.join(out, 'action.js'), 'utf8');
   const committed = fs.readFileSync(path.join(root, 'dist', 'action.js'), 'utf8');
   expect(committed === fresh).toBe(true);
-  // Bun's file loader emits hash-named WASMs next to the JavaScript entry point.
-  const assets = fs.readdirSync(out).filter((f) => /\.wasm-[^.]+\.gz$/.test(f));
-  expect(assets.length).toBe(8);
-  for (const asset of assets) {
-    expect(gunzipSync(fs.readFileSync(path.join(out, asset))).subarray(0, 4).toString()).toBe("\0asm");
-    expect(fs.readFileSync(path.join(root, 'dist', asset)).equals(fs.readFileSync(path.join(out, asset)))).toBe(true);
-  }
+  // The bundle is one file: no parser assets are emitted or committed next to it.
+  expect(fs.readdirSync(out)).toEqual(['action.js']);
+  expect(fs.readdirSync(path.join(root, 'dist')).sort()).toEqual(['action.js', 'cli.js', 'mcp.js']);
   // This directory has no node_modules. Disable network access before loading the Action.
   fs.writeFileSync(path.join(out, 'plan.json'), JSON.stringify({ format_version: '1.2', resource_changes: [] }));
   const isolated = spawnSync(
@@ -101,6 +96,6 @@ test('dist/mcp.js starts and lists its tools without dependencies or network', (
     expect(result.stderr).not.toContain('network forbidden');
     const replies = result.stdout.trim().split('\n').map((line) => JSON.parse(line));
     expect(replies.find((reply) => reply.id === 1).result.serverInfo.name).toBe('diffseal');
-    expect(replies.find((reply) => reply.id === 2).result.tools.map((tool: { name: string }) => tool.name).sort()).toEqual(['diffseal_check_app', 'diffseal_replay_commit', 'diffseal_review_plan']);
+    expect(replies.find((reply) => reply.id === 2).result.tools.map((tool: { name: string }) => tool.name).sort()).toEqual(['diffseal_replay_commit', 'diffseal_review_plan']);
   } finally { fs.rmSync(out, { recursive: true, force: true }); }
 });

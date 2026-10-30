@@ -33,8 +33,6 @@ jobs:
           test -z "$(git ls-files --others --exclude-standard -- dist/)"
       - name: Package release
         run: |
-          mkdir -p dist/licenses
-          cp src/app/grammars/*.LICENSE dist/licenses/
           tar -czf "$RUNNER_TEMP/diffseal-$GITHUB_REF_NAME.tgz" dist LICENSE README.md
       - name: Publish release with tag notes
         env:

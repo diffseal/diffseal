@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
 import type { AnalysisResult } from '../core/model.js';
-import type { AppLink } from '../reconcile/reconcile.js';
 import { frameworksFor, type FrameworkRefs } from '../compliance/crosswalk.js';
 import type { CommitInfo } from '../terraform/source.js';
 
@@ -44,6 +43,10 @@ export interface ChangeRecord {
     preExisting?: boolean;
     accepted?: Accepted;
   }>;
+  /**
+   * Required by `diffseal.change-record/v1`. It held application access checks, which were removed;
+   * it is always empty now, and stays so records keep the schema the evidence service validates.
+   */
   access: Array<{ status: string; callsite: string; actions: string[]; resource: string; detail: string }>;
   notes: string[];
 }
@@ -53,7 +56,6 @@ export function changeRecord(input: {
   base: string;
   roots: string[];
   result: AnalysisResult;
-  appLinks: AppLink[];
   approvals?: Approvals;
   engine: { version: string; replaceCatalog: string };
   /** HCL parse diagnostics at the change, as `file:line: message`. */
@@ -95,7 +97,7 @@ export function changeRecord(input: {
         ...(f.accepted ? { accepted: f.accepted } : {}),
       }));
     }),
-    access: input.appLinks.map((l) => ({ status: l.status, callsite: l.callsite, actions: l.actions, resource: l.resource, detail: l.detail })),
+    access: [],
     notes,
   };
 }

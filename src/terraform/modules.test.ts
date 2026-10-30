@@ -207,20 +207,6 @@ test('a lock-only change compares the old and new pinned contents for nested roo
   } finally { fs.rmSync(f.dir, { recursive: true, force: true }); }
 });
 
-test('check-app can grant access through IAM and compute defined by a cached module', async () => {
-  const f = setup();
-  try {
-    fs.appendFileSync(path.join(f.remote, 'main.tf'), `\nresource "aws_iam_role" "r" {\n name="worker"\n assume_role_policy="{}"\n}\nresource "aws_iam_role_policy" "p" {\n role=aws_iam_role.r.name\n policy=jsonencode({Statement=[{Effect="Allow",Action="s3:GetObject",Resource="arn:aws:s3:::logs/*"}]})\n}\nresource "aws_lambda_function" "f" {\n function_name="worker"\n role=aws_iam_role.r.arn\n environment {\n variables={DATA_BUCKET=var.name}\n }\n}\n`);
-    f.git(['add', '.']); f.git(['commit', '-qm', 'iam and compute']); f.write(f.source.replace('?ref=v1.2.0', ''));
-    expect((await f.run('modules', 'fetch', '--repo', f.repo, '--cache', f.cache)).exit).toBe(0);
-    fs.writeFileSync(path.join(f.repo, 'app.ts'), 'import {GetObjectCommand} from "@aws-sdk/client-s3"; new GetObjectCommand({Bucket:process.env.DATA_BUCKET,Key:"x"});\n');
-    const out = path.join(f.dir, 'app.json');
-    const r = await f.run('check-app', '--app', f.repo, '--worktree', '--module-cache', f.cache, '--json', out);
-    expect(r.exit).toBe(0);
-    expect(JSON.parse(fs.readFileSync(out, 'utf8')).links[0].status).toBe('GRANTED');
-  } finally { fs.rmSync(f.dir, { recursive: true, force: true }); }
-});
-
 for (const [constraint, expected] of [['~> 1.2.0', '1.2.9'], ['~> 1.2', '1.3.0'], ['>= 1.2, < 2, != 1.3.0', '1.2.9'], ['1.2.0', '1.2.0'], ['= 2.0.0-beta.2', '2.0.0-beta.2'], ['', '2.0.0']] as const) test(`registry constraint ${constraint || 'unconstrained'} chooses ${expected}`, async () => {
   const f = setup();
   const server = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch(req) {

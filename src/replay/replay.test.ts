@@ -237,7 +237,7 @@ describe('replayCommit', () => {
     r.done();
   });
 
-  test('a file Terraform reads is tracked even when it is application code (round 2 codex)', async () => {
+  test('a file Terraform reads is tracked even when it is a script (round 2 codex)', async () => {
     const r = repo();
     const tf = 'terraform {\n  backend "s3" {}\n}\nresource "aws_instance" "i" {\n  ami       = "ami-1"\n  user_data = file("bootstrap.py")\n}\n';
     r.commit({ 'main.tf': tf, 'bootstrap.py': 'print(1)\n' }, 'base');

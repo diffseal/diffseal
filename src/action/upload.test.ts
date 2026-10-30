@@ -6,7 +6,7 @@ import type { ReplayResult } from '../replay/replay.js';
 
 function setup(statuses = [200]) {
   const calls: Array<{ url: string; init?: RequestInit }> = [], warnings: string[] = [], logs: string[] = [];
-  const replay = { commit: { sha: 'merge', parents: ['base'], subject: 'subject', author: 'author', date: '2026-10-27' }, base: 'base', roots: [], combined: combineRoots([]), appLinks: [] } as unknown as ReplayResult;
+  const replay = { commit: { sha: 'merge', parents: ['base'], subject: 'subject', author: 'author', date: '2026-10-27' }, base: 'base', roots: [], combined: combineRoots([]) } as unknown as ReplayResult;
   const options: UploadOptions = { upload: 'true', mode: 'pr', eventName: 'pull_request', event: { number: 7, pull_request: { head: { sha: 'head' }, base: { sha: 'base' } } }, advisory: true, replay, env: { ACTIONS_ID_TOKEN_REQUEST_URL: 'https://token.example/token?other=1', ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'request-token', GITHUB_REF: 'refs/pull/7/merge', GITHUB_SHA: 'merge' }, warn: (m) => warnings.push(m), log: (m) => logs.push(m), fetchFn: (async (url: string | URL | Request, init?: RequestInit) => {
     calls.push({ url: String(url), init });
     if (!init?.method) return Response.json({ value: 'oidc-token' });
@@ -18,7 +18,7 @@ function setup(statuses = [200]) {
 }
 
 test('upload defaults off and unsupported modes and events never fetch', async () => {
-  for (const override of [{ upload: undefined }, { mode: 'plan' }, { mode: 'app' }, { eventName: 'merge_group' }]) {
+  for (const override of [{ upload: undefined }, { mode: 'plan' }, { eventName: 'merge_group' }]) {
     const s = setup(); await uploadRun({ ...s.options, ...override }); expect(s.calls).toHaveLength(0); expect(s.logs).toHaveLength(1);
   }
 });

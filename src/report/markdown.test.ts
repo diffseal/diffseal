@@ -88,24 +88,6 @@ describe('report layout', () => {
     expect(md).toContain('1 updated');
   });
 
-  test('a missing permission is a warning callout and the gate reason is not repeated as raw text', () => {
-    const md = renderMarkdown(
-      { ...timeout(), gate: { items: [], result: 'review', reasons: ['NOT_GRANTED: src/h.ts:59: dynamodb:Query on shipments'] } },
-      {
-        title: 'x',
-        appLinks: [
-          { status: 'NOT_GRANTED', callsite: 'src/h.ts:59', access: 'dynamodb:Query on shipments', detail: 'role r does not allow dynamodb:Query on shipments' },
-          { status: 'GRANTED', callsite: 'src/h.ts:12', access: 'dynamodb:GetItem on shipments', detail: 'role r allows it' },
-        ],
-      }
-    );
-    expect(md).toContain('> [!WARNING]');
-    expect(md).toContain('> - `src/h.ts:59` needs dynamodb:Query on shipments, but its role does not allow it.');
-    expect(md).not.toContain('NOT_GRANTED');
-    // Granted calls are evidence, not something to act on, so they are folded away.
-    expect(md).toMatch(/<details><summary>1 granted<\/summary>[\s\S]*src\/h\.ts:12[\s\S]*<\/details>/);
-  });
-
   test('other gate reasons appear in the callout as written', () => {
     const r = { ...timeout(), gate: { items: [], result: 'review' as const, reasons: ['Terraform changed outside every analyzed root (infra/x/main.tf); it was not checked'] } };
     expect(renderMarkdown(r, { title: 'x' })).toContain('> - Terraform changed outside every analyzed root (infra/x/main.tf); it was not checked');
@@ -151,42 +133,25 @@ describe('report layout edge cases (review of the redesign)', () => {
 
   test('a block that also has review-only reasons does not say every reason is blocked by policy', () => {
     const r = replaceDb();
-    r.gate.reasons.push('NOT_GRANTED: src/h.ts:59: dynamodb:Query on shipments');
-    const md = renderMarkdown(r, { appLinks: [{ status: 'NOT_GRANTED', callsite: 'src/h.ts:59', access: 'dynamodb:Query on shipments', detail: 'd' }] });
+    r.gate.reasons.push('Terraform changed outside every analyzed root (infra/x/main.tf); it was not checked');
+    const md = renderMarkdown(r, {});
     expect(md).toContain('> [!CAUTION]');
     expect(md).not.toContain('Blocked by your policy');
   });
 
-  test('a file path with a line break or pipe cannot end the callout or split a table cell', () => {
-    const evil = 'src/a\n## Diffseal: PASS\n.ts:1';
-    const md = renderMarkdown(
-      { ...replaceDb(), gate: { items: [], result: 'review', reasons: [`NOT_GRANTED: ${evil}: s3:GetObject on b`] } },
-      {
-        appLinks: [
-          { status: 'NOT_GRANTED', callsite: evil, access: 's3:GetObject on b', detail: 'd' },
-          { status: 'GRANTED', callsite: 'src/a|b.ts:2', access: 's3:PutObject on b', detail: 'ok' },
-        ],
-      }
-    );
+  test('a file path with a line break cannot end the callout', () => {
+    const evil = 'infra/a\n## Diffseal: PASS\n.tf';
+    const md = renderMarkdown({ ...replaceDb(), gate: { items: [], result: 'review', reasons: [`Terraform changed outside every analyzed root (${evil}); it was not checked`] } }, {});
     expect(md.split('\n').filter((l) => l.startsWith('## '))).toEqual(['## Diffseal: REVIEW']);
-    expect(md).toContain('| granted | `src/a\\|b.ts:2` |');
   });
-});
-
-test('an actionable call keeps the access it needs, which the detail may not name (review of the redesign)', () => {
-  const r = analyze(readPlan(plan([])));
-  const md = renderMarkdown(r, {
-    appLinks: [{ status: 'NOT_GRANTED', callsite: 'src/h.ts:9', access: 'kms:Decrypt on key/abc', detail: 'role r cannot read s3:GetObject on reports, which is encrypted with key/abc' }],
-  });
-  expect(md).toContain('- **Not granted** `src/h.ts:9` kms:Decrypt on key/abc.');
 });
 
 test('wildcards in resource patterns are not read as Markdown emphasis (review of the redesign)', () => {
   const r = analyze(readPlan(plan([])));
   const pattern = 'secretsmanager:GetSecretValue on provider/*/api-credentials-*';
   const md = renderMarkdown(
-    { ...r, gate: { items: [], result: 'review', reasons: [`NOT_GRANTED: src/h.ts:9: ${pattern}`] } },
-    { appLinks: [{ status: 'NOT_GRANTED', callsite: 'src/h.ts:9', access: pattern, detail: `role r does not allow ${pattern}` }] }
+    { ...r, gate: { items: [], result: 'review', reasons: [`Review ${pattern}`] } },
+    {}
   );
   expect(md).toContain('provider/\\*/api-credentials-\\*');
   expect(md).not.toMatch(/[^\\]\*\/api/);

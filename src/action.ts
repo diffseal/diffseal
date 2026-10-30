@@ -2,9 +2,7 @@ import { addGateItem, type Gate } from './core/model.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { analyze } from './analysis/analyze.js';
-import { checkApp } from './app/checkApp.js';
 import { readPlan } from './plan/readPlan.js';
-import { renderAppCheck } from './report/appCheck.js';
 import { renderMarkdown } from './report/markdown.js';
 import { VERSION, renderReplay } from './replay/render.js';
 import { replayCommit } from './replay/replay.js';
@@ -39,14 +37,19 @@ function setOutput(name: string, value: string) {
   if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${value}\n`);
 }
 
+/** Printed for the removed application code check, so an old workflow fails with one clear line. */
+const APP_MODE_REMOVED = 'mode: app was removed in the next release; Diffseal reviews Terraform only';
+
 async function main(): Promise<number> {
   const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
   const mode = input('mode', 'pr');
+  if (mode === 'app') {
+    console.error(APP_MODE_REMOVED);
+    return 1;
+  }
   const policyPath = input('policy');
   const base = needsBase(mode, policyPath) ? pullRequestBase(workspace, input('base'), eventBaseSha()) : undefined;
   const { policy, changed: policyChanged } = policyPath ? readPolicy(workspace, policyPath, base) : { policy: {}, changed: false };
-  const roles = input('role').split(',').map((x) => x.trim()).filter(Boolean);
-  const entries = input('entry').split(',').map((x) => x.trim()).filter(Boolean);
 
   let markdown: string;
   let gate: 'pass' | 'review' | 'block';
@@ -58,21 +61,6 @@ async function main(): Promise<number> {
     if (policyChanged) reviewPolicyChange(result.gate, policyPath);
     markdown = renderMarkdown(result, { title: `Plan review of \`${path.basename(planFile)}\`.`, version: VERSION });
     gate = result.gate.result;
-  } else if (mode === 'app') {
-    const r = await checkApp({
-      app: workspace,
-      moduleCache: input('module-cache') ? path.resolve(workspace, input('module-cache')) : undefined,
-      rev: 'HEAD',
-      base,
-      infra: input('infra-path') ? path.resolve(workspace, input('infra-path')) : undefined,
-      rootsUnder: input('roots-under') || undefined,
-      roles,
-      entries,
-    });
-    if (policyChanged) reviewPolicyChange(r.gate, policyPath);
-    markdown = renderAppCheck(r);
-    gate = r.gate.result;
-    hasReport = Boolean(r.links.length || r.gate.reasons.length || policyChanged);
   } else if (mode === 'pr') {
     const r = await replayCommit({
       repo: workspace,
@@ -89,9 +77,9 @@ async function main(): Promise<number> {
     replay = r;
     markdown = renderReplay(r, { commit: false });
     gate = r.combined.gate.result;
-    hasReport = Boolean(r.roots.length || r.appLinks.length || r.combined.gate.reasons.length || policyChanged);
+    hasReport = Boolean(r.roots.length || r.combined.gate.reasons.length || policyChanged);
   } else {
-    throw new Error(`Unknown mode "${mode}". Use pr, plan or app.`);
+    throw new Error(`Unknown mode "${mode}". Use pr or plan.`);
   }
 
   const uploaded = await uploadRun({ upload: input('upload'), url: input('upload-url', 'https://api.diffseal.com'), mode, eventName: process.env.GITHUB_EVENT_NAME, event: process.env.GITHUB_EVENT_PATH ? JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8')) : undefined, advisory: input('advisory', 'false') === 'true', replay });
@@ -122,7 +110,7 @@ async function main(): Promise<number> {
   return actionExitCode(gate, { strict, advisory });
 }
 
-/** Replay mode adds its own reason for a changed policy file; plan and app mode get it here, before rendering. */
+/** Replay mode adds its own reason for a changed policy file; plan mode gets it here, before rendering. */
 function reviewPolicyChange(gate: Gate, policyPath: string): void {
   if (gate.result === 'pass') gate.result = 'review';
   addGateItem(gate, { kind: 'policy', level: 'review', text: `${policyPath} changed in this pull request. Diffseal applied the version on the base branch. The new version applies once this pull request is merged.` });

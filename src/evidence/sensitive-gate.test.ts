@@ -50,7 +50,7 @@ for (const mode of ['plan', 'replay']) for (const blocking of [true, false]) {
       expect(aligned(replay.combined.gate)).toBe(true);
       expect(replay.combined.gate.items.some((item) => item.kind === (blocking ? 'risk' : 'control'))).toBe(true);
       expect(replay.combined.gate.items.every((item) => item.text.startsWith('prod, staging: '))).toBe(true);
-      const record = changeRecord({ commit: replay.commit, base: replay.base, roots: replay.roots.map((r) => r.root), result: replay.combined, appLinks: replay.appLinks, engine: { version: 'test', replaceCatalog: 'test' } });
+      const record = changeRecord({ commit: replay.commit, base: replay.base, roots: replay.roots.map((r) => r.root), result: replay.combined, engine: { version: 'test', replaceCatalog: 'test' } });
       expect(privateText(record)).toBe(true);
       const comment = renderReplay(replay, { commit: false });
       expect(privateText(comment)).toBe(true);
@@ -91,38 +91,3 @@ for (const expires of ['2020-01-01', 'malformed']) {
     if (expires !== 'malformed') expect(result.gate.items.some((item) => item.kind === 'exception' && item.text.includes('(sensitive)'))).toBe(true);
   });
 }
-
-test('check-app builds aligned access items from already scrubbed links', async () => {
-  const { checkApp } = await import('../app/checkApp.js');
-  const { renderAppCheck } = await import('../report/appCheck.js');
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tt-private-app-gate-'));
-  const topic = 'arn:aws:sns:eu-west-1:111122223333:fixture-private-topic';
-  try {
-    const init = spawnSync('git', ['-C', dir, 'init', '-q'], { encoding: 'utf8' }); if (init.status) throw new Error(init.stderr);
-    fs.writeFileSync(path.join(dir, 'main.tf'), `terraform {
-  backend "s3" {}
-}
-resource "aws_iam_role" "r" {
-  name = "r"
-  assume_role_policy = "{}"
-}
-resource "aws_iam_role_policy" "p" {
-  role = aws_iam_role.r.name
-  policy = jsonencode({ Statement = [{ Effect = "Allow", Action = ["sns:Subscribe"], Resource = "*" }] })
-}
-resource "aws_lambda_function" "f" {
-  function_name = "f"
-  role = aws_iam_role.r.arn
-  environment {
-    variables = { TOPIC_ARN = sensitive("${topic}") }
-  }
-}
-`);
-    fs.writeFileSync(path.join(dir, 'app.ts'), `import { PublishCommand } from '@aws-sdk/client-sns';\nawait sns.send(new PublishCommand({ TopicArn: process.env.TOPIC_ARN, Message: 'fixture' }));\n`);
-    const result = await checkApp({ app: dir, worktree: true, roles: ['r'] });
-    expect(result.gate.items.some((item) => item.kind === 'access')).toBe(true);
-    expect(aligned(result.gate)).toBe(true);
-    expect(JSON.stringify(result.gate).includes(topic)).toBe(false);
-    expect(renderAppCheck(result).includes(topic)).toBe(false);
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
-});

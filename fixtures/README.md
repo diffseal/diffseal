@@ -6,7 +6,7 @@ In the TypeScript implementation, `src/testing/fixtures.test.ts` loads every `.j
 
 ## Case Kinds
 
-Every case has a `kind` field with one of four values:
+Every case has a `kind` field with one of two values:
 
 1. `"terraform"`
    - Inputs:
@@ -35,28 +35,3 @@ Every case has a `kind` field with one of four values:
      - `now` (optional): ISO date string.
    - Expected outputs (`expect`):
      - Same `AnalysisExpectation` fields as `"terraform"` (`changedAddresses`, `changes`, `findings`, `noFindingFor`, `blast`, `cost`, `gate`, `forbiddenSubstrings`).
-
-3. `"app"`
-   - Inputs:
-     - `files`: map of application source files (`.go`, `.ts`, `.py`, `go.mod`).
-     - `entryFiles` (optional): subset of files to extract from when the rest of `files` form the Go module index.
-     - `goModule` (optional): Go module path when `go.mod` is not in `files`.
-     - `addedLines` (optional): map of file path to 1-based line numbers added in a diff.
-   - Expected outputs (`expect`):
-     - `exactResources`: ordered list of extracted `ResourceRef` objects.
-     - `facts`: expected `AccessFact` entries (`service`, `operation`, `actions`, `resource`, `index`, `file`).
-     - `envReads`: expected environment variable reads (`name`, `fallback`).
-     - `forbiddenResources`, `forbiddenActions`: resources or actions that must not be extracted.
-
-4. `"reconcile"`
-   - Inputs:
-     - `infra`: map of Terraform files across one or more roots.
-     - `roots` (optional): explicit root paths to index.
-     - `app` (optional): map of application files to scan via `scanApp`.
-     - `facts` (optional): explicit `AccessFact` list when testing reconciliation directly without scanning app source.
-     - `envReads` (optional): explicit `EnvRead` list.
-     - `options` (optional): `roleNames`, `entries`, `pairWithChangedEnv`, `fileEnv`, `externallyDefinedEnv`.
-   - Expected outputs (`expect`):
-     - `exactStatuses`: ordered list of link statuses (`GRANTED`, `NOT_GRANTED`, `UNRESOLVED`, `MISSING`).
-     - `forbiddenStatuses`: link statuses that must not appear.
-     - `links`: per-link assertions (`status`, `access`, `actionContains`, `role`, `root`, `detailContains`, `suggestion`).

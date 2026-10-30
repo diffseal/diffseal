@@ -61,7 +61,7 @@ export async function uploadRun(o: UploadOptions): Promise<RunUploadResponse | u
       }
       pullRequest = { number, headSha: pr.head.sha, baseSha: pr.base.sha };
     }
-    const record = changeRecord({ commit: r.commit, base: r.base, roots: r.roots.map((root) => root.root), result: r.combined, appLinks: r.appLinks, engine: { version: VERSION, replaceCatalog: REPLACE_CATALOG_SOURCE }, diagnostics: r.roots.flatMap((root) => root.diagnostics) });
+    const record = changeRecord({ commit: r.commit, base: r.base, roots: r.roots.map((root) => root.root), result: r.combined, engine: { version: VERSION, replaceCatalog: REPLACE_CATALOG_SOURCE }, diagnostics: r.roots.flatMap((root) => root.diagnostics) });
     record.notes = record.notes.filter((note) => !note.startsWith('No approvals were supplied'));
     const body: RunUpload = { schema: 'diffseal.run/v1', event: o.eventName, commit: r.commit.sha, ...(pullRequest ? { pullRequest } : {}), action: { version: VERSION, mode: 'pr', advisory: o.advisory }, record };
     const serialized = JSON.stringify(body);

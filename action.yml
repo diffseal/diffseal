@@ -1,5 +1,5 @@
 name: 'Diffseal'
-description: 'Review Terraform changes and the AWS access application code needs, without cloud credentials.'
+description: 'Review Terraform changes on AWS without cloud credentials.'
 author: 'Diffseal'
 branding:
   icon: 'shield'
@@ -16,7 +16,6 @@ inputs:
     description: >-
       pr: replay the pull request's changes (needs actions/checkout with fetch-depth: 0).
       plan: review a `terraform show -json` file.
-      app: check the app's AWS calls against the IAM roles in Terraform (this repository or infra-path).
     required: false
     default: 'pr'
   plan-json:
@@ -28,15 +27,6 @@ inputs:
     required: false
   roots-under:
     description: 'Only use Terraform roots under this path, e.g. infra/envs/prod'
-    required: false
-  infra-path:
-    description: 'mode: app. Path where the infrastructure repository is checked out, when it is a different repository.'
-    required: false
-  role:
-    description: 'mode: app. IAM role names or ARNs the app runs as, comma-separated, when task definitions or .diffseal.json do not say.'
-    required: false
-  entry:
-    description: 'mode: app. Main package directories to check one binary, comma-separated.'
     required: false
   module-cache:
     description: 'Optional path to verified module objects populated by diffseal modules fetch. Analysis never downloads modules.'

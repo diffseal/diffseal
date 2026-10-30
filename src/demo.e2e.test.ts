@@ -15,11 +15,7 @@ const fixture = path.resolve(
   import.meta.dirname,
   "../fixtures/demo/snapshots.fixture",
 );
-for (const name of [
-  "replace-database",
-  "missing-iam-permission",
-  "harmless-change",
-])
+for (const name of ["replace-database", "harmless-change"])
   test(`bundled Action reviews the synthetic demo: ${name}`, () => {
     const snapshots = JSON.parse(fs.readFileSync(fixture, "utf8")) as {
       base: Record<string, string>;
@@ -96,12 +92,6 @@ for (const name of [
       expect(footer[0]).toMatch(
         /^<sub>Diffseal [0-9][^ ]*\. Compared `[0-9a-f]{9}` with `[0-9a-f]{9}`\. \[How it works\]\(https:\/\/github\.com\/diffseal\/diffseal\/blob\/main\/docs\/guide\/faq\.md\)<\/sub>$/,
       );
-      if (name === "missing-iam-permission") {
-        expect(markdown).toContain("dynamodb:Query");
-        expect(markdown).toContain("statement {");
-        expect(markdown).toContain("aws_dynamodb_table.shipments.arn");
-        expect(markdown).toContain("> [!WARNING]");
-      }
       if (name === "replace-database") {
         expect(markdown).toContain("hash_key");
         expect(markdown).toContain("would lose the items");
