@@ -1,15 +1,14 @@
 # Diffseal
 
-> **Beta status, v0.5.5-beta.** Diffseal reviews Terraform changes on AWS, checks that application code has the IAM permissions it needs, and writes audit change records. It is a beta validated on one production monorepo. Run the GitHub Action in advisory mode first, with `advisory: 'true'`, and report issues in the [GitHub issue tracker](https://github.com/diffseal/diffseal/issues).
+> **Beta status, v0.5.5-beta.** Diffseal reviews Terraform changes on AWS and writes audit change records. It is a beta validated on one production monorepo. Run the GitHub Action in advisory mode first, with `advisory: 'true'`, and report issues in the [GitHub issue tracker](https://github.com/diffseal/diffseal/issues).
 
-Diffseal reviews Terraform changes on AWS and checks that application code has the IAM permissions it needs. It works from source code and git history. It never asks for cloud credentials and never runs `terraform`.
+Diffseal reviews Terraform changes on AWS and records the evidence of each change. It works from Terraform configuration and git history. It never asks for cloud credentials and never runs `terraform`.
 
-It answers four questions about a change:
+It answers three questions about a change:
 
 1. **What does it do to infrastructure?** Creates, updates, replacements and deletions, worked out from the configuration at both commits. A replacement names the argument that forced it.
 2. **What can break?** Deleting or replacing something stateful, such as a database, a bucket or a Cognito user pool, blocks the gate. Diffseal flags an update that reboots a database or narrows an IAM policy for review.
-3. **Does the code have the permissions it needs?** Diffseal matches the AWS SDK calls in Go, TypeScript and Python to the role of the Lambda or ECS task that runs the code. A missing permission comes with the statement to add and the file to add it in.
-4. **What evidence does an auditor get?** Each finding cites the ISO/IEC 27001:2022 Annex A control it relates to. A replay of history produces the population of changes an auditor samples from.
+3. **What evidence does an auditor get?** Each finding cites the ISO/IEC 27001:2022 Annex A control it relates to. A replay of history produces the population of changes an auditor samples from.
 
 ## Install the CLI
 
@@ -42,11 +41,6 @@ diffseal review --plan plan.json [--strict]
 # Replay commits of a local clone, without credentials. Reports go to ./dry-runs.
 diffseal replay --repo ../infra --commit 1a2b3c4
 diffseal replay --repo ../infra --since 2026-09-01
-
-# Check what an application needs from AWS against the IAM in Terraform
-diffseal check-app --app . --worktree
-diffseal check-app --app ../orders-api --infra ../infra --base origin/main
-diffseal check-app --app ../infra --entry services/worker/cmd/worker --role worker-task
 ```
 
 Exit codes: `0` pass, `1` error, `2` the gate failed.
@@ -63,24 +57,6 @@ Exit codes: `0` pass, `1` error, `2` the gate failed.
 Replay also writes a change record per commit (`records/<sha>.json`, schema `diffseal.change-record/v1`): what changed, the gate, the findings with the controls they relate to, and, with `--approvals`, who approved the change. `summary.csv` is the change population an auditor samples from, and `MANIFEST.sha256` covers every file written. The approvals file maps commit to approvals. You can export it read-only with the GitHub CLI; Diffseal itself makes no network calls.
 
 Without state or provider calls, some values are only known after apply. Diffseal reports changes that depend on them as `likely` rather than `proven`. Data sources resolve to references, not values. Diffseal shows registry and git modules as module calls whose inputs changed, because their source is not available offline.
-
-### How check-app finds the role
-
-1. **By environment variable.** The code reads `ORDERS_TABLE`, and a Lambda or ECS task definition in Terraform sets `ORDERS_TABLE`, so that compute's role runs the code. When several computes match, the one whose environment best matches the package wins.
-2. **By deployment files.** An application repository that deploys its own ECS task definition (`taskdef*.json`) names its role in `taskRoleArn`; on EKS, a ServiceAccount manifest or Helm values name it in the `eks.amazonaws.com/role-arn` annotation. Env vars set in those files count as set. A role ARN only matches Terraform roots whose provider targets that account. A policy in another root counts for a role only when both roots' accounts are known statically (a literal `assume_role.role_arn` or `allowed_account_ids`) and match. Otherwise it can make the result `UNRESOLVED`, never `GRANTED`, so a policy added in staging does not hide a missing one in production.
-3. **By configuration.** Add `.diffseal.json` to the application repository:
-
-```json
-{
-  "infra": { "repo": "../infra", "rootsUnder": "envs/prod" },
-  "roles": ["orders-api-task"],
-  "env": ["VARIABLES_SET_OUTSIDE_TERRAFORM"]
-}
-```
-
-The application repository does not need any Terraform of its own.
-
-Diffseal follows calls through helpers in the same repository. A constructor such as `pubsub.NewSNSPublisher(client, topicARN)` contributes the SDK calls its methods make, with the resource taken from the call site. If the constructed value is passed elsewhere, the operations it might perform can only reach `UNRESOLVED`, never `NOT_GRANTED`.
 
 ## Policy checks
 
@@ -134,15 +110,13 @@ jobs:
           fetch-depth: 0
       - uses: diffseal/diffseal@v0.5.5-beta
         with:
-          mode: pr            # or: plan, app
+          mode: pr            # or: plan
           roots-under: infra/envs/prod
 ```
 
 The Action runs bundled JavaScript (`dist/action.js`) on the runner and downloads nothing at run time. It writes the step summary before setting the exit code and updates a single PR comment. `strict: true` also fails the job on `REVIEW`; `advisory: true` does not fail the job because of findings, even on `BLOCK`. A configuration or run error can still fail it.
 
-Diffseal compares a pull request with the commit it branched from, the merge base of `HEAD` and the pull request's base, whether the job checks out the merge commit or the head. Settings that judge the change come from that base: the `policy` file, exceptions, and in `app` mode the roles, env vars and infrastructure named in `.diffseal.json`. Changing any of them makes the gate `REVIEW`, and the new version applies once merged. The policy file must be inside the repository.
-
-To check an application repository against an infrastructure repository, check the infrastructure repository out into a path with a token that can read it, and set `mode: app` and `infra-path`.
+Diffseal compares a pull request with the commit it branched from, the merge base of `HEAD` and the pull request's base, whether the job checks out the merge commit or the head. Settings that judge the change come from that base: the `policy` file and exceptions. Changing either makes the gate `REVIEW`, and the new version applies once merged. The policy file must be inside the repository.
 
 ## Claude Code, Cursor and other MCP clients
 
@@ -156,11 +130,10 @@ To check an application repository against an infrastructure repository, check t
 
 Tools:
 
-- `diffseal_check_app`: after writing code that calls AWS, check that the role allows it.
 - `diffseal_review_plan`
 - `diffseal_replay_commit`
 
-All three are read-only. HashiCorp's Terraform MCP server supplies registry documentation and provider schemas. You can run it next to this one; Diffseal does not call it.
+Both are read-only. HashiCorp's Terraform MCP server supplies registry documentation and provider schemas. You can run it next to this one; Diffseal does not call it.
 
 ## Develop
 
@@ -171,10 +144,10 @@ bun install
 bun test
 bun run build
 bun run typecheck
-bun run demo        # a risky plan, and an app whose role is missing dynamodb:Query
+bun run demo        # review a risky plan
 ```
 
-The demo uses the examples in the repository checkout.
+The demo uses the example plan in the repository checkout.
 
 ## Layout
 
@@ -185,8 +158,6 @@ The demo uses the examples in the repository checkout.
 | `src/plan` | `terraform show -json` reader: unknown values, sensitive values, configuration references |
 | `src/policy` | Policy rules and IAM analysis |
 | `src/analysis` | Blast radius, cost, gate |
-| `src/app` | Go, TypeScript and Python extraction of AWS SDK calls and env reads |
-| `src/reconcile` | Infrastructure index (computes, roles, grants) and reconciliation |
 | `src/replay`, `src/report` | Replay runner and Markdown reports |
 | `src/cli.ts`, `src/mcp.ts`, `src/action.ts` | Entry points |
 

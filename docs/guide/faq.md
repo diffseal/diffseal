@@ -2,19 +2,19 @@
 
 ## Does Diffseal need AWS credentials?
 
-No. Diffseal works entirely from local files, git history, and saved plan JSON files. It never calls AWS APIs, never reads `~/.aws`, and makes no network requests during analysis. You can run `review`, `replay`, and `check-app` offline or in an unprivileged CI job that has no cloud credentials.
+No. Diffseal works entirely from local files, git history, and saved plan JSON files. It never calls AWS APIs, never reads `~/.aws`, and makes no network requests during analysis. You can run `review` and `replay` offline or in an unprivileged CI job that has no cloud credentials.
 
 ## Does Diffseal run `terraform`?
 
 No. Diffseal never executes `terraform`, `tofu`, or `terragrunt`, and it never downloads providers or modules.
 
-- In `replay`, `check-app`, and the GitHub Action `pr` and `app` modes, Diffseal parses `.tf` and `.tfvars` files directly with its own HCL parser and evaluates variables, locals, local module calls, `count`, `for_each`, `dynamic` blocks, and `aws_iam_policy_document` data sources in memory.
+- In `replay` and the GitHub Action `pr` mode, Diffseal parses `.tf` and `.tfvars` files directly with its own HCL parser and evaluates variables, locals, local module calls, `count`, `for_each`, `dynamic` blocks, and `aws_iam_policy_document` data sources in memory.
 - Instead of running a provider binary, Diffseal uses two embedded snapshots extracted from `hashicorp/aws` `v6.70.0`: `src/terraform/aws-schema.json`, covering 1,742 resource types, and `src/terraform/aws-replace.json`, covering 1,728 resource types. They let it coerce boolean and numeric attribute types per resource type up to depth 3, and classify which attribute changes force resource replacement.
 - In `review --plan` and the GitHub Action `plan` mode, you run `terraform show -json <planfile> > tfplan.json` in your own step and pass the resulting JSON file to Diffseal.
 
 ## What is the difference between `proven` and `likely`?
 
-Every resource change and reconciled application link carries a `confidence` field that is `proven`, `likely`, or `unknown`.
+Every resource change carries a `confidence` field that is `proven`, `likely`, or `unknown`.
 
 ### In plan review with `review --plan`
 
@@ -39,10 +39,6 @@ A change is `likely` when the action depends on a value only known at apply time
 
 When blast-radius analysis evaluates a `likely` replacement, it lowers the severity below a `CRITICAL` block, so an uncertain static change asks a person for `REVIEW` instead of blocking the gate.
 
-### In application reconciliation with `check-app`
-
-In `check-app`, a link is `proven` when Diffseal traces the resource expression in the SDK call directly to a literal, a string pattern, or an environment variable read. In a diff checked with `replay` or `check-app --base`, an SDK call can have an unresolved resource expression while the same diff adds a read of a single environment variable whose suffix matches that AWS service, such as `PAYMENT_TABLE_NAME` for a DynamoDB call. Diffseal then pairs them and marks the link `confidence: "likely"`.
-
 ## Which standard do the control IDs refer to?
 
 Control IDs such as `A.8.32` refer to ISO/IEC 27001:2022 Annex A. The change record and `--json` output also list the matching NIS2 and DORA references for each check. A control ID says which control a check gives evidence for. It does not say the standard requires that check. Your policy file decides which checks block, which need review and which are only recorded.
@@ -53,8 +49,8 @@ Diffseal checks sensitive values without ever printing them.
 
 1. **Detection.** Values come into the engine marked sensitive from four sources: the HCL `sensitive` function, `variable` blocks declared with `sensitive = true`, module `output` blocks declared with `sensitive = true`, and the `before_sensitive`, `after_sensitive`, and `sensitive_values` masks in `terraform show -json` plan files. Expressions, templates, and functions derived from a sensitive value also stay sensitive.
 2. **Per-run keyed digests.** Diffseal wraps each sensitive value in a `Redacted` object defined in `src/core/model.ts` and `src/hcl/eval.ts`. At process startup, Diffseal generates a 32-byte random key with `randomBytes(32)` and computes a 16-hex-character HMAC-SHA256 digest of the sensitive value. Diffseal can then tell whether a sensitive attribute changed between the base and head commits within a run. Nothing printed or logged can be reversed or matched against guesses across runs.
-3. **Rule evaluation.** Policy rules and IAM reconciliation call `reveal()` internally to inspect the underlying value inside `Redacted`. Wrapping an open CIDR `0.0.0.0/0`, a wildcard IAM action `*`, or `force_destroy = true` inside `sensitive()` does not hide it from policy or blast-radius checks.
-4. **Output scrubbing.** `Redacted.toString()` and `Redacted.toJSON()` return `"(sensitive)"`. Before any result leaves `analyze()` or `reconcile()`, `scrubDeep()` collects every string and number leaf of four characters or longer, excluding IAM grammar keywords such as `Allow`, `Deny`, `true`, `false`, and `2012-10-17`, from inside every sensitive value, including JSON strings and known substrings of partially unknown sensitive templates. It replaces every occurrence of those leaves with `(sensitive)` across all free-text fields: `detail`, `remediation`, `reason`, `reasons`, `note`, `resource`, `access`, and `code`, longest match first. It never scrubs structural enum fields such as `gate.result` and `status`, so a secret that happens to spell `block` or `pass` cannot alter a gate verdict.
+3. **Rule evaluation.** Policy rules and IAM analysis call `reveal()` internally to inspect the underlying value inside `Redacted`. Wrapping an open CIDR `0.0.0.0/0`, a wildcard IAM action `*`, or `force_destroy = true` inside `sensitive()` does not hide it from policy or blast-radius checks.
+4. **Output scrubbing.** `Redacted.toString()` and `Redacted.toJSON()` return `"(sensitive)"`. Before any result leaves `analyze()`, `scrubDeep()` collects every string and number leaf of four characters or longer, excluding IAM grammar keywords such as `Allow`, `Deny`, `true`, `false`, and `2012-10-17`, from inside every sensitive value, including JSON strings and known substrings of partially unknown sensitive templates. It replaces every occurrence of those leaves with `(sensitive)` across the free-text fields `detail`, `remediation`, `reason`, `reasons` and `note`, and in gate item text, longest match first. It never scrubs structural enum fields such as `gate.result` and `status`, so a secret that happens to spell `block` or `pass` cannot alter a gate verdict.
 
 ## What are the known limits?
 
@@ -64,8 +60,6 @@ Diffseal is a `v0.5.5-beta` release. [`docs/STATUS.md`](../STATUS.md) tracks the
 - **Inputs outside the root.** Static replay does not evaluate `terragrunt.hcl` files, or `.tfvars` files other than the auto-loaded `terraform.tfvars` and `*.auto.tfvars`. When a commit modifies them, Diffseal sets the gate to `review` and notes which files changed.
 - **HCL JSON configuration.** The static evaluator does not load `.tf.json` files; if a commit modifies one, the gate becomes `review`.
 - **Module `count` and `prevent_destroy`.** A local module whose `count` drops to zero does not propagate `prevent_destroy` from its child resources.
-- **Cross-root scoping.** When `--roots-under` is set, Diffseal does not index policies in roots outside that prefix, which can produce a false `NOT GRANTED` if a role's policy lives in a separate root outside `--roots-under`.
-- **Provider aliases in multi-account roots.** Diffseal does not track the `provider` meta-argument per resource. In a root with provider aliases for multiple AWS accounts, it treats a policy that attaches to a role by name rather than by resource reference as account-uncertain and marks it `UNRESOLVED`.
-- **Application code languages and patterns.** Application extraction supports Go with AWS SDK v1 and v2, TypeScript with AWS SDK v3, `lib-dynamodb`, and v2, and Python with `boto3`, using pattern and scope analysis rather than full compiler type-checking. Diffseal does not support Java, Kotlin, or .NET yet.
+- **Application code.** Diffseal does not check application code. The check of AWS SDK calls against IAM roles (`check-app`, Action `mode: app`) was removed; see the [changelog](../../CHANGELOG.md).
 
 See [`docs/STATUS.md`](../STATUS.md) for the full list of open items and validation history.

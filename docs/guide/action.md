@@ -28,9 +28,10 @@ npx diffseal@beta verify ./pack --account your-org --period 2026-Q4
 
 Set `mode` to select what the Action checks:
 
-- `pr`: Static replay of a pull request or merge group commit range. Evaluates affected Terraform roots at the base and head commits and checks any added application code in the diff against the Terraform IAM configuration at head.
+- `pr`: Static replay of a pull request or merge group commit range. Evaluates affected Terraform roots at the base and head commits.
 - `plan`: Reviews the JSON output of `terraform show -json <planfile>` at the path given by `plan-json`.
-- `app`: Scans application source code in the repository and checks every discovered AWS SDK call and infrastructure environment variable read against a Terraform repository.
+
+`mode: app`, the check of application code against IAM roles, has been removed. A workflow that still sets it fails with exit code `1` and the single line `mode: app was removed in the next release; Diffseal reviews Terraform only`. Remove the step, or switch it to `mode: pr` in the repository that holds the Terraform. The `infra-path`, `role` and `entry` inputs went with it.
 
 ## Inputs
 
@@ -38,13 +39,10 @@ Set `mode` to select what the Action checks:
 | :-- | :-- | :-- | :-- |
 | `upload` | `'false'` | `pr` | Upload the scrubbed change record for a `pull_request` or `push` event. Requires GitHub OIDC and a trusted reusable workflow. |
 | `upload-url` | `https://api.diffseal.com` | `pr` | Service URL. Requires HTTPS. Local tests may use HTTP on localhost or 127.0.0.1. |
-| `mode` | `'pr'` | all | Check mode: `pr`, `plan`, or `app`. Any other value fails with an error. |
+| `mode` | `'pr'` | all | Check mode: `pr` or `plan`. Any other value fails with an error. |
 | `plan-json` | `'tfplan.json'` | `plan` | Path to the JSON file produced by `terraform show -json <planfile>`. |
-| `base` | `''` | `pr`, `app`, `plan` | Base git revision to compare against. When omitted on a `pull_request` or `merge_group` event, Diffseal resolves the merge base between the event base SHA and `HEAD`. Requires `fetch-depth: 0` on checkout. Used in `plan` mode only when `policy` is set. |
-| `roots-under` | `''` | `pr`, `app` | Limit evaluation to Terraform roots under this relative directory path, such as `infra/envs/prod`. |
-| `infra-path` | `''` | `app` | Path to the Terraform repository when checking an application repository. Overrides `infra.repo` in `.diffseal.json`. |
-| `role` | `''` | `app` | IAM role name, `path/name`, or ARN that the application runs as. Accepts comma-separated values and overrides `roles` in `.diffseal.json`. |
-| `entry` | `''` | `app` | Entry directory or directories to trace imports from in `app` mode, such as `cmd/worker`. Accepts comma-separated values. |
+| `base` | `''` | `pr`, `plan` | Base git revision to compare against. When omitted on a `pull_request` or `merge_group` event, Diffseal resolves the merge base between the event base SHA and `HEAD`. Requires `fetch-depth: 0` on checkout. Used in `plan` mode only when `policy` is set. |
+| `roots-under` | `''` | `pr` | Limit evaluation to Terraform roots under this relative directory path, such as `infra/envs/prod`. |
 | `policy` | `''` | all | Path to a policy JSON file inside the repository. Read from the base commit when a base is available so a pull request cannot weaken the policy that judges it. |
 | `strict` | `'false'` | all | Set to `'true'` to fail the step with exit code `2` when the gate is `review` as well as when it is `block`. |
 | `advisory` | `'false'` | all | Set to `'true'` to always exit with code `0`, even when the gate is `block`. The Action still writes the step summary, pull request comment, and `gate` output. |
@@ -73,16 +71,13 @@ Uncaught configuration or execution errors exit with code `1`.
 
 When `comment` is `'true'`, the event payload includes `pull_request.number`, and `github-token` is non-empty, Diffseal searches up to 50 pages of 100 issue comments for a comment authored by `comment-author` that contains the HTML marker `<!-- diffseal-report -->`. If found, Diffseal updates that comment in place with `PATCH`. Otherwise, it creates a new comment with `POST`.
 
-In `pr` and `app` modes, if a pull request produces nothing to report, Diffseal sets `onlyUpdate: true` on the comment request:
-
-- In `pr` mode, a report is present when at least one Terraform root is evaluated, at least one application access link is found, at least one gate reason is present, or the `policy` file changed.
-- In `app` mode, a report is present when at least one application access link is found, at least one gate reason is present, or the `policy` file changed.
+In `pr` mode, if a pull request produces nothing to report, Diffseal sets `onlyUpdate: true` on the comment request. A report is present when at least one Terraform root is evaluated, at least one gate reason is present, or the `policy` file changed.
 
 When `onlyUpdate` is `true`, Diffseal updates an existing Diffseal comment if one was posted on an earlier commit of the pull request, and posts nothing on pull requests that have no report.
 
 ## Base commit resolution
 
-In `pr` and `app` modes, and in `plan` mode when `policy` is set, Diffseal resolves a base commit:
+In `pr` mode, and in `plan` mode when `policy` is set, Diffseal resolves a base commit:
 
 1. If you set the `base` input, Diffseal resolves that git revision.
 2. Otherwise, Diffseal reads `pull_request.base.sha` or `merge_group.base_sha` from the GitHub event file at `$GITHUB_EVENT_PATH` and runs `git merge-base <event-base-sha> HEAD`.
@@ -92,7 +87,6 @@ With `git merge-base`, the comparison base is the commit where the pull request 
 Diffseal reads every setting that judges a change from the base commit:
 
 - `.diffseal.json` policy settings and exceptions in `pr` mode.
-- `.diffseal.json` link settings, specifically `infra`, `roles`, and `env`, in `app` mode.
 - The JSON file specified by the `policy` input across all modes.
 
 If a pull request modifies `.diffseal.json` or the `policy` file, the gate becomes at least `review`, and the updated settings take effect after the pull request merges.
@@ -162,43 +156,6 @@ jobs:
           advisory: 'true'
 ```
 
-### Application IAM check with `mode: app`
-
-Use `mode: app` in an application repository to check that the IAM roles in your infrastructure repository permit the AWS SDK calls in added code.
-
-```yaml
-name: Diffseal app check
-on:
-  pull_request:
-
-permissions:
-  contents: read
-  pull-requests: write
-
-jobs:
-  app-iam:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - uses: actions/checkout@v5
-        with:
-          repository: your-org/infra
-          token: ${{ secrets.INFRA_READ_TOKEN }}
-          path: infra
-
-      - uses: diffseal/diffseal@v0.5.5-beta
-        with:
-          mode: app
-          infra-path: infra
-          roots-under: envs/prod
-          role: orders-api-task
-          entry: cmd/orders-api
-          advisory: 'true'
-```
-
 ## Upload to Diffseal
 
 Uploads are off by default. To collect evidence, install the Diffseal GitHub App for your organisation and call the trusted reusable workflow:
@@ -223,6 +180,6 @@ In branch protection, make **Diffseal evidence** a required check. Select the **
 
 Pull requests from forks cannot upload. They have no OIDC token for this workflow and receive no Diffseal evidence check. A required evidence check therefore prevents them from merging until your organisation handles the change through a trusted branch.
 
-The Action sends a scrubbed change record: commit metadata, root paths, resource addresses and actions, gate reasons and structured items, risks, control findings, access call sites and analysis notes. It sends no approvals. The service collects approvals from GitHub. The Action never uploads source files, Terraform configuration, plan files, state files or cloud credentials. The Action scrubs values marked sensitive in Terraform from findings. The OIDC token authenticates the request.
+The Action sends a scrubbed change record: commit metadata, root paths, resource addresses and actions, gate reasons and structured items, risks, control findings and analysis notes. Its `access` list, kept for the record schema, is always empty. It sends no approvals. The service collects approvals from GitHub. The Action never uploads source files, Terraform configuration, plan files, state files or cloud credentials. The Action scrubs values marked sensitive in Terraform from findings. The OIDC token authenticates the request.
 
 Uploads happen before the pull request comment. A blocked run may include a service link where an approver can request an exception for that pull request. An upload error produces a warning and keeps the job's gate and exit code. The Action retries a failed network request or a server error once. The `upload-id` output is present only after a successful upload. The service stores default branch pushes; pushes to other branches do not add evidence.

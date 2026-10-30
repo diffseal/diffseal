@@ -9,17 +9,11 @@ A `.diffseal.json` file can hold these groups of settings:
 - `replay`: Analysis paths for the trusted upload workflow.
 - `policy`: Thresholds and blocking severities for infrastructure policy checks and blast radius.
 - `exceptions`: Time-limited acceptances for specific policy findings or destructive changes.
-- `infra`, `roles`, and `env`: Link settings that tell `check-app` where to find Terraform and how the application runs in AWS.
+
+The `infra`, `roles` and `env` link settings belonged to the removed application code check. Diffseal ignores them now, so you can delete them.
 
 ```json
 {
-  "infra": {
-    "repo": "../infra",
-    "rev": "origin/main",
-    "rootsUnder": "envs/prod"
-  },
-  "roles": ["orders-api-task"],
-  "env": ["EXTERNAL_CONFIG_BUCKET"],
   "policy": {
     "requireCustomerManagedKeys": false,
     "minBackupRetentionDays": 7,
@@ -125,24 +119,11 @@ An exception accepts a policy finding or a blast-radius item on matching resourc
 2. In live checks such as `diffseal review` and the GitHub Action `pr` and `plan` modes, Diffseal compares `expires` with the current UTC date. In `diffseal replay`, it compares `expires` with the commit date of each replayed commit, so historical replays reproduce the gate verdict from when the commit was made.
 3. If an expired or malformed exception matches a finding or blast-radius item in the current change, the finding is not accepted, the gate becomes at least `review`, and the gate reasons name the expired or malformed exception.
 
-## Application link settings
-
-When `diffseal check-app` or the GitHub Action in `mode: app` runs on an application repository, it reads `.diffseal.json` at the root of the application repository to find the infrastructure and execution context.
-
-| Field | Type | Default | Description |
-| :-- | :-- | :-- | :-- |
-| `infra.repo` | `string` | same as `--app` | Path to the repository containing Terraform configurations. Relative paths are resolved from the application repository root. Overridden by `--infra` in the CLI or `infra-path` in the Action. |
-| `infra.rev` | `string` | working tree | Git revision in the infrastructure repository to evaluate, such as `origin/main` or a commit SHA. When set, Diffseal reads Terraform files from git objects at that revision without checking it out. Overridden by `--infra-rev` in the CLI. |
-| `infra.rootsUnder` | `string` | all roots | Directory prefix inside the infrastructure repository to limit which Terraform roots are evaluated, such as `envs/prod`. Overridden by `--roots-under` in the CLI or `roots-under` in the Action. |
-| `roles` | `string[]` | `[]` | IAM role names, `path/name` strings, or role ARNs that the application runs as. Combined with any roles discovered from task definitions or Kubernetes manifests, unless overridden by `--role` in the CLI or `role` in the Action. |
-| `env` | `string[]` | `[]` | Environment variable names provided outside Terraform, such as by a deployment pipeline or runtime secret injector. Variables listed here are never reported as `MISSING`. |
-
 ## Base-commit protection
 
-Diffseal prevents a change from relaxing the rules or link settings that judge it:
+Diffseal prevents a change from relaxing the rules that judge it:
 
 - In `diffseal replay` and the GitHub Action `pr` mode, Diffseal reads `.diffseal.json` and any repository `policy` file from the base commit, not the head commit.
-- In `diffseal check-app --base <rev>` and the GitHub Action `app` mode, Diffseal reads `.diffseal.json` from the base commit when one is given.
 - In the GitHub Action, a `policy` file path must sit inside the repository without `..` path traversal, so Diffseal can read its base-commit version.
 - Whenever `.diffseal.json` or the `policy` file differs between the base commit and the head commit, Diffseal raises the gate to at least `review` and notes that the updated configuration applies starting from the next change after this one is reviewed and merged.
 
