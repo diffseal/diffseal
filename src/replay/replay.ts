@@ -6,7 +6,7 @@ import { compareEvaluations } from '../terraform/compare.js';
 import { discoverRoots, isConfigFile, loadModule, moduleClosure } from '../terraform/config.js';
 import { parseHcl } from '../hcl/parser.js';
 import { stableKey } from '../hcl/eval.js';
-import { evaluateRoot } from '../terraform/expand.js';
+import { evaluateRoot, readVarFile } from '../terraform/expand.js';
 import { GitSource, changedPaths, commitInfo, type ChangedPath, type CommitInfo } from '../terraform/source.js';
 import { CONFIG_FILE, LEGACY_CONFIG_FILE, readConfigFile } from '../configFile.js';
 
@@ -114,6 +114,12 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     const movedFrom = new Map([...moves].map(([from, m]) => [m.to, { ...m, from }]));
     const candidates = new Set([...headRoots, ...baseRoots]);
     const allRoots = new Set([...headRoots, ...baseRoots]);
+    // A directory link to a root, unless it points at different roots at the two commits.
+    const aliasTarget = (root: string) => {
+      const h = headSource.linkedDir(root);
+      const b = baseSource.linkedDir(root);
+      return h !== undefined && b !== undefined && h !== b ? undefined : (h ?? b);
+    };
     const renamedTo = new Map(changed.filter((c) => c.status === 'R' && c.oldPath).map((c) => [c.oldPath!, c.path]));
     /**
      * The evaluations of a root: always one without a var-file, as before var-files were read, so nothing
@@ -202,7 +208,7 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
           ...(headFile ? { varFile: headFile } : {}),
           ...(baseFile && baseFile !== headFile ? { baseVarFile: baseFile } : {}),
           // A link pointing at the same root at both commits; a retargeted link is a deployment of its own.
-          ...(headSource.linkedDir(root) !== undefined && headSource.linkedDir(root) === baseSource.linkedDir(root) ? { aliasOf: headSource.linkedDir(root) } : {}),
+          ...(aliasTarget(root) !== undefined ? { aliasOf: aliasTarget(root) } : {}),
         });
       }
       if (rootDeleted && deletedResources) {
@@ -243,6 +249,15 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     }
     if (r.varFile && r.movedFrom) evaluatedInputs.add(path.posix.join(r.movedFrom, path.posix.relative(r.root, r.varFile)));
     if (r.baseVarFile) evaluatedInputs.add(r.baseVarFile);
+  }
+  // A tfvars file that cannot be read (an encrypted one) at either commit was not evaluated.
+  for (const f of [...evaluatedInputs]) {
+    for (const src of [headSource, baseSource]) {
+      if (src.blobId(f) === undefined && !src.linkProblem(f)) continue;
+      const problems: string[] = [];
+      readVarFile(src, f, false, problems);
+      if (problems.length) evaluatedInputs.delete(f);
+    }
   }
   // Every name a changed file has, so a terragrunt.hcl or tfvars link to a changed target counts.
   const inputPaths = [...new Set(changed.flatMap((c) => [c.path, c.oldPath]).filter((p): p is string => Boolean(p)).flatMap(aliases))];

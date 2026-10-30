@@ -595,6 +595,25 @@
      "result": "block"
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 16: deleting an unreadable (encrypted) terraform.tfvars is a changed input that is reviewed",
+   "base": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"engine\" {\n  type    = string\n  default = \"postgres\"\n}\nresource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = var.engine\n}\n",
+    "app/terraform.tfvars": "\u0000GITCRYPT\u0000"
+   },
+   "head": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"engine\" {\n  type    = string\n  default = \"postgres\"\n}\nresource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = var.engine\n}\n"
+   },
+   "expect": {
+    "gate": {
+     "resultNot": "pass",
+     "reasonsContain": [
+      "app/terraform.tfvars"
+     ]
+    }
+   }
   }
  ]
 }

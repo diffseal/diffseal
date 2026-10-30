@@ -1087,6 +1087,24 @@
      ]
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 16: a directory link added to a root replayed too is counted once in the cost",
+   "base": {
+    "stacks/prod/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"prod\"\n  }\n}\n"
+   },
+   "head": {
+    "stacks/prod/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"prod\"\n  }\n}\nresource \"aws_kms_key\" \"k\" {}\n"
+   },
+   "headLinks": {
+    "live/prod": "../stacks/prod"
+   },
+   "expect": {
+    "cost": {
+     "fixedMonthlyDeltaUsd": 1
+    }
+   }
   }
  ]
 }
