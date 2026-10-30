@@ -1,0 +1,124 @@
+{
+ "suite": "policy/least-privilege-narrowing",
+ "description": "A policy update that grants nothing the old policy did not grant does not introduce least-privilege issues, whatever its statement ids.",
+ "cases": [
+  {
+   "kind": "terraform",
+   "name": "narrowing a policy under a new Sid is not a new least-privilege issue (source case: forms-deploy 951687f6b, s3:* on arn:aws:s3:::* narrowed to s3:PutObject on objects)",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"deployer\"\n  policy = jsonencode({\n    Version = \"2012-10-17\"\n    Statement = [{\"Sid\": \"DeployAll\", \"Effect\": \"Allow\", \"Action\": \"s3:*\", \"Resource\": \"arn:aws:s3:::*\"}]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"deployer\"\n  policy = jsonencode({\n    Version = \"2012-10-17\"\n    Statement = [{\"Sid\": \"UploadAssets\", \"Effect\": \"Allow\", \"Action\": \"s3:PutObject\", \"Resource\": \"arn:aws:s3:::*/*\"}]\n  })\n}\n"
+   },
+   "expect": {
+    "findings": [
+     {
+      "ruleId": "iam.least-privilege",
+      "resource": "aws_iam_policy.p",
+      "preExisting": true
+     }
+    ],
+    "gate": {
+     "result": "pass"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "narrowing with a condition under new Sids is not a new issue (source case: terraform-aws-eks 60dcc4506)",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"deployer\"\n  policy = jsonencode({\n    Version = \"2012-10-17\"\n    Statement = [{\"Sid\": \"Ssm\", \"Effect\": \"Allow\", \"Action\": \"ssm:*\", \"Resource\": \"*\"}]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"deployer\"\n  policy = jsonencode({\n    Version = \"2012-10-17\"\n    Statement = [{\"Sid\": \"SsmManaged\", \"Effect\": \"Allow\", \"Action\": [\"ssm:DeregisterManagedInstance\", \"ssm:DescribeInstanceInformation\"], \"Resource\": \"*\", \"Condition\": {\"StringEquals\": {\"aws:ResourceAccount\": \"111111111111\"}}}]\n  })\n}\n"
+   },
+   "expect": {
+    "findings": [
+     {
+      "ruleId": "iam.least-privilege",
+      "resource": "aws_iam_policy.p",
+      "preExisting": true
+     }
+    ],
+    "gate": {
+     "result": "pass"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "guard: a new action outside the old grants is a new issue",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"deployer\"\n  policy = jsonencode({\n    Version = \"2012-10-17\"\n    Statement = [{\"Sid\": \"Read\", \"Effect\": \"Allow\", \"Action\": \"s3:Get*\", \"Resource\": \"*\"}]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"deployer\"\n  policy = jsonencode({\n    Version = \"2012-10-17\"\n    Statement = [{\"Sid\": \"Read\", \"Effect\": \"Allow\", \"Action\": \"s3:Get*\", \"Resource\": \"*\"}, {\"Sid\": \"Clean\", \"Effect\": \"Allow\", \"Action\": \"s3:DeleteBucket\", \"Resource\": \"*\"}]\n  })\n}\n"
+   },
+   "expect": {
+    "findings": [
+     {
+      "ruleId": "iam.least-privilege",
+      "resource": "aws_iam_policy.p",
+      "status": "FAIL",
+      "preExisting": null
+     }
+    ],
+    "gate": {
+     "result": "review"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "guard: dropping a condition widens the policy, so its issues are new",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"deployer\"\n  policy = jsonencode({\n    Version = \"2012-10-17\"\n    Statement = [{\"Sid\": \"Ssm\", \"Effect\": \"Allow\", \"Action\": \"ssm:*\", \"Resource\": \"*\", \"Condition\": {\"StringEquals\": {\"aws:ResourceAccount\": \"111111111111\"}}}]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"deployer\"\n  policy = jsonencode({\n    Version = \"2012-10-17\"\n    Statement = [{\"Sid\": \"SsmAll\", \"Effect\": \"Allow\", \"Action\": \"ssm:SendCommand\", \"Resource\": \"*\"}]\n  })\n}\n"
+   },
+   "expect": {
+    "findings": [
+     {
+      "ruleId": "iam.least-privilege",
+      "resource": "aws_iam_policy.p",
+      "status": "FAIL",
+      "preExisting": null
+     }
+    ],
+    "gate": {
+     "result": "review"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "guard: removing a Deny widens the policy, so its issues are new",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"deployer\"\n  policy = jsonencode({\n    Version = \"2012-10-17\"\n    Statement = [{\"Sid\": \"All\", \"Effect\": \"Allow\", \"Action\": \"s3:*\", \"Resource\": \"arn:aws:s3:::*\"}, {\"Sid\": \"NoDelete\", \"Effect\": \"Deny\", \"Action\": \"s3:DeleteBucket\", \"Resource\": \"arn:aws:s3:::*\"}]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"deployer\"\n  policy = jsonencode({\n    Version = \"2012-10-17\"\n    Statement = [{\"Sid\": \"Put\", \"Effect\": \"Allow\", \"Action\": \"s3:PutObject\", \"Resource\": \"arn:aws:s3:::*/*\"}]\n  })\n}\n"
+   },
+   "expect": {
+    "findings": [
+     {
+      "ruleId": "iam.least-privilege",
+      "resource": "aws_iam_policy.p",
+      "status": "FAIL",
+      "preExisting": null
+     }
+    ],
+    "gate": {
+     "result": "review"
+    }
+   }
+  }
+ ]
+}

@@ -11,7 +11,8 @@ import {
   type PolicyConfig,
   type ResourceChange,
 } from '../core/model.js';
-import { RULES } from './rules.js';
+import { RULES, resolvePolicyValue } from './rules.js';
+import { grantsWithin } from './grants.js';
 import { frameworksFor } from '../compliance/crosswalk.js';
 import { typed } from './values.js';
 
@@ -188,10 +189,11 @@ export function evaluatePolicies(all: ResourceChange[], policy: PolicyConfig = {
       if (rule.scope !== 'change' && (res.action === 'update' || res.action === 'replace' || viaHelper) && res.before && result.status !== 'PASS') {
         const prior = rule.evaluate(rule.configurationOnly ? ctxBefore.configuredValues(res) : before!, res, ctxBefore);
         if (result.issues && prior?.issues) {
-          const before = new Set(prior.issues.map((i) => i.message));
-          const introduced = result.issues.filter((i) => !before.has(i.message));
-          const kept = result.issues.filter((i) => i.level !== 'UNKNOWN' && before.has(i.message)).length;
-          if (!introduced.length) {
+          const priorMessages = new Set(prior.issues.map((i) => i.message));
+          const introduced = result.issues.filter((i) => !priorMessages.has(i.message));
+          const kept = result.issues.filter((i) => i.level !== 'UNKNOWN' && priorMessages.has(i.message)).length;
+          // A policy update that grants nothing new introduces nothing, whatever its statement ids say.
+          if (!introduced.length || (rule.id === 'iam.least-privilege' && res.type !== 'aws_iam_role' && grantsWithin(resolvePolicyValue(before!.policy, res, 'policy', ctxBefore), resolvePolicyValue(after.policy, res, 'policy', ctx)))) {
             preExisting = true;
           } else if (kept) {
             status = (['FAIL', 'WARN', 'UNKNOWN'] as const).find((l) => introduced.some((i) => i.level === l))!;

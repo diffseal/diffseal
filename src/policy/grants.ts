@@ -1,4 +1,5 @@
 import { isUnknown } from '../core/model.js';
+import { stableKey } from '../hcl/eval.js';
 import { parsePolicy, type Statement } from './iam.js';
 
 /** One Allow or Deny of an action on a resource, as a readable key. */
@@ -61,4 +62,58 @@ export function describeGrants(gs: Grant[], max = 4): string {
   for (const g of gs) byResource.set(`${g.effect === 'Deny' ? 'deny ' : ''}${g.resource}`, [...(byResource.get(`${g.effect === 'Deny' ? 'deny ' : ''}${g.resource}`) ?? []), g.action]);
   const parts = [...byResource.entries()].map(([r, actions]) => `${[...new Set(actions)].join(', ')} on ${r}`);
   return parts.slice(0, max).join('; ') + (parts.length > max ? `; and ${parts.length - max} more` : '');
+}
+
+/**
+ * True when a glob (IAM `*` and `?`) matches everything `inner` can match. Exact for a literal `inner`,
+ * and for an `outer` whose only wildcard is a trailing `*`; anything else is answered false.
+ */
+function covers(outer: string, inner: string, caseless: boolean): boolean {
+  const o = caseless ? outer.toLowerCase() : outer;
+  const i = caseless ? inner.toLowerCase() : inner;
+  if (o === i || o === '*') return true;
+  if (!/[*?]/.test(i)) return new RegExp('^' + o.split('*').map((x) => x.split('?').map((y) => y.replace(/[.+^${}()|[\]\\]/g, '\\$&')).join('.')).join('.*') + '$', 's').test(i);
+  const prefix = o.slice(0, -1);
+  return o.endsWith('*') && !/[*?]/.test(prefix) && i.startsWith(prefix);
+}
+
+/**
+ * True when a policy update grants nothing the previous version did not: every Allowed action and
+ * resource of the new version is covered by an Allow of the old one with no condition (or the same
+ * condition), and every Deny of the old version is still there. NotAction, NotResource, NotPrincipal and
+ * values not known statically give false: the answer must be certain.
+ */
+export function grantsWithin(before: unknown, after: unknown): boolean {
+  const b = parsePolicy(before);
+  const a = parsePolicy(after);
+  if (b.kind !== 'ok' || a.kind !== 'ok') return false;
+  const plain = (st: Statement) => st.NotAction === undefined && st.NotResource === undefined && st.NotPrincipal === undefined;
+  if (![...b.statements, ...a.statements].every(plain)) return false;
+  // A value partly known at plan time stands for every value its pattern allows: each unknown part is a
+  // wildcard. That only widens the new grants, so a containment found with it holds for the real value.
+  const strings = (v: unknown, widen: boolean): string[] | undefined => {
+    const xs = list(v).map((x) => (typeof x === 'string' ? x : widen && isUnknown(x) && x.pattern?.startsWith('arn:') ? x.pattern.replaceAll('{?}', '*') : undefined));
+    return xs.every((x) => x !== undefined) ? (xs as string[]) : undefined;
+  };
+  const allow = (st: Statement) => String(st.Effect ?? 'Allow') === 'Allow';
+  const denyKey = (st: Statement) => stableKey([st.Action ?? null, st.Resource ?? null, st.Condition ?? null, st.Principal ?? null]);
+  const kept = new Set(a.statements.filter((st) => !allow(st)).map(denyKey));
+  if (b.statements.some((st) => !allow(st) && !kept.has(denyKey(st)))) return false;
+  const old = b.statements.filter(allow).map((st) => ({ actions: strings(st.Action, false), resources: strings(st.Resource, false), condition: st.Condition }));
+  for (const st of a.statements.filter(allow)) {
+    const actions = strings(st.Action, false);
+    const resources = strings(st.Resource, true);
+    if (!actions || !resources) return false;
+    for (const action of actions) {
+      for (const resource of resources) {
+        const ok = old.some((o) =>
+          o.actions && o.resources &&
+          (o.condition === undefined || stableKey(o.condition) === stableKey(st.Condition)) &&
+          o.actions.some((x) => covers(x, action, true)) &&
+          o.resources.some((x) => covers(x, resource, false)));
+        if (!ok) return false;
+      }
+    }
+  }
+  return true;
 }

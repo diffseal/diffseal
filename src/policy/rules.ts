@@ -959,7 +959,7 @@ const secretRecovery: Rule = {
 const POLICY_DOC_TYPES = ['aws_iam_policy_document'];
 
 /** The policy document of an IAM resource, following data.aws_iam_policy_document references when the value is unknown. */
-function resolvePolicyValue(value: unknown, res: ResourceChange, attr: string, ctx: RuleContext): unknown {
+export function resolvePolicyValue(value: unknown, res: ResourceChange, attr: string, ctx: RuleContext): unknown {
   if (isSet(value) && !isUnknown(value)) return value;
   for (const ref of res.references[attr] ?? []) {
     if (!ref.split('.').some((p) => POLICY_DOC_TYPES.includes(p))) continue;
