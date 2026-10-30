@@ -614,6 +614,24 @@
      ]
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 17: an edited var-file that does not parse at either commit proves nothing",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"user\" {\n  type = string\n}\nresource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"postgres\"\n  username   = var.user\n}\n",
+    "r/envs/prod.tfvars": "user = \"a\"\nbroken = [\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"user\" {\n  type = string\n}\nresource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"postgres\"\n  username   = var.user\n}\n",
+    "r/envs/prod.tfvars": "user = \"b\"\nbroken = [\n"
+   },
+   "expect": {
+    "noProvenDelete": true,
+    "gate": {
+     "resultNot": "block"
+    }
+   }
   }
  ]
 }

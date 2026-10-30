@@ -179,7 +179,9 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
         const brokenAt = (e: { diagnostics: string[] }, dir: string) => new Set(e.diagnostics.map((d) => d.slice(0, d.indexOf(':'))).filter((f) => /\.tfvars(\.json)?$/.test(f)).map((f) => path.posix.relative(dir, f)));
         const brokenHead = brokenAt(headEval, root);
         const brokenBase = brokenAt(baseEval, baseRoot);
-        const brokenVarFile = [...brokenHead].find((f) => !brokenBase.has(f)) ?? [...brokenBase].find((f) => !brokenHead.has(f));
+        // Broken at both but edited: what was recovered from each says nothing certain either.
+        const editedBroken = [...brokenHead].find((f) => brokenBase.has(f) && headSource.blobId(path.posix.join(root, f)) !== baseSource.blobId(path.posix.join(baseRoot, f)));
+        const brokenVarFile = [...brokenHead].find((f) => !brokenBase.has(f)) ?? [...brokenBase].find((f) => !brokenHead.has(f)) ?? editedBroken;
         if (brokenVarFile) {
           for (const c of changes) {
             if (c.action === 'no-op' || c.confidence !== 'proven') continue;
