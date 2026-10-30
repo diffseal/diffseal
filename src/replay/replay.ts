@@ -42,6 +42,8 @@ export interface RootReplay {
   varFile?: string;
   /** The base's var-file for this environment, when git renamed it. */
   baseVarFile?: string;
+  /** The directory this root is a directory link to. */
+  aliasOf?: string;
 }
 
 /** actionReason of the resources of a root whose directory the change deleted. */
@@ -138,11 +140,15 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
       const touchesConfig = moduleLockChanged || [...changedDirs].some((d) => closure.has(d));
       // A root whose state location another root at the head now uses is not just deleted code: applying
       // that root plans against this state.
-      // Any other root that may use the same state object counts, so only the arguments naming it are compared.
-      const location = loadModule(baseSource, baseRoot)?.stateKey;
-      // Only a root that takes the state over in this change: one that already used it keeps planning it
-      // as before (a deleted link to that root destroys nothing).
-      const adopted = location !== undefined && headRoots.some((h) => h !== root && loadModule(headSource, h)?.stateKey === location && loadModule(baseSource, h)?.stateKey !== location);
+      // Only a root that takes the state over in this change counts: one that already used it keeps planning
+      // it as before (a deleted link to that root destroys nothing). Matched by the arguments naming the
+      // state, or by the full location (an S3 workspace prefix too).
+      const gone = loadModule(baseSource, baseRoot);
+      const takesOver = (h: string, field: 'stateKey' | 'stateLocation') => {
+        const want = gone?.[field];
+        return want !== undefined && loadModule(headSource, h)?.[field] === want && loadModule(baseSource, h)?.[field] !== want;
+      };
+      const adopted = headRoots.some((h) => h !== root && (takesOver(h, 'stateKey') || takesOver(h, 'stateLocation')));
       const rootDeleted = !move && !adopted && baseRoots.includes(root) && !loadModule(headSource, root);
       const was = loadModule(baseSource, baseRoot)?.stateKey;
       const now = loadModule(headSource, root)?.stateKey;
@@ -161,7 +167,7 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
         // An evaluation with no instances still carries removed, moved and prevent_destroy blocks.
         const changes = compareEvaluations(baseEval, headEval);
         // Terraform refuses a var-file that does not parse; values that fell back to defaults prove nothing.
-        const brokenVarFile = [headFile, baseFile].find((f) => f && [...headEval.diagnostics, ...baseEval.diagnostics].some((d) => d.startsWith(`${f}:`)));
+        const brokenVarFile = [...headEval.diagnostics, ...baseEval.diagnostics].map((d) => d.slice(0, d.indexOf(':'))).find((f) => /\.tfvars(\.json)?$/.test(f));
         if (brokenVarFile) {
           for (const c of changes) {
             if (c.action === 'no-op' || c.confidence !== 'proven') continue;
@@ -189,6 +195,7 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
           ...(rootDeleted ? { deleted: true } : {}),
           ...(headFile ? { varFile: headFile } : {}),
           ...(baseFile && baseFile !== headFile ? { baseVarFile: baseFile } : {}),
+          ...(headSource.linkedDir(root) ?? baseSource.linkedDir(root) ? { aliasOf: headSource.linkedDir(root) ?? baseSource.linkedDir(root) } : {}),
         });
       }
       if (rootDeleted && deletedResources) {
@@ -211,6 +218,13 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     .flatMap((c) => [c.path, c.oldPath])
     .filter((p): p is string => Boolean(p) && /\.(tf|tofu|tf\.json)$/.test(p!))
     .filter((p) => !aliases(p).some((a) => covered.has(path.posix.dirname(a))));
+  // A changed directory link that holds Terraform no replayed root reads is not checked.
+  for (const p of linkedDirs) {
+    const inside = [headSource, baseSource].flatMap((src) => src.allFiles().filter((f) => f.startsWith(p + '/') && isConfigFile(path.posix.basename(f))));
+    if (inside.length && !inside.some((f) => covered.has(path.posix.dirname(f)))) {
+      rootItems.push({ kind: 'coverage', level: 'review', text: `Directory link ${p} changed and holds Terraform (${[...new Set(inside.map((f) => path.posix.dirname(f)))].slice(0, 3).join(', ')}) that no replayed root reads; what it plans now was not checked` });
+    }
+  }
   // Inputs static replay does not evaluate: Terragrunt inputs, and tfvars no root is known to load.
   const evaluatedInputs = new Set<string>();
   for (const r of roots) {
@@ -570,7 +584,9 @@ export function combineRoots(roots: RootReplay[]): AnalysisResult {
       else blast.set(k, { roots: [root], b });
     }
     // A root with var-files is deployed with them: its evaluation without one is a check, not a deployment.
-    if (!(withEnvs.has(replayed.root) && !replayed.varFile)) {
+    // A directory link to a root replayed too is the same deployment, counted once.
+    const alias = replayed.aliasOf !== undefined && roots.some((r) => r.root === replayed.aliasOf);
+    if (!(withEnvs.has(replayed.root) && !replayed.varFile) && !alias) {
       out.cost.items.push(...result.cost.items.map((i) => ({ ...i, resource: label(root, i.resource) })));
       out.cost.fixedMonthlyDeltaUsd = Math.round((out.cost.fixedMonthlyDeltaUsd + result.cost.fixedMonthlyDeltaUsd) * 100) / 100;
     }

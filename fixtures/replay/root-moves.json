@@ -508,6 +508,32 @@
      "result": "pass"
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 13: a root that takes over a deleted root's workspace prefix keeps its deletions proven",
+   "base": {
+    "a/main.tf": "terraform {\n  backend \"s3\" {\n    bucket               = \"b\"\n    key                  = \"app\"\n    workspace_key_prefix = \"one\"\n  }\n}\n",
+    "a/db.tf": "resource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"postgres\"\n}\n",
+    "s/main.tf": "terraform {\n  backend \"s3\" {\n    bucket               = \"b\"\n    key                  = \"app\"\n    workspace_key_prefix = \"two\"\n  }\n}\n",
+    "s/q.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n}\n"
+   },
+   "head": {
+    "s/main.tf": "terraform {\n  backend \"s3\" {\n    bucket               = \"b\"\n    key                  = \"app\"\n    workspace_key_prefix = \"one\"\n  }\n}\n",
+    "s/q.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "a: aws_db_instance.main",
+      "action": "delete",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
   }
  ]
 }

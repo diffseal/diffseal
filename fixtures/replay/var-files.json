@@ -523,6 +523,30 @@
      "fixedMonthlyDeltaUsd": 1
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 13: a terraform.tfvars that no longer parses is reviewed",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"n\" {\n  type    = string\n  default = \"a\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.n\n}\n",
+    "r/terraform.tfvars": "n = \"b\"\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"n\" {\n  type    = string\n  default = \"a\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.n\n}\n",
+    "r/terraform.tfvars": "n = [\n"
+   },
+   "expect": {
+    "noProvenDelete": true,
+    "changes": [
+     {
+      "address": "aws_sqs_queue.q",
+      "confidenceNot": "proven"
+     }
+    ],
+    "gate": {
+     "result": "review"
+    }
+   }
   }
  ]
 }

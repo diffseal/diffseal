@@ -983,6 +983,52 @@
     },
     "noProvenDelete": true
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 13: a directory link to a root replayed too is counted once in the cost",
+   "base": {
+    "stacks/prod/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"prod\"\n  }\n}\n"
+   },
+   "head": {
+    "stacks/prod/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"prod\"\n  }\n}\nresource \"aws_kms_key\" \"k\" {}\n"
+   },
+   "baseLinks": {
+    "live/prod": "../stacks/prod"
+   },
+   "headLinks": {
+    "live/prod": "../stacks/prod"
+   },
+   "expect": {
+    "cost": {
+     "fixedMonthlyDeltaUsd": 1
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review 13: retargeting a directory link that holds roots is reviewed when no replayed root reads it",
+   "base": {
+    "releases/r1/prod/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"prod\"\n  }\n}\nresource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"postgres\"\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"b\"\n}\n"
+   },
+   "head": {
+    "releases/r1/prod/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"prod\"\n  }\n}\nresource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"postgres\"\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"b\"\n}\n",
+    "releases/r2/prod/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"prod\"\n  }\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"b\"\n}\n"
+   },
+   "baseLinks": {
+    "live": "releases/r1"
+   },
+   "headLinks": {
+    "live": "releases/r2"
+   },
+   "expect": {
+    "gate": {
+     "resultNot": "pass",
+     "reasonsContain": [
+      "Directory link live changed"
+     ]
+    }
+   }
   }
  ]
 }

@@ -86,7 +86,7 @@ export function evaluateRoot(source: FileSource, rootDir: string, rootVars: Reco
   result.accounts = [...new Set(cfg.providerAccounts)];
 
   const fromFiles = (evidence: boolean) => Object.assign({}, ...varFiles.map((f) => readVarFile(source, f, evidence, evidence ? undefined : result.diagnostics))) as Record<string, unknown>;
-  const vars = { ...readTfvars(source, root), ...fromFiles(false), ...rootVars };
+  const vars = { ...readTfvars(source, root, false, result.diagnostics), ...fromFiles(false), ...rootVars };
   const inputs = new Map<string, () => unknown>(Object.entries(vars).map(([k, v]) => [k, () => v]));
   const top = new ModuleInstance(source, cfg, '', '', inputs, new Map(), root, 0, result.readFiles);
   top.collect(result);
@@ -99,7 +99,7 @@ export function evaluateRoot(source: FileSource, rootDir: string, rootVars: Reco
   return result;
 }
 
-function readTfvars(source: FileSource, root: string, configurationEvidence = false): Record<string, unknown> {
+function readTfvars(source: FileSource, root: string, configurationEvidence = false, diagnostics?: string[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   // Terraform loads terraform.tfvars(.json) first, then *.auto.tfvars(.json) in lexical order; later files win.
   const names = source.listFiles(root);
@@ -107,7 +107,7 @@ function readTfvars(source: FileSource, root: string, configurationEvidence = fa
     ...['terraform.tfvars', 'terraform.tfvars.json'].filter((f) => names.includes(f)),
     ...names.filter((f) => f.endsWith('.auto.tfvars') || f.endsWith('.auto.tfvars.json')).sort(),
   ];
-  for (const f of files) Object.assign(out, readVarFile(source, path.posix.join(root, f), configurationEvidence));
+  for (const f of files) Object.assign(out, readVarFile(source, path.posix.join(root, f), configurationEvidence, diagnostics));
   return out;
 }
 
