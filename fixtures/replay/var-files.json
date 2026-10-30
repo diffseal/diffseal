@@ -334,6 +334,27 @@
      ]
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 2: a new var-file that sets a variable its root does not declare is reviewed",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type    = string\n  default = \"jobs\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n",
+    "r/env/dev.tfvars": "queue_name = \"d\"\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type    = string\n  default = \"jobs\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n",
+    "r/env/dev.tfvars": "queue_name = \"d\"\n",
+    "r/env/prod.tfvars": "image_tag = \"2\"\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "r/env/prod.tfvars sets image_tag, which r does not declare"
+     ]
+    }
+   }
   }
  ]
 }

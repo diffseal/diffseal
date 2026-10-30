@@ -72,10 +72,15 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   const baseSource = new GitSource(opts.repo, baseRev, opts.moduleCache ?? defaultModuleCache());
   const changed = changedPaths(opts.repo, baseSource.sha, headSource.sha);
   const moduleLockChanged = readModuleLock(headSource) !== readModuleLock(baseSource);
-  const tfChanged = changed.filter((c) => TF_FILE.test(c.path) || (c.oldPath && TF_FILE.test(c.oldPath)));
-  // A changed file is also changed wherever a symbolic link inside the repository makes it appear.
+  // A changed file is also changed wherever a symbolic link inside the repository makes it appear, and is
+  // Terraform when any of those names is.
   const aliases = (p: string) => [...new Set([p, ...headSource.linksTo(p), ...baseSource.linksTo(p)])];
+  const tfChanged = changed.filter((c) => [c.path, c.oldPath].filter((p): p is string => Boolean(p)).flatMap(aliases).some((p) => TF_FILE.test(p)));
   const changedDirs = new Set(tfChanged.flatMap((c) => [c.path, c.oldPath].filter((p): p is string => Boolean(p)).flatMap(aliases).map((p) => path.posix.dirname(p))));
+  // A changed link to a directory changes everything read through it.
+  for (const c of changed) {
+    for (const p of [c.path, c.oldPath]) if (p && (headSource.listFiles(p).length || baseSource.listFiles(p).length)) changedDirs.add(p);
+  }
 
   // Policy and exceptions come from the base commit: a change must not be able to accept its own findings.
   const policyFileAtBase = opts.policyFile ? parsePolicyFile(baseSource.readFile(opts.policyFile)) : {};
@@ -91,7 +96,7 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     .flatMap(aliases);
   const roots: RootReplay[] = [];
   const rootItems: GateItem[] = [];
-  const touchedPaths = new Set(changed.flatMap((c) => [c.path, c.oldPath]).filter((p): p is string => Boolean(p)));
+  const touchedPaths = new Set(changed.flatMap((c) => [c.path, c.oldPath]).filter((p): p is string => Boolean(p)).flatMap(aliases));
   if (changedDirs.size || dataChanged.length || moduleLockChanged) {
     const headRoots = discoverRoots(headSource, opts.rootsUnder);
     const baseRoots = discoverRoots(baseSource, opts.rootsUnder);
@@ -218,12 +223,13 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   }
   const inputPaths = [...new Set(changed.flatMap((c) => [c.path, c.oldPath]).filter((p): p is string => Boolean(p)))];
   const terragrunt = inputPaths.filter((p) => /(^|\/)terragrunt\.hcl$/.test(p));
-  const unattributed = inputPaths.filter((p) => /\.tfvars(\.json)?$/.test(p) && !evaluatedInputs.has(p));
+  const unattributed = inputPaths.filter((p) => /\.tfvars(\.json)?$/.test(p) && !aliases(p).some((a) => evaluatedInputs.has(a)));
   // A var-file evaluated with a root that does not declare a variable it changes: that value goes elsewhere.
   const undeclared: string[] = [];
   for (const r of roots) {
     if (!r.varFile || !touchedPaths.has(r.varFile)) continue;
-    const names = varChanges(baseSource, headSource, r.varFile);
+    const change = varChanges(baseSource, headSource, r.varFile);
+    const names = change === 'new' ? [...readVarNames(headSource, r.varFile)] : change;
     if (!Array.isArray(names)) continue;
     const declared = new Set([...(loadModule(headSource, r.root)?.variables.keys() ?? []), ...(loadModule(baseSource, r.movedFrom ?? r.root)?.variables.keys() ?? [])]);
     const missing = names.filter((n) => !declared.has(n));
@@ -335,6 +341,20 @@ function varChanges(base: GitSource, head: GitSource, file: string): string[] | 
   if (!was) return 'new';
   if (!now) return 'deleted';
   return [...new Set([...was.keys(), ...now.keys()])].filter((k) => was.get(k) !== now.get(k)).sort();
+}
+
+function readVarNames(src: GitSource, file: string): string[] {
+  const text = src.readFile(file);
+  if (text === undefined) return [];
+  if (file.endsWith('.json')) {
+    try {
+      const v = JSON.parse(text);
+      return v && typeof v === 'object' && !Array.isArray(v) ? Object.keys(v) : [];
+    } catch {
+      return [];
+    }
+  }
+  return parseHcl(text).body.attributes.map((a) => a.name);
 }
 
 function describeVarChanges(base: GitSource, head: GitSource, file: string): string {

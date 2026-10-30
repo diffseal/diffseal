@@ -152,26 +152,29 @@ export class GitSource implements FileSource {
     const text = new Map(paths.map((p, i) => [p, texts[i] ?? '']));
     const files = [...this.blobs.keys()];
     const isDir = (d: string) => files.some((f) => f.startsWith(d + '/'));
-    // Resolve a path whose components may pass through links, following at most 16 links in all.
+    // Resolve a path one component at a time, as the operating system does: a link is followed where it
+    // is met, before any later `..` applies. At most 16 links in all.
     const resolve = (p: string): { path?: string; problem?: string } => {
-      let cur = p;
-      for (let hops = 0; hops <= 16; hops++) {
-        const parts = cur.split('/');
-        let hit: { at: number; target: string } | undefined;
-        for (let i = 1; i <= parts.length; i++) {
-          const prefix = parts.slice(0, i).join('/');
-          if (text.has(prefix)) {
-            hit = { at: i, target: text.get(prefix)! };
-            break;
-          }
+      const stack: string[] = [];
+      const queue = p.split('/');
+      let hops = 0;
+      while (queue.length) {
+        const c = queue.shift()!;
+        if (c === '' || c === '.') continue;
+        if (c === '..') {
+          if (!stack.length) return { problem: 'it leaves the repository' };
+          stack.pop();
+          continue;
         }
-        if (!hit) return { path: cur };
-        const linkDir = path.posix.dirname(parts.slice(0, hit.at).join('/'));
-        const joined = path.posix.normalize(path.posix.join(linkDir, hit.target));
-        if (hit.target.startsWith('/') || joined === '..' || joined.startsWith('../')) return { problem: 'it leaves the repository' };
-        cur = [joined, ...parts.slice(hit.at)].filter((x) => x !== '' && x !== '.').join('/') || '.';
+        stack.push(c);
+        const target = text.get(stack.join('/'));
+        if (target === undefined) continue;
+        if (++hops > 16) return { problem: 'it is a chain of more than 16 links' };
+        if (target.startsWith('/')) return { problem: 'it leaves the repository' };
+        stack.pop();
+        queue.unshift(...target.split('/'));
       }
-      return { problem: 'it is a chain of more than 16 links' };
+      return { path: stack.join('/') || '.' };
     };
     let added = 0;
     for (const link of paths) {
@@ -187,7 +190,11 @@ export class GitSource implements FileSource {
         this.linkTargets.set(link, r.path);
         continue;
       }
-      if (r.path !== '.' && isDir(r.path)) {
+      if (r.path === '.') {
+        this.refused.set(link, `${label}: it points at the repository root`);
+        continue;
+      }
+      if (isDir(r.path)) {
         for (const f of files) {
           if (!f.startsWith(r.path + '/') || added >= 20_000) continue;
           const alias = link + f.slice(r.path.length);

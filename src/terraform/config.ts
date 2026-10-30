@@ -286,9 +286,12 @@ function stateLocation(b: Block): string | undefined {
     return org && name && host ? JSON.stringify(['remote', host, org, name]) : undefined;
   }
   const keys = type ? STATE_KEYS[type] : undefined;
-  if (!keys) return undefined;
-  const values = keys.map((k) => literalString(attr(b.body, k)?.expr));
-  return values.every((v) => v) ? JSON.stringify([type, ...values]) : undefined;
+  if (!keys || keys.some((k) => !literalString(attr(b.body, k)?.expr))) return undefined;
+  // Every argument is part of the identity (workspace_key_prefix, region, endpoint...), and all must be
+  // plain values: a difference anywhere leaves state continuity unproven.
+  const args = b.body.attributes.map((a) => [a.name, a.expr.kind === 'literal' ? a.expr.value : literalString(a.expr)] as const);
+  if (args.some(([, v]) => v === undefined) || b.body.blocks.length) return undefined;
+  return JSON.stringify([type, ...args.sort(([x], [y]) => (x < y ? -1 : 1))]);
 }
 
 /** Local module directories this module calls, recursively (including itself). */

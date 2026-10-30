@@ -262,6 +262,155 @@
      "result": "block"
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 2: retargeting a directory link replays the roots that read through it",
+   "base": {
+    "modules/a/main.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"a\"\n}\n",
+    "modules/b/main.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"b\"\n}\n",
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"m\" {\n  source = \"./link\"\n}\n"
+   },
+   "head": {
+    "modules/a/main.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"a\"\n}\n",
+    "modules/b/main.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"b\"\n}\n",
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"m\" {\n  source = \"./link\"\n}\n"
+   },
+   "baseLinks": {
+    "r/link": "../modules/a"
+   },
+   "headLinks": {
+    "r/link": "../modules/b"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "module.m.aws_sqs_queue.q",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review 2: a .tf link to a target without the .tf extension is still Terraform when the target changes",
+   "base": {
+    "shared/inputs": "variable \"queue_name\" {\n  type    = string\n  default = \"jobs\"\n}\n",
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n"
+   },
+   "head": {
+    "shared/inputs": "variable \"queue_name\" {\n  type    = string\n  default = \"jobs-v2\"\n}\n",
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n"
+   },
+   "baseLinks": {
+    "r/inputs.tf": "../shared/inputs"
+   },
+   "headLinks": {
+    "r/inputs.tf": "../shared/inputs"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_sqs_queue.q",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review 2: a var-file linked from elsewhere is evaluated when its target changes",
+   "base": {
+    "shared/prod.tfvars": "queue_name = \"a\"\n",
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type    = string\n  default = \"jobs\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n"
+   },
+   "head": {
+    "shared/prod.tfvars": "queue_name = \"b\"\n",
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type    = string\n  default = \"jobs\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n"
+   },
+   "baseLinks": {
+    "r/env/prod.tfvars": "../../shared/prod.tfvars"
+   },
+   "headLinks": {
+    "r/env/prod.tfvars": "../../shared/prod.tfvars"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_sqs_queue.q",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    },
+    "reasonsNotContain": [
+     "static replay does not evaluate"
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review 2: a link target is resolved one component at a time, following links before ..",
+   "base": {
+    "tree/inputs.tf": "variable \"queue_name\" {\n  type    = string\n  default = \"jobs\"\n}\n",
+    "inputs.tf": "variable \"other\" {\n  type = string\n}\n",
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n",
+    "tree/nested/x.txt": "x"
+   },
+   "head": {
+    "tree/inputs.tf": "variable \"queue_name\" {\n  type    = string\n  default = \"jobs-v2\"\n}\n",
+    "inputs.tf": "variable \"other\" {\n  type = string\n}\n",
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n",
+    "tree/nested/x.txt": "x"
+   },
+   "baseLinks": {
+    "common": "tree/nested",
+    "r/inputs.tf": "../common/../inputs.tf"
+   },
+   "headLinks": {
+    "common": "tree/nested",
+    "r/inputs.tf": "../common/../inputs.tf"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_sqs_queue.q",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review 2: a var-file link that cannot be followed is reported, not read as empty",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type    = string\n  default = \"jobs\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type    = string\n  default = \"jobs\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n"
+   },
+   "headLinks": {
+    "r/env/prod.tfvars": "../../../outside/prod.tfvars"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "r/env/prod.tfvars"
+     ]
+    }
+   }
   }
  ]
 }

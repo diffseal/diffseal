@@ -113,7 +113,12 @@ function readTfvars(source: FileSource, root: string, configurationEvidence = fa
 
 /** The variables a tfvars file sets. An unreadable file leaves its variables unset (unknown), never guessed. */
 export function readVarFile(source: FileSource, file: string, configurationEvidence = false, diagnostics?: string[]): Record<string, unknown> {
-  const text = source.readFile(file) ?? '';
+  const raw = source.readFile(file);
+  if (raw === undefined) {
+    diagnostics?.push(`${file}:1: ${source.linkProblem?.(file) ?? 'the var-file cannot be read'}`);
+    return {};
+  }
+  const text = raw;
   if (file.endsWith('.json')) {
     try {
       const parsed = JSON.parse(text);

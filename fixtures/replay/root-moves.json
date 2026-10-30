@@ -368,6 +368,26 @@
      ]
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 2: any backend argument that differs makes the state location different (S3 workspace_key_prefix)",
+   "base": {
+    "old/main.tf": "terraform {\n  backend \"s3\" {\n    bucket               = \"state\"\n    key                  = \"svc.tfstate\"\n    workspace_key_prefix = \"a\"\n  }\n}\n",
+    "old/q.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n}\n"
+   },
+   "head": {
+    "new/main.tf": "terraform {\n  backend \"s3\" {\n    bucket               = \"state\"\n    key                  = \"svc.tfstate\"\n    workspace_key_prefix = \"b\"\n  }\n}\n",
+    "new/q.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n}\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "state"
+     ]
+    }
+   }
   }
  ]
 }
