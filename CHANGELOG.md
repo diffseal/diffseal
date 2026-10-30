@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.1-beta, 2026-10-30
 
 Accuracy fixes from a measurement on 675 commits of 9 public Terraform repositories; `docs/STATUS.md` has the numbers.
 
