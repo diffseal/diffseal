@@ -12,6 +12,7 @@ import {
   type ResourceChange,
 } from '../core/model.js';
 import { RULES, resolvePolicyValue } from './rules.js';
+import { stableKey } from '../hcl/eval.js';
 import { grantsWithin } from './grants.js';
 import { frameworksFor } from '../compliance/crosswalk.js';
 import { typed } from './values.js';
@@ -193,7 +194,7 @@ export function evaluatePolicies(all: ResourceChange[], policy: PolicyConfig = {
           const introduced = result.issues.filter((i) => !priorMessages.has(i.message));
           const kept = result.issues.filter((i) => i.level !== 'UNKNOWN' && priorMessages.has(i.message)).length;
           // A policy update that grants nothing new introduces nothing, whatever its statement ids say.
-          if (!introduced.length || (rule.id === 'iam.least-privilege' && res.type !== 'aws_iam_role' && grantsWithin(resolvePolicyValue(before!.policy, res, 'policy', ctxBefore), resolvePolicyValue(after.policy, res, 'policy', ctx)))) {
+          if (!introduced.length || (rule.id === 'iam.least-privilege' && res.type !== 'aws_iam_role' && sameOwner(res.type, before!, after) && grantsWithin(resolvePolicyValue(before!.policy, res, 'policy', ctxBefore), resolvePolicyValue(after.policy, res, 'policy', ctx)))) {
             preExisting = true;
           } else if (kept) {
             status = (['FAIL', 'WARN', 'UNKNOWN'] as const).find((l) => introduced.some((i) => i.level === l))!;
@@ -216,6 +217,16 @@ export function evaluatePolicies(all: ResourceChange[], policy: PolicyConfig = {
     }
   }
   return findings;
+}
+
+/** An inline policy is narrower only for the same role, user or group; a managed policy has no owner here. */
+function sameOwner(type: string, before: Attrs, after: Attrs): boolean {
+  const owner = { aws_iam_role_policy: 'role', aws_iam_user_policy: 'user', aws_iam_group_policy: 'group' }[type];
+  if (!owner) return true;
+  // An owner known only by reference (aws_iam_role.app.id) is the same when it names the same reference.
+  const was = before[owner];
+  const now = after[owner];
+  return was !== undefined && was !== null && stableKey(was) === stableKey(now);
 }
 
 export const capitalize = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);

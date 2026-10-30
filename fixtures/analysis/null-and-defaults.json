@@ -343,6 +343,23 @@
      }
     ]
    }
+  },
+  {
+   "kind": "terraform",
+   "name": "review 5: a sensitive value is judged by what it holds: removing a sensitive Optional+Computed value keeps state",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"u\" {\n  type      = string\n  default   = \"root\"\n  sensitive = true\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"orders\"\n  engine             = \"aurora-postgresql\"\n  master_username    = var.u\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"u\" {\n  type      = string\n  default   = \"root\"\n  sensitive = true\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"orders\"\n  engine             = \"aurora-postgresql\"\n}\n"
+   },
+   "expect": {
+    "changedAddresses": [],
+    "gate": {
+     "result": "pass"
+    }
+   }
   }
  ]
 }

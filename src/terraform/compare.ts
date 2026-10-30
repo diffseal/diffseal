@@ -449,7 +449,10 @@ function diffInstance(b: StaticInstance, a: StaticInstance): ResourceChange {
  * - undefined: compare the values as they are.
  * Unknown and sensitive values are never decided here.
  */
-function nullSemantics(type: string, key: string, before: unknown, after: unknown): 'same' | 'possible' | undefined {
+function nullSemantics(type: string, key: string, rawBefore: unknown, rawAfter: unknown): 'same' | 'possible' | undefined {
+  // A sensitive value is judged by what it holds; an unknown one, or one whose value is hidden, is not decided.
+  const before = reveal(rawBefore);
+  const after = reveal(rawAfter);
   if (isUnknown(before) || isUnknown(after) || isRedacted(before) || isRedacted(after)) return undefined;
   const nullish = (v: unknown) => v === undefined || v === null;
   if (nullish(before) && nullish(after)) return 'same';

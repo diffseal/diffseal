@@ -23,6 +23,8 @@ export interface FileSource {
   linksTo?(relPath: string): string[];
   /** The repository path a symbolic link (or a file reached through a linked directory) resolves to. */
   linkTarget?(relPath: string): string | undefined;
+  /** The directory a path reaches through a linked directory, when it passes through one. */
+  linkedDir?(relDir: string): string | undefined;
 }
 
 export const normalize = (p: string) => path.posix.normalize(p).replace(/^\.\//, '').replace(/\/$/, '') || '.';
@@ -137,6 +139,8 @@ export class GitSource implements FileSource {
   private readonly linkTargets = new Map<string, string>();
   /** Link path (or a path under a linked directory) -> the links its resolution passes through. */
   private readonly linkVia = new Map<string, string[]>();
+  /** Directory link -> the directory it resolves to. */
+  private readonly dirLinks = new Map<string, string>();
   /** Links that are not followed -> why. */
   private readonly refused = new Map<string, string>();
 
@@ -203,6 +207,7 @@ export class GitSource implements FileSource {
     }
     const all = [...this.blobs.keys()];
     let added = 0;
+    for (const [link, dir] of dirLinks) this.dirLinks.set(link, dir);
     for (const [link, dir] of dirLinks) {
       const under = all.filter((f) => f.startsWith(dir + '/'));
       if (added + under.length > 20_000) {
@@ -222,6 +227,12 @@ export class GitSource implements FileSource {
 
   linkProblem(p: string): string | undefined {
     return this.refused.get(normalize(p));
+  }
+
+  linkedDir(dir: string): string | undefined {
+    const d = normalize(dir);
+    for (const [link, target] of this.dirLinks) if (d === link || d.startsWith(link + '/')) return target + d.slice(link.length);
+    return undefined;
   }
 
   linkTarget(p: string): string | undefined {

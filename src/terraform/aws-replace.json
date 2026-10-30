@@ -17490,7 +17490,7 @@
     "default_storage_class": "S3_STANDARD",
     "guess_mime_type_enabled": true,
     "kms_encrypted": false,
-    "notification_policy": "",
+    "notification_policy": "{}",
     "read_only": false,
     "requester_pays": false,
     "squash": "RootSquash"
@@ -17516,7 +17516,7 @@
     "default_storage_class": "S3_STANDARD",
     "guess_mime_type_enabled": true,
     "kms_encrypted": false,
-    "notification_policy": "",
+    "notification_policy": "{}",
     "read_only": false,
     "requester_pays": false
    }

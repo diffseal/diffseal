@@ -417,6 +417,25 @@
      "result": "block"
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 5: two new roots with the old root's state location are not taken as its move",
+   "base": {
+    "prod/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"prod.tfstate\"\n  }\n}\n",
+    "prod/db.tf": "resource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"postgres\"\n}\n"
+   },
+   "head": {
+    "archive/prod/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"prod.tfstate\"\n  }\n}\n",
+    "archive/prod/db.tf": "resource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"postgres\"\n}\n",
+    "live/prod/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"prod.tfstate\"\n  }\n}\n",
+    "live/prod/db.tf": "resource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"mysql\"\n}\n"
+   },
+   "expect": {
+    "gate": {
+     "resultNot": "pass"
+    }
+   }
   }
  ]
 }

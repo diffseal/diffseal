@@ -11,7 +11,7 @@ import { protectedRoots, writeOutput } from './io/output.js';
 import { readPlan } from './plan/readPlan.js';
 import { renderMarkdown } from './report/markdown.js';
 import { CSV_HEADER, VERSION, csvRow, renderReplay, toCsv } from './replay/render.js';
-import { replayCommit, type ReplayResult } from './replay/replay.js';
+import { replayCommit, rootNames, type ReplayResult } from './replay/replay.js';
 import { git } from './terraform/source.js';
 import { changeRecord, loadApprovals, manifest } from './evidence/changeRecord.js';
 import { REPLACE_CATALOG_SOURCE } from './terraform/replaceCatalog.js';
@@ -154,7 +154,7 @@ async function runReplay(args: Args): Promise<number> {
     const record = changeRecord({
       commit: r.commit,
       base: r.base,
-      roots: r.roots.map((x) => x.root),
+      roots: rootNames(r.roots),
       result: r.combined,
       approvals: approvals.get(r.commit.sha) ?? approvals.get(name),
       engine: { version: VERSION, replaceCatalog: REPLACE_CATALOG_SOURCE },
@@ -208,7 +208,7 @@ function serializable(r: ReplayResult) {
   const { headSource, baseSource, ...rest } = r;
   void headSource;
   void baseSource;
-  return { version: VERSION, ...rest, roots: rest.roots.map(({ root, result, diagnostics }) => ({ root, result, diagnostics })) };
+  return { version: VERSION, ...rest, roots: rest.roots.map(({ root, result, diagnostics, varFile, baseVarFile, movedFrom, deleted }) => ({ root, ...(varFile ? { varFile } : {}), ...(baseVarFile ? { baseVarFile } : {}), ...(movedFrom ? { movedFrom } : {}), ...(deleted ? { deleted } : {}), result, diagnostics })) };
 }
 
 /** Printed when a removed command is used, so an old script fails with one clear line. */

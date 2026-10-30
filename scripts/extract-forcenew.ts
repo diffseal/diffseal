@@ -83,9 +83,25 @@ function nestedForceNew(value: string): string[] | undefined {
 }
 
 function ownFields(value: string): string {
+  // Braces inside strings, raw strings and comments (a regular expression such as `[^}]+`) do not nest.
   let out = '';
   let depth = 0;
-  for (const c of value) {
+  for (let i = 0; i < value.length; i++) {
+    const c = value[i];
+    let end = i;
+    if (c === '"') {
+      for (end = i + 1; end < value.length && value[end] !== '"'; end++) if (value[end] === '\\') end++;
+    } else if (c === '`') {
+      end = value.indexOf('`', i + 1);
+    } else if (c === '/' && value[i + 1] === '/') {
+      end = value.indexOf('\n', i);
+    }
+    if (end < 0) end = value.length - 1;
+    if (end !== i) {
+      if (depth === 0) out += value.slice(i, end + 1);
+      i = end;
+      continue;
+    }
     if (c === '{') depth++;
     if (depth === 0) out += c;
     if (c === '}') depth--;

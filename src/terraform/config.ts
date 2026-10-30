@@ -327,9 +327,8 @@ export function discoverRoots(source: FileSource, under?: string): string[] {
       if (!call.localDir) continue;
       called.add(call.localDir);
       // A module reached through a linked directory is the directory the link points at.
-      const targets = new Set((loadModule(source, call.localDir)?.files ?? []).map((n) => source.linkTarget?.(`${call.localDir}/${n}`)).map((t) => (t ? path.posix.dirname(t) : undefined)));
-      const [only] = [...targets];
-      if (targets.size === 1 && only) called.add(only);
+      const real = source.linkedDir?.(call.localDir);
+      if (real) called.add(real);
     }
     // Configuration linked into another directory is part of that directory, not a root of its own.
     // Only a directory that holds nothing of its own (no backend, resources or module calls) is demoted.

@@ -37,7 +37,7 @@
   },
   {
    "kind": "replay",
-   "name": "a configuration change in a root with var-files is evaluated once per environment, with known values",
+   "name": "a configuration change in a root with var-files is evaluated without a var-file and once per var-file, with known values",
    "base": {
     "spokes/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type = string\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n",
     "spokes/workspaces/dev.tfvars": "queue_name = \"jobs-dev\"\n",
@@ -50,16 +50,18 @@
    },
    "expect": {
     "replayedRoots": [
+     "spokes",
      "spokes [spokes/workspaces/dev.tfvars]",
      "spokes [spokes/workspaces/prod.tfvars]"
     ],
     "changedAddresses": [
-     "create dev.tfvars: aws_sqs_queue.dlq",
-     "create prod.tfvars: aws_sqs_queue.dlq"
+     "create (no var-file): aws_sqs_queue.dlq",
+     "create workspaces/dev.tfvars: aws_sqs_queue.dlq",
+     "create workspaces/prod.tfvars: aws_sqs_queue.dlq"
     ],
     "changes": [
      {
-      "address": "prod.tfvars: aws_sqs_queue.dlq",
+      "address": "workspaces/prod.tfvars: aws_sqs_queue.dlq",
       "confidence": "proven",
       "after": {
        "name": "jobs-prod-dlq"
@@ -73,7 +75,7 @@
   },
   {
    "kind": "replay",
-   "name": "a new var-file is a new environment: its resources are created",
+   "name": "a new var-file is not evaluated until it exists at both commits: it is reviewed by name",
    "base": {
     "spokes/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type = string\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n",
     "spokes/workspaces/dev.tfvars": "queue_name = \"jobs-dev\"\n",
@@ -86,16 +88,11 @@
     "spokes/workspaces/test.tfvars": "queue_name = \"jobs-test\"\n"
    },
    "expect": {
-    "replayedRoots": [
-     "spokes [spokes/workspaces/test.tfvars]"
-    ],
-    "changedAddresses": [
-     "create aws_sqs_queue.q"
-    ],
+    "replayedRoots": [],
     "gate": {
      "result": "review",
      "reasonsContain": [
-      "evaluated only in part"
+      "spokes/workspaces/test.tfvars (new file)"
      ]
     }
    }
@@ -250,7 +247,7 @@
    "expect": {
     "changes": [
      {
-      "address": "aws_db_instance.main",
+      "address": "envs/prod.tfvars: aws_db_instance.main",
       "action": "delete",
       "confidence": "proven"
      }
@@ -302,14 +299,15 @@
    },
    "expect": {
     "changedAddresses": [
-     "create east: aws_sqs_queue.dlq",
-     "create west: aws_sqs_queue.dlq"
+     "create (no var-file): aws_sqs_queue.dlq",
+     "create east/prod.tfvars: aws_sqs_queue.dlq",
+     "create west/prod.tfvars: aws_sqs_queue.dlq"
     ]
    }
   },
   {
    "kind": "replay",
-   "name": "review: a deleted var-file of a root that still exists does not say the root directory is deleted",
+   "name": "review: a deleted var-file is a changed input, reviewed by name; the root without it still shows what the configuration changes",
    "base": {
     "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type    = string\n  default = \"jobs\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n",
     "r/envs/dev.tfvars": "queue_name = \"d\"\n",
@@ -320,18 +318,11 @@
     "r/envs/dev.tfvars": "queue_name = \"d\"\n"
    },
    "expect": {
-    "changes": [
-     {
-      "address": "aws_sqs_queue.q",
-      "action": "delete",
-      "confidence": "likely",
-      "actionReasonContains": "var-file"
-     }
-    ],
+    "changedAddresses": [],
     "gate": {
      "result": "review",
      "reasonsContain": [
-      "Var-file r/envs/prod.tfvars of root r is deleted"
+      "r/envs/prod.tfvars (deleted)"
      ]
     }
    }
@@ -352,7 +343,7 @@
     "gate": {
      "result": "review",
      "reasonsContain": [
-      "r/env/prod.tfvars sets image_tag, which r does not declare"
+      "r/env/prod.tfvars (new file)"
      ]
     }
    }
@@ -417,8 +408,79 @@
     "gate": {
      "result": "review",
      "reasonsContain": [
-      "Var-file r/envs/prod.tfvars of root r is deleted"
+      "r/envs/prod.tfvars (deleted)"
      ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review 5: a root with var-files is still evaluated without one, so a deletion visible only under its defaults blocks",
+   "base": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"create_db\" {\n  type    = bool\n  default = true\n}\nresource \"aws_db_instance\" \"main\" {\n  count      = var.create_db ? 1 : 0\n  identifier = \"main\"\n  engine     = \"postgres\"\n}\n",
+    "app/envs/sandbox.tfvars": "create_db = false\n"
+   },
+   "head": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"create_db\" {\n  type    = bool\n  default = true\n}\n",
+    "app/envs/sandbox.tfvars": "create_db = false\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "(no var-file): aws_db_instance.main[0]",
+      "action": "delete",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review 5: deleting the last var-file and a database in one commit still blocks",
+   "base": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"postgres\"\n}\n",
+    "app/prod.tfvars": "x = 1\n"
+   },
+   "head": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_db_instance.main",
+      "action": "delete",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review 5: a var-file replaced by another of a different name, with a database deleted, still blocks",
+   "base": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"postgres\"\n}\n",
+    "app/envs/prod.tfvars": "x = \"prod-settings-1\"\n"
+   },
+   "head": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "app/envs/staging.tfvars": "y = \"completely different\"\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_db_instance.main",
+      "action": "delete",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
     }
    }
   }

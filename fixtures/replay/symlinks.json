@@ -533,6 +533,61 @@
      "result": "block"
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 5: a module directory of file links into a backendless root does not hide that root",
+   "base": {
+    "a/main.tf": "variable \"bucket\" {\n  type    = string\n  default = \"logs\"\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket        = var.bucket\n  force_destroy = true\n}\n",
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"m\" {\n  source = \"./m\"\n  bucket = \"r-logs\"\n}\n"
+   },
+   "head": {
+    "a/main.tf": "variable \"bucket\" {\n  type    = string\n  default = \"logs-v2\"\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket        = var.bucket\n  force_destroy = true\n}\n",
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"m\" {\n  source = \"./m\"\n  bucket = \"r-logs\"\n}\n"
+   },
+   "baseLinks": {
+    "r/m/main.tf": "../../a/main.tf"
+   },
+   "headLinks": {
+    "r/m/main.tf": "../../a/main.tf"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "a: aws_s3_bucket.b",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review 5: deleting the target of a linked .tf file is reviewed as configuration that no longer reads",
+   "base": {
+    "shared/settings.tf": "variable \"x\" {\n  type = string\n}\n",
+    "env/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+   },
+   "head": {
+    "env/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+   },
+   "baseLinks": {
+    "env/settings.tf": "../shared/settings.tf"
+   },
+   "headLinks": {
+    "env/settings.tf": "../shared/settings.tf"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "env/settings.tf"
+     ]
+    }
+   }
   }
  ]
 }

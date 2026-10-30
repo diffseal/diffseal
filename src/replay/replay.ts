@@ -43,9 +43,6 @@ export interface RootReplay {
   baseVarFile?: string;
 }
 
-/** actionReason of the resources of an environment whose var-file the change deleted. */
-export const DELETED_VAR_FILE_REASON = 'its var-file is deleted; it is destroyed only if someone runs terraform destroy with that var-file';
-
 /** actionReason of the resources of a root whose directory the change deleted. */
 export const DELETED_ROOT_REASON = 'its root directory is deleted; it is destroyed only if someone runs terraform destroy against that state';
 
@@ -78,13 +75,16 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   const tfChanged = changed.filter((c) => [c.path, c.oldPath].filter((p): p is string => Boolean(p)).flatMap(aliases).some((p) => TF_FILE.test(p)));
   const changedDirs = new Set(tfChanged.flatMap((c) => [c.path, c.oldPath].filter((p): p is string => Boolean(p)).flatMap(aliases).map((p) => path.posix.dirname(p))));
   // A changed link to a directory changes everything read through it.
-  const dirsUnder = (p: string) =>
-    [headSource, baseSource].flatMap((src) => src.allFiles().filter((f) => f.startsWith(p + '/')).map((f) => path.posix.dirname(f)));
-  for (const c of changed) {
-    // A path that is a file at neither commit is a link to a directory (or a link that was refused).
-    for (const p of [c.path, c.oldPath]) if (p && !headSource.blobId(p) && !baseSource.blobId(p)) for (const d of dirsUnder(p)) changedDirs.add(d);
+  // A changed path that is a directory at either commit (a directory link, retargeted or not) changes
+  // every directory and file read through it.
+  const dirSets = [headSource, baseSource].map((src) => new Set(src.allFiles().flatMap((f) => {
+    const parts = f.split('/');
+    return parts.slice(1).map((_, i) => parts.slice(0, i + 1).join('/'));
+  })));
+  const linkedDirs = changed.flatMap((c) => [c.path, c.oldPath]).filter((p): p is string => Boolean(p) && dirSets.some((d) => d.has(p!)));
+  for (const p of linkedDirs) {
+    for (const src of [headSource, baseSource]) for (const f of src.allFiles()) if (f.startsWith(p + '/')) changedDirs.add(path.posix.dirname(f));
   }
-
   // Policy and exceptions come from the base commit: a change must not be able to accept its own findings.
   const policyFileAtBase = opts.policyFile ? parsePolicyFile(baseSource.readFile(opts.policyFile)) : {};
   const policy = { ...repoPolicy(baseSource), ...policyFileAtBase, ...opts.policy };
@@ -98,11 +98,8 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     .filter((p): p is string => Boolean(p) && !TF_FILE.test(p!))
     .flatMap(aliases);
   // Files read through a changed directory link changed too.
-  for (const c of changed) {
-    for (const p of [c.path, c.oldPath]) {
-      if (!p || headSource.blobId(p) || baseSource.blobId(p)) continue;
-      for (const src of [headSource, baseSource]) dataChanged.push(...src.allFiles().filter((f) => f.startsWith(p + '/') && !TF_FILE.test(f)));
-    }
+  for (const p of linkedDirs) {
+    for (const src of [headSource, baseSource]) dataChanged.push(...src.allFiles().filter((f) => f.startsWith(p + '/') && !TF_FILE.test(f)));
   }
   const roots: RootReplay[] = [];
   const rootItems: GateItem[] = [];
@@ -116,35 +113,21 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     const allRoots = new Set([...headRoots, ...baseRoots]);
     const renamedTo = new Map(changed.filter((c) => c.status === 'R' && c.oldPath).map((c) => [c.oldPath!, c.path]));
     /**
-     * The environments of a root: each var-file at the head paired with its var-file at the base (same
-     * path, or renamed by git). Adding the first var-file, or removing the last, pairs it with the root
-     * evaluated without one, so what the configuration itself changes is never hidden behind a "new" or
-     * "deleted" environment. Without var-files on either side, one evaluation without any.
+     * The evaluations of a root: always one without a var-file, as before var-files were read, so nothing
+     * the configuration itself changes can hide behind them; and one per var-file that exists at both
+     * commits (same path, or renamed by git). A var-file added or deleted is a changed input, reviewed.
      */
     const environments = (root: string, baseRoot: string, rootsSet: Set<string>) => {
-      const headFiles = varFilesOf(headSource, root, rootsSet);
+      type Env = { headFile?: string; baseFile?: string };
+      const out: Env[] = [{}];
+      if (!loadModule(headSource, root) || !loadModule(baseSource, baseRoot)) return out;
       const baseFiles = varFilesOf(baseSource, baseRoot, rootsSet);
-      const rootAtBase = Boolean(loadModule(baseSource, baseRoot));
-      const rootAtHead = Boolean(loadModule(headSource, root));
-      type Env = { headFile?: string; baseFile?: string; headMissing?: boolean; baseMissing?: boolean; dropped?: boolean };
-      if (!headFiles.length && !baseFiles.length) return [{}] as Env[];
-      const out: Env[] = [];
-      const paired = new Set<string>();
-      for (const h of headFiles) {
+      for (const h of varFilesOf(headSource, root, rootsSet)) {
         const same = path.posix.join(baseRoot, path.posix.relative(root, h));
         const b = baseFiles.includes(same) ? same : baseFiles.find((x) => renamedTo.get(x) === h);
-        if (b) {
-          paired.add(b);
-          out.push({ headFile: h, baseFile: b });
-        } else if (!baseFiles.length && rootAtBase) out.push({ headFile: h });
-        else out.push({ headFile: h, baseMissing: true });
+        if (b) out.push({ headFile: h, baseFile: b });
       }
-      for (const b of baseFiles) {
-        if (paired.has(b)) continue;
-        if (!headFiles.length && rootAtHead) out.push({ baseFile: b, dropped: true });
-        else out.push({ baseFile: b, headMissing: true });
-      }
-      return out.sort((x, y) => (x.headFile ?? x.baseFile ?? '').localeCompare(y.headFile ?? y.baseFile ?? ''));
+      return out;
     };
     for (const root of [...candidates].sort()) {
       if (moves.has(root)) continue; // replayed under the directory it moved to
@@ -159,13 +142,13 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
         const touchesEnv = touchesConfig || [headFile, baseFile].some((f) => f !== undefined && touchedPaths.has(f));
         if (!touchesEnv && !(dataChanged.length && readsFiles(closure, headSource, baseSource))) continue;
         // A var-file new at the head with nothing to pair it with is a new environment: nothing of it exists yet.
-        const baseEval = env.baseMissing ? undefined : evaluateRoot(baseSource, baseRoot, {}, baseFile ? [baseFile] : []);
-        const headEval = env.headMissing ? undefined : evaluateRoot(headSource, root, {}, headFile ? [headFile] : []);
-        if (!touchesEnv && !dataChanged.some((p) => headEval?.readFiles.has(p) || baseEval?.readFiles.has(p))) continue;
+        const baseEval = evaluateRoot(baseSource, baseRoot, {}, baseFile ? [baseFile] : []);
+        const headEval = evaluateRoot(headSource, root, {}, headFile ? [headFile] : []);
+        if (!touchesEnv && !dataChanged.some((p) => headEval.readFiles.has(p) || baseEval.readFiles.has(p))) continue;
         // An evaluation with no instances still carries removed, moved and prevent_destroy blocks.
         const changes = compareEvaluations(baseEval, headEval);
         // Terraform refuses a var-file that does not parse; values that fell back to defaults prove nothing.
-        const brokenVarFile = [headFile, baseFile].find((f) => f && [...(headEval?.diagnostics ?? []), ...(baseEval?.diagnostics ?? [])].some((d) => d.startsWith(`${f}:`)));
+        const brokenVarFile = [headFile, baseFile].find((f) => f && [...headEval.diagnostics, ...baseEval.diagnostics].some((d) => d.startsWith(`${f}:`)));
         if (brokenVarFile) {
           for (const c of changes) {
             if (c.action === 'no-op' || c.confidence !== 'proven') continue;
@@ -173,34 +156,26 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
             c.actionReason = `${brokenVarFile} does not parse, so its values were not read`;
           }
         }
-        // A deleted root directory, or a deleted environment's var-file, plans nothing: the state is left
-        // behind, and its resources are destroyed only if someone runs destroy against it. Possible
-        // deletions, reviewed.
-        // The root's last var-file deleted: compared with the root without one, but what goes away may only
-        // have been the file's values.
-        const envDeleted = Boolean((env.headMissing || env.dropped) && baseFile);
-        if (rootDeleted || envDeleted) {
+        // A deleted root directory plans nothing: the state is left behind, and its resources are destroyed
+        // only if someone runs destroy against it. Possible deletions, reviewed.
+        if (rootDeleted) {
           for (const c of changes) {
             if (c.action !== 'delete') continue;
             c.confidence = 'likely';
-            c.actionReason = rootDeleted ? DELETED_ROOT_REASON : DELETED_VAR_FILE_REASON;
+            c.actionReason = DELETED_ROOT_REASON;
             if (c.mode === 'managed') deletedResources++;
-          }
-          if (envDeleted && !rootDeleted) {
-            rootItems.push({ kind: 'coverage', level: 'review', text: `Var-file ${baseFile} of root ${root} is deleted. Deleting it destroys nothing by itself: the resources of that environment are destroyed only if someone runs terraform destroy with it, and otherwise stay in AWS without Terraform managing them; confirm which is intended` });
           }
         }
         // Exceptions are judged on the date of the change, so replaying history reproduces its gate.
-        const varFile = headFile ?? baseFile;
         roots.push({
           root,
           changes,
           result: analyze(changes, { policy, now: opts.now ?? new Date(commit.date) }),
-          diagnostics: [...new Set([...(headEval?.diagnostics ?? []), ...(baseEval && !headEval ? baseEval.diagnostics : [])])],
+          diagnostics: headEval.diagnostics,
           ...(move ? { movedFrom: move.from } : {}),
           ...(rootDeleted ? { deleted: true } : {}),
-          ...(varFile ? { varFile } : {}),
-          ...(env.baseFile && env.baseFile !== varFile ? { baseVarFile: env.baseFile } : {}),
+          ...(headFile ? { varFile: headFile } : {}),
+          ...(baseFile && baseFile !== headFile ? { baseVarFile: baseFile } : {}),
         });
       }
       if (rootDeleted && deletedResources) {
@@ -238,12 +213,12 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   const unattributed = inputPaths.filter((p) => /\.tfvars(\.json)?$/.test(p) && !aliases(p).some((a) => evaluatedInputs.has(a)));
   // A changed var-file found below a root is evaluated with that root, on its own. Which roots load it,
   // and with which other var-files, is set outside the configuration, so the change stays reviewed.
-  const partly = [...new Set(roots.filter((r) => r.varFile && [r.varFile, r.baseVarFile].some((f) => f && touchedPaths.has(f))).map((r) => `${r.varFile} (${describeVarChanges(baseSource, headSource, r.varFile!)}) with ${r.root}`))];
+  const partly = [...new Set(roots.filter((r) => r.varFile && [r.varFile, r.baseVarFile].some((f) => f && touchedPaths.has(f))).map((r) => `${r.varFile} (${describeVarChanges(baseSource, headSource, r.varFile!, r.baseVarFile)}) with ${r.root}`))];
   // A var-file evaluated with a root that does not declare a variable it changes: that value goes elsewhere.
   const undeclared: string[] = [];
   for (const r of roots) {
     if (!r.varFile || !touchedPaths.has(r.varFile)) continue;
-    const change = varChanges(baseSource, headSource, r.varFile);
+    const change = varChanges(baseSource, headSource, r.varFile, r.baseVarFile);
     const names = change === 'new' ? [...readVarNames(headSource, r.varFile)] : change;
     if (!Array.isArray(names)) continue;
     const declared = new Set([...(loadModule(headSource, r.root)?.variables.keys() ?? []), ...(loadModule(baseSource, r.movedFrom ?? r.root)?.variables.keys() ?? [])]);
@@ -264,7 +239,7 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   if (unattributed.length) {
     if (combined.gate.result === 'pass') combined.gate.result = 'review';
     const files = unattributed.slice(0, 5).map((f) => `${f} (${describeVarChanges(baseSource, headSource, f)})`);
-    addGateItem(combined.gate, { kind: 'coverage', level: 'review', text: `Inputs changed that static replay does not evaluate: ${files.join('; ')}${unattributed.length > 5 ? `; and ${unattributed.length - 5} more` : ''}. No root loads ${unattributed.length === 1 ? 'this file' : 'these files'} automatically or from a directory below it, so the roots that use ${unattributed.length === 1 ? 'it' : 'them'} were not evaluated with ${unattributed.length === 1 ? 'it' : 'them'}; review by hand or with a plan` });
+    addGateItem(combined.gate, { kind: 'coverage', level: 'review', text: `Inputs changed that static replay does not evaluate: ${files.join('; ')}${unattributed.length > 5 ? `; and ${unattributed.length - 5} more` : ''}. No root was evaluated with ${unattributed.length === 1 ? 'this file' : 'these files'}: a var-file is evaluated only when it sits in or below its root and exists at both commits; review by hand or with a plan` });
   }
   if (partly.length) {
     if (combined.gate.result === 'pass') combined.gate.result = 'review';
@@ -283,7 +258,7 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     addGateItem(combined.gate, { kind: 'coverage', level: 'review', text: `Terraform changed outside every analyzed root (${uncovered.slice(0, 5).join(', ')}${uncovered.length > 5 ? ', ...' : ''}); it was not checked` });
   }
   // Terraform would refuse configuration that does not parse; what the change touches is reviewed.
-  const changedSet = new Set(changed.map((c) => c.path));
+  const changedSet = new Set(changed.flatMap((c) => [c.path, c.oldPath]).filter((p): p is string => Boolean(p)).flatMap(aliases));
   const broken = [...new Set(roots.flatMap((r) => r.diagnostics))].filter((d) => changedSet.has(d.slice(0, d.indexOf(':'))));
   if (broken.length) {
     if (combined.gate.result === 'pass') combined.gate.result = 'review';
@@ -304,6 +279,11 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     headSource,
     baseSource,
   };
+}
+
+/** How each replayed root is named in reports and change records: its var-file and a move show. */
+export function rootNames(roots: RootReplay[]): string[] {
+  return roots.map((r) => `${r.root}${r.varFile ? ` [${path.posix.relative(r.root, r.varFile)}]` : ''}${r.movedFrom ? ` (moved from ${r.movedFrom})` : ''}${r.deleted ? ' (deleted)' : ''}`);
 }
 
 const AUTO_LOADED = /^(terraform\.tfvars|[^/]*\.auto\.tfvars)(\.json)?$/;
@@ -340,9 +320,9 @@ export function varFilesOf(source: GitSource, root: string, roots: Set<string>):
 }
 
 /** The variables a tfvars file changes between two commits: `new` or `deleted` for a whole file. */
-function varChanges(base: GitSource, head: GitSource, file: string): string[] | 'new' | 'deleted' {
+function varChanges(base: GitSource, head: GitSource, file: string, baseFile = file): string[] | 'new' | 'deleted' {
   const read = (src: GitSource) => {
-    const text = src.readFile(file);
+    const text = src.readFile(src === base ? baseFile : file);
     if (text === undefined) return undefined;
     if (file.endsWith('.json')) {
       try {
@@ -376,8 +356,8 @@ function readVarNames(src: GitSource, file: string): string[] {
   return parseHcl(text).body.attributes.map((a) => a.name);
 }
 
-function describeVarChanges(base: GitSource, head: GitSource, file: string): string {
-  const names = varChanges(base, head, file);
+function describeVarChanges(base: GitSource, head: GitSource, file: string, baseFile = file): string {
+  const names = varChanges(base, head, file, baseFile);
   if (names === 'new') return 'new file';
   if (names === 'deleted') return 'deleted';
   if (!names.length) return 'no variable value changed';
@@ -406,7 +386,7 @@ export function externalModuleItems(roots: RootReplay[]): GateItem[] {
       const was = { source: c.before?.source, version: c.before?.version };
       const now = { source: c.after?.source, version: c.after?.version };
       if (c.action === 'delete') {
-        if (c.actionReason === DELETED_ROOT_REASON || c.actionReason === DELETED_VAR_FILE_REASON) continue; // said once for the whole root or environment
+        if (c.actionReason === DELETED_ROOT_REASON) continue; // said once for the whole root
         add(['removed', c.address, was.source, was.version], root, (where) =>
           `External module ${quoted(was.source)}${was.version ? ` (version ${was.version})` : ''} is removed (${c.address} in ${where}): every resource it manages is destroyed, and Diffseal cannot list them offline; review a plan`);
         continue;
@@ -457,7 +437,9 @@ function movedRoots(base: GitSource, head: GitSource, baseRoots: string[], headR
     const declaring = new Set([...bm.resources.values(), ...bm.data.values(), ...bm.moduleCalls.values()].map((x) => x.file));
     for (const f of fresh) {
       const hm = loadModule(head, f)!;
-      const sameState = Boolean(bm.stateLocation) && bm.stateLocation === hm.stateLocation;
+      // Two new roots with the old root's state location cannot both be it: then neither is known to be.
+      const sharing = fresh.filter((x) => loadModule(head, x)!.stateLocation === bm.stateLocation).length;
+      const sameState = Boolean(bm.stateLocation) && bm.stateLocation === hm.stateLocation && sharing === 1;
       const kept = bm.files.filter((name) => {
         const was = path.posix.join(g, name);
         const blob = base.blobId(was);
@@ -531,7 +513,8 @@ export function shortRootLabels(roots: string[]): Record<string, string> {
  */
 export function combineRoots(roots: RootReplay[]): AnalysisResult {
   // A root replayed per environment is labelled by its var-file's name too.
-  const name = (r: RootReplay) => (r.varFile ? `${r.root}/${path.posix.relative(r.root, r.varFile)}` : r.root);
+  const withEnvs = new Set(roots.filter((r) => r.varFile).map((r) => r.root));
+  const name = (r: RootReplay) => (r.varFile ? `${r.root}/${path.posix.relative(r.root, r.varFile)}` : withEnvs.has(r.root) ? `${r.root}/(no var-file)` : r.root);
   const labels = shortRootLabels(roots.map(name));
   const label = (root: string, r: string) => (labels[root] ? `${labels[root]}: ${r}` : r);
   const gate: Gate = { result: 'pass', reasons: [], items: [] };

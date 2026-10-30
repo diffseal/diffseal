@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import { createHash } from 'node:crypto';
 import { assertOutsideRepo, protectedRoots, writeOutput } from '../io/output.js';
 import { git } from '../terraform/source.js';
-import { replayCommit } from '../replay/replay.js';
+import { replayCommit, rootNames } from '../replay/replay.js';
 import { CSV_HEADER, csvRow, toCsv, VERSION } from '../replay/render.js';
 import { REPLACE_CATALOG_SOURCE } from '../terraform/replaceCatalog.js';
 import { changeRecord, manifest, type Approvals, type ChangeRecord } from './changeRecord.js';
@@ -127,7 +127,7 @@ export async function evidencePack(opts: EvidenceOptions): Promise<EvidenceResul
       const record = changeRecord({
         commit: replay.commit,
         base: replay.base,
-        roots: replay.roots.map((r) => r.root),
+        roots: rootNames(replay.roots),
         result: replay.combined,
         approvals,
         engine: { version: VERSION, replaceCatalog: REPLACE_CATALOG_SOURCE },
