@@ -104,7 +104,7 @@ function readTfvars(source: FileSource, root: string, configurationEvidence = fa
   // Terraform loads terraform.tfvars(.json) first, then *.auto.tfvars(.json) in lexical order; later files win.
   const names = source.listFiles(root);
   const files = [
-    ...names.filter((f) => f === 'terraform.tfvars' || f === 'terraform.tfvars.json'),
+    ...['terraform.tfvars', 'terraform.tfvars.json'].filter((f) => names.includes(f)),
     ...names.filter((f) => f.endsWith('.auto.tfvars') || f.endsWith('.auto.tfvars.json')).sort(),
   ];
   for (const f of files) Object.assign(out, readVarFile(source, path.posix.join(root, f), configurationEvidence));

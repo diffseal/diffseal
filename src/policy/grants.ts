@@ -119,7 +119,7 @@ export function grantsWithin(before: unknown, after: unknown): boolean {
   for (const st of a.statements.filter(allow)) {
     const actions = strings(st.Action, false);
     const resources = strings(st.Resource, true);
-    if (!actions || !resources) return false;
+    if (!actions || !resources || !actions.length || !resources.length) return false;
     for (const action of actions) {
       for (const resource of resources) {
         const ok = old.some((o) =>

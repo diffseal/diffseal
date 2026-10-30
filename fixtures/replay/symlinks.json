@@ -707,7 +707,7 @@
    "expect": {
     "changes": [
      {
-      "address": "r: module.m.aws_db_instance.main",
+      "address": "module.m.aws_db_instance.main",
       "action": "replace",
       "confidence": "proven"
      }
@@ -834,7 +834,7 @@
    "expect": {
     "changes": [
      {
-      "address": "app: module.db.aws_db_instance.main",
+      "address": "module.db.aws_db_instance.main",
       "action": "replace",
       "confidence": "proven"
      }
@@ -842,6 +842,73 @@
     "gate": {
      "result": "block"
     }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review 10: terraform.tfvars.json wins over terraform.tfvars even when the .tfvars is a link",
+   "base": {
+    "shared/fixed.tfvars": "name = \"fixed\"\n",
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.name\n}\nvariable \"name\" {\n  type = string\n}\n",
+    "r/terraform.tfvars.json": "{\"name\": \"a\"}"
+   },
+   "head": {
+    "shared/fixed.tfvars": "name = \"fixed\"\n",
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.name\n}\nvariable \"name\" {\n  type = string\n}\n",
+    "r/terraform.tfvars.json": "{\"name\": \"b\"}"
+   },
+   "baseLinks": {
+    "r/terraform.tfvars": "../shared/fixed.tfvars"
+   },
+   "headLinks": {
+    "r/terraform.tfvars": "../shared/fixed.tfvars"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_sqs_queue.q",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review 10: directories seen through a directory link are not roots of their own",
+   "base": {
+    "modules/m0/main.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"m0\"\n}\n",
+    "modules/m1/main.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"m1\"\n}\n",
+    "modules/m2/main.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"m2\"\n}\n",
+    "envs/e0/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"m0\" {\n  source = \"./modules/m0\"\n}\n",
+    "envs/e1/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"m0\" {\n  source = \"./modules/m0\"\n}\n",
+    "envs/e2/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"m0\" {\n  source = \"./modules/m0\"\n}\n"
+   },
+   "head": {
+    "modules/m0/main.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"m0\"\n}\n",
+    "modules/m1/main.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"m1\"\n}\n",
+    "modules/m2/main.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"m2-v2\"\n}\n",
+    "envs/e0/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"m0\" {\n  source = \"./modules/m0\"\n}\n",
+    "envs/e1/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"m0\" {\n  source = \"./modules/m0\"\n}\n",
+    "envs/e2/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"m0\" {\n  source = \"./modules/m0\"\n}\n"
+   },
+   "baseLinks": {
+    "envs/e0/modules": "../../modules",
+    "envs/e1/modules": "../../modules",
+    "envs/e2/modules": "../../modules"
+   },
+   "headLinks": {
+    "envs/e0/modules": "../../modules",
+    "envs/e1/modules": "../../modules",
+    "envs/e2/modules": "../../modules"
+   },
+   "expect": {
+    "replayedRoots": [
+     "modules/m2"
+    ]
    }
   }
  ]

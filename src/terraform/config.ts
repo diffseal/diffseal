@@ -347,6 +347,8 @@ export function discoverRoots(source: FileSource, under?: string): string[] {
   }
   return [...dirs]
     .filter((d) => {
+      // A directory seen through a directory link is its target's directory, not a root of its own.
+      if (source.linkedDir?.(d) !== undefined) return false;
       const mod = loadModule(source, d);
       if (!mod) return false;
       if (mod.hasBackend || terragrunt.has(d)) return true;

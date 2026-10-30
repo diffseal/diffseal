@@ -139,6 +139,9 @@ export class GitSource implements FileSource {
   private readonly linkTargets = new Map<string, string>();
   /** Link path (or a path under a linked directory) -> the links its resolution passes through. */
   private readonly linkVia = new Map<string, string[]>();
+  private readonly bySha = new Map<string, string>();
+  /** Path a link resolves to, or a link on the way -> the link paths (and aliases) reading it. */
+  private readers?: Map<string, string[]>;
   /** Directory link -> the directory it resolves to. */
   private readonly dirLinks = new Map<string, string>();
   /** Links that are not followed -> why. */
@@ -269,7 +272,17 @@ export class GitSource implements FileSource {
   linksTo(p: string): string[] {
     const target = normalize(p);
     // A path reads `target` when it resolves to it, or when its resolution passes through the link `target`.
-    return [...this.linkTargets].filter(([l, t]) => t === target || this.linkVia.get(l)?.includes(target)).map(([l]) => l);
+    if (!this.readers) {
+      this.readers = new Map();
+      for (const [l, t] of this.linkTargets) {
+        for (const k of new Set([t, ...(this.linkVia.get(l) ?? [])])) {
+          const list = this.readers.get(k) ?? [];
+          list.push(l);
+          this.readers.set(k, list);
+        }
+      }
+    }
+    return this.readers.get(target) ?? [];
   }
 
   /** Contents of blobs by id, in order, with one `git cat-file --batch` call. */
@@ -309,12 +322,22 @@ export class GitSource implements FileSource {
 
   /** Read many blobs in one `git cat-file --batch` call. */
   prefetch(paths: string[]) {
+    // Contents are kept by blob id too, so a file seen through several links is read from git once.
     const wanted = paths.map(normalize).filter((p) => this.blobs.has(p) && !this.contents.has(p));
-    if (!wanted.length) return;
-    const texts = this.catBlobs(wanted.map((p) => this.blobs.get(p)!));
-    wanted.forEach((p, i) => {
-      if (texts[i] !== undefined) this.contents.set(p, texts[i]!);
+    for (const p of wanted) {
+      const known = this.bySha.get(this.blobs.get(p)!);
+      if (known !== undefined) this.contents.set(p, known);
+    }
+    const missing = [...new Set(wanted.filter((p) => !this.contents.has(p)).map((p) => this.blobs.get(p)!))];
+    if (!missing.length) return;
+    const texts = this.catBlobs(missing);
+    missing.forEach((sha, i) => {
+      if (texts[i] !== undefined) this.bySha.set(sha, texts[i]!);
     });
+    for (const p of wanted) {
+      const text = this.bySha.get(this.blobs.get(p)!);
+      if (text !== undefined) this.contents.set(p, text);
+    }
   }
 
   listFiles(dir: string) {
