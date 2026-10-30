@@ -212,7 +212,7 @@ function serializable(r: ReplayResult) {
 }
 
 /** Printed when a removed command is used, so an old script fails with one clear line. */
-const CHECK_APP_REMOVED = 'check-app was removed in the next release; Diffseal reviews Terraform only';
+const CHECK_APP_REMOVED = 'check-app was removed in v0.6.0-beta; Diffseal reviews Terraform only';
 
 const COMMANDS = new Set(['review', 'replay', 'evidence', 'verify', 'modules', 'demo']);
 

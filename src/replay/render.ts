@@ -1,7 +1,7 @@
 import { cell, renderMarkdown } from '../report/markdown.js';
 import type { ReplayResult } from './replay.js';
 
-export const VERSION = '0.5.5-beta';
+export const VERSION = '0.6.0-beta';
 
 /**
  * The replay report. A pull request check passes `commit: false`: there the head is the merge commit

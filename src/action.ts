@@ -38,7 +38,7 @@ function setOutput(name: string, value: string) {
 }
 
 /** Printed for the removed application code check, so an old workflow fails with one clear line. */
-const APP_MODE_REMOVED = 'mode: app was removed in the next release; Diffseal reviews Terraform only';
+const APP_MODE_REMOVED = 'mode: app was removed in v0.6.0-beta; Diffseal reviews Terraform only';
 
 async function main(): Promise<number> {
   const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();

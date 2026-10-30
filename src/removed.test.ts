@@ -17,7 +17,7 @@ test('the Action fails mode: app with one clear line and writes no report', () =
       env: { ...process.env, GITHUB_WORKSPACE: dir, GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary, GITHUB_EVENT_PATH: '', INPUT_MODE: 'app', INPUT_COMMENT: 'false', INPUT_ADVISORY: 'true' },
     });
     expect(r.status).toBe(1);
-    expect(r.stderr.trim().split('\n')).toEqual(['mode: app was removed in the next release; Diffseal reviews Terraform only']);
+    expect(r.stderr.trim().split('\n')).toEqual(['mode: app was removed in v0.6.0-beta; Diffseal reviews Terraform only']);
     expect(r.stdout).toBe('');
     expect(fs.existsSync(summary)).toBe(false);
     expect(fs.existsSync(output)).toBe(false);
@@ -30,7 +30,7 @@ test('the CLI fails check-app with one clear line', () => {
   for (const args of [['check-app', '--app', '.', '--worktree'], ['check-app'], ['--app', '.', 'check-app'], ['--worktree', 'check-app']]) {
     const r = spawnSync('bun', [path.join(root, 'src/cli.ts'), ...args], { cwd: root, encoding: 'utf8' });
     expect(r.status).toBe(1);
-    expect(r.stderr.trim().split('\n')).toEqual(['check-app was removed in the next release; Diffseal reviews Terraform only']);
+    expect(r.stderr.trim().split('\n')).toEqual(['check-app was removed in v0.6.0-beta; Diffseal reviews Terraform only']);
     expect(r.stdout).toBe('');
   }
 });

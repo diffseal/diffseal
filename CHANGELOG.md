@@ -1,10 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.6.0-beta, 2026-10-30
 
 ### Removed
 
-- The application code check: the `check-app` command, the Action's `mode: app` and its `infra-path`, `role` and `entry` inputs, and the `diffseal_check_app` MCP tool. Diffseal reviews Terraform only. A workflow that still sets `mode: app` fails with the line "mode: app was removed in the next release; Diffseal reviews Terraform only", and `diffseal check-app` fails with the same message for the command. On public Spring Boot projects the check found 30% of AWS call sites and reached no verdict, and it passed two projects that write to DynamoDB, so it was removed rather than kept as a partial check. `docs/STATUS.md` has the numbers.
+- The application code check: the `check-app` command, the Action's `mode: app` and its `infra-path`, `role` and `entry` inputs, and the `diffseal_check_app` MCP tool. Diffseal reviews Terraform only. A workflow that still sets `mode: app` fails with the line "mode: app was removed in v0.6.0-beta; Diffseal reviews Terraform only", and `diffseal check-app` fails with the same message for the command. On public Spring Boot projects the check found 30% of AWS call sites and reached no verdict, and it passed two projects that write to DynamoDB, so it was removed rather than kept as a partial check. `docs/STATUS.md` has the numbers.
 - `pr` mode and `replay` no longer scan application code added by a change, so a missing permission in application code no longer raises the gate to REVIEW.
 - The parser grammars for Go, TypeScript, Python, Java, Kotlin and C#. The Action bundle falls from 3.1 MB to 1.0 MB.
 - The `infra`, `roles` and `env` link settings in `.diffseal.json`. They are ignored if present.
