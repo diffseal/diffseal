@@ -169,9 +169,10 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
         // Terraform refuses a var-file that does not parse; values that fell back to defaults prove nothing.
         // Only a tfvars file read at one commit and not the other: then defaults stand in for its values on
         // one side only. Unreadable at both (an encrypted file), both sides lack the same values.
-        const brokenAt = (e: { diagnostics: string[] }) => new Set(e.diagnostics.map((d) => d.slice(0, d.indexOf(':'))).filter((f) => /\.tfvars(\.json)?$/.test(f)));
-        const brokenHead = brokenAt(headEval);
-        const brokenBase = brokenAt(baseEval);
+        // Compared by path inside the root, so a root that moves with its encrypted file is not a change.
+        const brokenAt = (e: { diagnostics: string[] }, dir: string) => new Set(e.diagnostics.map((d) => d.slice(0, d.indexOf(':'))).filter((f) => /\.tfvars(\.json)?$/.test(f)).map((f) => path.posix.relative(dir, f)));
+        const brokenHead = brokenAt(headEval, root);
+        const brokenBase = brokenAt(baseEval, baseRoot);
         const brokenVarFile = [...brokenHead].find((f) => !brokenBase.has(f)) ?? [...brokenBase].find((f) => !brokenHead.has(f));
         if (brokenVarFile) {
           for (const c of changes) {
@@ -227,8 +228,9 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   // A changed directory link that holds Terraform no replayed root reads is not checked.
   for (const p of linkedDirs) {
     const inside = [headSource, baseSource].flatMap((src) => src.allFiles().filter((f) => f.startsWith(p + '/') && isConfigFile(path.posix.basename(f))));
-    if (inside.length && !inside.some((f) => covered.has(path.posix.dirname(f)))) {
-      rootItems.push({ kind: 'coverage', level: 'review', text: `Directory link ${p} changed and holds Terraform (${[...new Set(inside.map((f) => path.posix.dirname(f)))].slice(0, 3).join(', ')}) that no replayed root reads; what it plans now was not checked` });
+    const unread = [...new Set(inside.map((f) => path.posix.dirname(f)))].filter((d) => !covered.has(d));
+    if (unread.length) {
+      rootItems.push({ kind: 'coverage', level: 'review', text: `Directory link ${p} changed and holds Terraform (${unread.slice(0, 3).join(', ')}${unread.length > 3 ? ', ...' : ''}) that no replayed root reads; what it plans now was not checked` });
     }
   }
   // Inputs static replay does not evaluate: Terragrunt inputs, and tfvars no root is known to load.
@@ -242,7 +244,8 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     if (r.varFile && r.movedFrom) evaluatedInputs.add(path.posix.join(r.movedFrom, path.posix.relative(r.root, r.varFile)));
     if (r.baseVarFile) evaluatedInputs.add(r.baseVarFile);
   }
-  const inputPaths = [...new Set(changed.flatMap((c) => [c.path, c.oldPath]).filter((p): p is string => Boolean(p)))];
+  // Every name a changed file has, so a terragrunt.hcl or tfvars link to a changed target counts.
+  const inputPaths = [...new Set(changed.flatMap((c) => [c.path, c.oldPath]).filter((p): p is string => Boolean(p)).flatMap(aliases))];
   const terragrunt = inputPaths.filter((p) => /(^|\/)terragrunt\.hcl$/.test(p));
   const unattributed = inputPaths.filter((p) => /\.tfvars(\.json)?$/.test(p) && !aliases(p).some((a) => evaluatedInputs.has(a)));
   // A changed var-file found below a root is evaluated with that root, on its own. Which roots load it,

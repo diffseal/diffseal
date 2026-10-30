@@ -1029,6 +1029,64 @@
      ]
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 15: a changed directory link is reviewed for every Terraform directory below it that no replayed root reads",
+   "base": {
+    "a/module/main.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"m\"\n}\n",
+    "a/prod/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"svc\"\n  }\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"a\"\n}\n",
+    "b/module/main.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"m\"\n}\n",
+    "b/prod/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"svc\"\n  }\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"b\"\n}\n",
+    "consumer/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"m\" {\n  source = \"../live/module\"\n}\n"
+   },
+   "head": {
+    "a/module/main.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"m\"\n}\n",
+    "a/prod/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"svc\"\n  }\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"a\"\n}\n",
+    "b/module/main.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"m\"\n}\n",
+    "b/prod/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"svc\"\n  }\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"b\"\n}\n",
+    "consumer/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"m\" {\n  source = \"../live/module\"\n}\n"
+   },
+   "baseLinks": {
+    "live": "a"
+   },
+   "headLinks": {
+    "live": "b"
+   },
+   "expect": {
+    "gate": {
+     "resultNot": "pass",
+     "reasonsContain": [
+      "live/prod"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review 15: a terragrunt.hcl link to a changed target is a changed Terragrunt input",
+   "base": {
+    "shared/inputs.hcl": "inputs = {\n  a = 1\n}\n",
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+   },
+   "head": {
+    "shared/inputs.hcl": "inputs = {\n  a = 2\n}\n",
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+   },
+   "baseLinks": {
+    "r/terragrunt.hcl": "../shared/inputs.hcl"
+   },
+   "headLinks": {
+    "r/terragrunt.hcl": "../shared/inputs.hcl"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "Terragrunt"
+     ]
+    }
+   }
   }
  ]
 }

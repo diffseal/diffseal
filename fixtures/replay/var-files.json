@@ -571,6 +571,30 @@
      "result": "block"
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 15: a root that moves with its unreadable tfvars file keeps a deletion proven",
+   "base": {
+    "old/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"svc\"\n  }\n}\nresource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"postgres\"\n}\n",
+    "old/secrets.auto.tfvars": "\u0000GITCRYPT\u0000"
+   },
+   "head": {
+    "new/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"svc\"\n  }\n}\n",
+    "new/secrets.auto.tfvars": "\u0000GITCRYPT\u0000"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_db_instance.main",
+      "action": "delete",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
   }
  ]
 }
