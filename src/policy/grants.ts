@@ -1,5 +1,5 @@
 import { isUnknown, reveal } from '../core/model.js';
-import { stableKey } from '../hcl/eval.js';
+import { containsUnknown, stableKey } from '../hcl/eval.js';
 import { parsePolicy, type Statement } from './iam.js';
 
 /** One Allow or Deny of an action on a resource, as a readable key. */
@@ -129,6 +129,8 @@ export function grantsWithin(before: unknown, after: unknown): boolean {
   if (policyVersion(before) !== policyVersion(after)) return false;
   const plain = (st: Statement) => st.NotAction === undefined && st.NotResource === undefined && st.NotPrincipal === undefined;
   if (![...b.statements, ...a.statements].every(plain)) return false;
+  // A condition that holds a value not known statically (an endpoint id) may name something else at apply.
+  if ([...b.statements, ...a.statements].some((st) => st.Condition !== undefined && containsUnknown(st.Condition))) return false;
   // An Effect not known statically could be either; nothing about such a statement is certain.
   if (![...b.statements, ...a.statements].every((st) => st.Effect === undefined || st.Effect === 'Allow' || st.Effect === 'Deny')) return false;
   // A value partly known at plan time stands for every value its pattern allows: each unknown part is a

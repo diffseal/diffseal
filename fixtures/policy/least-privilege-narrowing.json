@@ -293,6 +293,26 @@
      }
     ]
    }
+  },
+  {
+   "kind": "terraform",
+   "name": "review 19: a condition on a value not known statically never proves the grant unchanged",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_vpc_endpoint\" \"e\" {\n  vpc_id       = \"vpc-1\"\n  service_name = \"com.amazonaws.eu-west-1.s3\"\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"All\", Effect = \"Allow\", Action = \"s3:*\", Resource = \"*\", Condition = { StringEquals = { \"aws:SourceVpce\" = aws_vpc_endpoint.e.id } } }]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_vpc_endpoint\" \"e\" {\n  vpc_id       = \"vpc-1\"\n  service_name = \"com.amazonaws.eu-west-1.s3-v2\"\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"Get\", Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"*\", Condition = { StringEquals = { \"aws:SourceVpce\" = aws_vpc_endpoint.e.id } } }]\n  })\n}\n"
+   },
+   "expect": {
+    "findings": [
+     {
+      "ruleId": "iam.least-privilege",
+      "resource": "aws_iam_policy.p",
+      "preExisting": null
+     }
+    ]
+   }
   }
  ]
 }
