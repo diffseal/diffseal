@@ -1,7 +1,7 @@
 import { defaultModuleCache, readModuleLock } from '../terraform/moduleCache.js';
 import * as path from 'node:path';
 import { analyze } from '../analysis/analyze.js';
-import { addGateItem, type GateItem, type AnalysisResult, type Gate, type PolicyConfig, type ResourceChange } from '../core/model.js';
+import { addGateItem, isUnknown, type GateItem, type AnalysisResult, type Gate, type PolicyConfig, type ResourceChange } from '../core/model.js';
 import { compareEvaluations } from '../terraform/compare.js';
 import { discoverRoots, isConfigFile, loadModule, moduleClosure } from '../terraform/config.js';
 import { parseHcl } from '../hcl/parser.js';
@@ -185,7 +185,11 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
         // Only for the var-file this evaluation was made with: an edited auto-loaded file is reviewed by name.
         const envFile = headFile ? path.posix.relative(root, headFile) : undefined;
         const editedBroken = envFile !== undefined && brokenHead.has(envFile) && brokenBase.has(envFile) && headSource.blobId(headFile!) !== baseSource.blobId(baseFile ?? headFile!) ? envFile : undefined;
-        const brokenVarFile = [...brokenHead].find((f) => !brokenBase.has(f)) ?? [...brokenBase].find((f) => !brokenHead.has(f)) ?? editedBroken;
+        // Readable at one commit and not the other: the file must exist at both (an encrypted file added,
+        // deleted or renamed is unreadable wherever it is, and reviewed by name).
+        const atBase = (f: string) => baseSource.blobId(path.posix.join(baseRoot, f)) !== undefined;
+        const atHead = (f: string) => headSource.blobId(path.posix.join(root, f)) !== undefined;
+        const brokenVarFile = [...brokenHead].find((f) => !brokenBase.has(f) && atBase(f)) ?? [...brokenBase].find((f) => !brokenHead.has(f) && atHead(f)) ?? editedBroken;
         if (brokenVarFile) {
           for (const c of changes) {
             if (c.action === 'no-op' || c.confidence !== 'proven') continue;
@@ -441,6 +445,9 @@ export function externalModuleItems(roots: RootReplay[]): GateItem[] {
   for (const { root, changes } of roots) {
     for (const c of changes) {
       if (c.type !== 'terraform_module_call' || c.mode !== 'managed') continue;
+      // No instances at either commit (count = 0, for_each = {} or []): nothing of it exists or will.
+      const empty = (a: typeof c.before) => a?.count === 0 || (a?.for_each !== undefined && a.for_each !== null && typeof a.for_each === 'object' && !isUnknown(a.for_each) && Object.keys(a.for_each).length === 0);
+      if (empty(c.before) && empty(c.after)) continue;
       // A local module path that cannot be read (a missing directory, a refused link) hides its resources.
       const local = [c.before?.source, c.after?.source].find((x) => typeof x === 'string' && (x.startsWith('./') || x.startsWith('../')));
       if (local !== undefined && c.action !== 'no-op') {
@@ -500,13 +507,18 @@ function movedRoots(base: GitSource, head: GitSource, baseRoots: string[], headR
     }
   }
   const pairs: Array<{ from: string; to: string; sameState: boolean; matched: number; total: number; score: number }> = [];
+  const sharingCount = new Map<string, number>();
+  for (const f of fresh) {
+    const loc = loadModule(head, f)?.stateLocation;
+    if (loc !== undefined) sharingCount.set(loc, (sharingCount.get(loc) ?? 0) + 1);
+  }
   for (const g of gone) {
     const bm = loadModule(base, g)!;
     const declaring = new Set([...bm.resources.values(), ...bm.data.values(), ...bm.moduleCalls.values()].map((x) => x.file));
     for (const f of fresh) {
       const hm = loadModule(head, f)!;
       // Two new roots with the old root's state location cannot both be it: then neither is known to be.
-      const sharing = fresh.filter((x) => loadModule(head, x)!.stateLocation === bm.stateLocation).length;
+      const sharing = bm.stateLocation === undefined ? 0 : (sharingCount.get(bm.stateLocation) ?? 0);
       const sameState = Boolean(bm.stateLocation) && bm.stateLocation === hm.stateLocation && sharing === 1;
       const kept = bm.files.filter((name) => {
         const was = path.posix.join(g, name);
