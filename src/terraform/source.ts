@@ -161,7 +161,11 @@ export class GitSource implements FileSource {
     const text = new Map(paths.map((p, i) => [p, texts[i] ?? '']));
     const files = [...this.blobs.keys()];
     // A directory may hold only links.
-    const isDir = (d: string) => files.some((f) => f.startsWith(d + '/')) || paths.some((l) => l.startsWith(d + '/'));
+    const dirSet = new Set<string>();
+    for (const f of [...files, ...paths]) {
+      for (let i = f.indexOf('/'); i > 0; i = f.indexOf('/', i + 1)) dirSet.add(f.slice(0, i));
+    }
+    const isDir = (d: string) => dirSet.has(d);
     // Resolve a path one component at a time, as the operating system does: a link is followed where it
     // is met, before any later `..` applies. At most 16 links in all.
     const resolve = (p: string): { path?: string; problem?: string; via: string[] } => {

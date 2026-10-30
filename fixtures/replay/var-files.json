@@ -506,6 +506,23 @@
      "hunter2"
     ]
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 12: the evaluation without a var-file is not counted in the cost of a root deployed with var-files",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"n\" {\n  type    = number\n  default = 0\n}\nresource \"aws_kms_key\" \"k\" {\n  count = 0\n}\n",
+    "r/envs/prod.tfvars": "n = 1\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"n\" {\n  type    = number\n  default = 0\n}\nresource \"aws_kms_key\" \"k\" {\n  count = 1\n}\n",
+    "r/envs/prod.tfvars": "n = 1\n"
+   },
+   "expect": {
+    "cost": {
+     "fixedMonthlyDeltaUsd": 1
+    }
+   }
   }
  ]
 }

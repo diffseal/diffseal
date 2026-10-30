@@ -76,6 +76,28 @@ function policyVersion(policy: unknown): unknown {
   return doc && typeof doc === 'object' && !isUnknown(doc) ? stableKey((doc as { Version?: unknown }).Version ?? null) : undefined;
 }
 
+/** IAM glob matching (`*` any run, `?` one character) in linear passes, without regular expressions. */
+function globMatch(pattern: string, text: string): boolean {
+  let p = 0;
+  let t = 0;
+  let star = -1;
+  let mark = 0;
+  while (t < text.length) {
+    if (p < pattern.length && (pattern[p] === '?' || pattern[p] === text[t])) {
+      p++;
+      t++;
+    } else if (p < pattern.length && pattern[p] === '*') {
+      star = p++;
+      mark = t;
+    } else if (star >= 0) {
+      p = star + 1;
+      t = ++mark;
+    } else return false;
+  }
+  while (p < pattern.length && pattern[p] === '*') p++;
+  return p === pattern.length;
+}
+
 /**
  * True when a glob (IAM `*` and `?`) matches everything `inner` can match. Exact for a literal `inner`,
  * and for an `outer` whose only wildcard is a trailing `*`; anything else is answered false.
@@ -88,7 +110,7 @@ function covers(outer: string, innerRaw: string, caseless: boolean): boolean {
   const o = caseless ? outer.toLowerCase() : outer;
   const i = caseless ? inner.toLowerCase() : inner;
   if (o === i || o === '*') return true;
-  if (!/[*?]/.test(i)) return new RegExp('^' + o.split('*').map((x) => x.split('?').map((y) => y.replace(/[.+^${}()|[\]\\]/g, '\\$&')).join('.')).join('.*') + '$', 's').test(i);
+  if (!/[*?]/.test(i)) return globMatch(o, i);
   const prefix = o.slice(0, -1);
   return o.endsWith('*') && !/[*?]/.test(prefix) && i.startsWith(prefix);
 }

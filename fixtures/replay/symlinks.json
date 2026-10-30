@@ -963,6 +963,26 @@
      "resultNot": "pass"
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 12: deleting a directory link to a root that stays destroys nothing",
+   "base": {
+    "stacks/prod/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"prod\"\n  }\n}\nresource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"postgres\"\n}\n"
+   },
+   "head": {
+    "stacks/prod/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"prod\"\n  }\n}\nresource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"postgres\"\n}\n"
+   },
+   "baseLinks": {
+    "live/prod": "../stacks/prod"
+   },
+   "headLinks": {},
+   "expect": {
+    "gate": {
+     "resultNot": "block"
+    },
+    "noProvenDelete": true
+   }
   }
  ]
 }

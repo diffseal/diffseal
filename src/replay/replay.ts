@@ -140,7 +140,9 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
       // that root plans against this state.
       // Any other root that may use the same state object counts, so only the arguments naming it are compared.
       const location = loadModule(baseSource, baseRoot)?.stateKey;
-      const adopted = location !== undefined && headRoots.some((h) => h !== root && loadModule(headSource, h)?.stateKey === location);
+      // Only a root that takes the state over in this change: one that already used it keeps planning it
+      // as before (a deleted link to that root destroys nothing).
+      const adopted = location !== undefined && headRoots.some((h) => h !== root && loadModule(headSource, h)?.stateKey === location && loadModule(baseSource, h)?.stateKey !== location);
       const rootDeleted = !move && !adopted && baseRoots.includes(root) && !loadModule(headSource, root);
       const was = loadModule(baseSource, baseRoot)?.stateKey;
       const now = loadModule(headSource, root)?.stateKey;
@@ -567,8 +569,11 @@ export function combineRoots(roots: RootReplay[]): AnalysisResult {
       if (e) e.roots.push(root);
       else blast.set(k, { roots: [root], b });
     }
-    out.cost.items.push(...result.cost.items.map((i) => ({ ...i, resource: label(root, i.resource) })));
-    out.cost.fixedMonthlyDeltaUsd = Math.round((out.cost.fixedMonthlyDeltaUsd + result.cost.fixedMonthlyDeltaUsd) * 100) / 100;
+    // A root with var-files is deployed with them: its evaluation without one is a check, not a deployment.
+    if (!(withEnvs.has(replayed.root) && !replayed.varFile)) {
+      out.cost.items.push(...result.cost.items.map((i) => ({ ...i, resource: label(root, i.resource) })));
+      out.cost.fixedMonthlyDeltaUsd = Math.round((out.cost.fixedMonthlyDeltaUsd + result.cost.fixedMonthlyDeltaUsd) * 100) / 100;
+    }
     if (rank[result.gate.result] > rank[gate.result]) gate.result = result.gate.result;
     for (const item of result.gate.items) {
       const previous = reasons.get(item.text);
