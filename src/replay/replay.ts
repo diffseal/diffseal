@@ -3,7 +3,8 @@ import * as path from 'node:path';
 import { analyze } from '../analysis/analyze.js';
 import { addGateItem, type GateItem, type AnalysisResult, type Gate, type PolicyConfig, type ResourceChange } from '../core/model.js';
 import { compareEvaluations } from '../terraform/compare.js';
-import { discoverRoots, loadModule, moduleClosure } from '../terraform/config.js';
+import { discoverRoots, isConfigFile, loadModule, moduleClosure } from '../terraform/config.js';
+import { parseHcl } from '../hcl/parser.js';
 import { evaluateRoot } from '../terraform/expand.js';
 import { GitSource, changedPaths, commitInfo, type ChangedPath, type CommitInfo } from '../terraform/source.js';
 import { CONFIG_FILE, LEGACY_CONFIG_FILE, readConfigFile } from '../configFile.js';
@@ -36,6 +37,8 @@ export interface RootReplay {
   movedFrom?: string;
   /** True when the change deleted the root's directory. */
   deleted?: boolean;
+  /** The var-file (environment) this replay of the root was evaluated with. */
+  varFile?: string;
 }
 
 /** actionReason of the resources of a root whose directory the change deleted. */
@@ -83,41 +86,68 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     .flatMap(aliases);
   const roots: RootReplay[] = [];
   const rootItems: GateItem[] = [];
+  const touchedPaths = new Set(changed.flatMap((c) => [c.path, c.oldPath]).filter((p): p is string => Boolean(p)));
   if (changedDirs.size || dataChanged.length || moduleLockChanged) {
     const headRoots = discoverRoots(headSource, opts.rootsUnder);
     const baseRoots = discoverRoots(baseSource, opts.rootsUnder);
     const moves = movedRoots(baseSource, headSource, baseRoots, headRoots, changed);
     const movedFrom = new Map([...moves].map(([from, m]) => [m.to, { ...m, from }]));
     const candidates = new Set([...headRoots, ...baseRoots]);
+    const allRoots = new Set([...headRoots, ...baseRoots]);
     for (const root of [...candidates].sort()) {
       if (moves.has(root)) continue; // replayed under the directory it moved to
       const move = movedFrom.get(root);
       const baseRoot = move?.from ?? root;
       const closure = new Set([...moduleClosure(headSource, root), ...moduleClosure(baseSource, baseRoot)]);
       const touchesConfig = moduleLockChanged || [...changedDirs].some((d) => closure.has(d));
-      if (!touchesConfig && !(dataChanged.length && readsFiles(closure, headSource, baseSource))) continue;
-      const baseEval = evaluateRoot(baseSource, baseRoot);
-      const headEval = evaluateRoot(headSource, root);
-      if (!touchesConfig && !dataChanged.some((p) => headEval.readFiles.has(p) || baseEval.readFiles.has(p))) continue;
-      // An evaluation with no instances still carries removed, moved and prevent_destroy blocks.
-      const changes = compareEvaluations(baseEval, headEval);
-      // A deleted root directory plans nothing: its state is left behind, and its resources are destroyed
-      // only if someone runs destroy against that state before or after. Possible deletions, reviewed.
-      const deleted = !move && baseRoots.includes(root) && !loadModule(headSource, root);
-      if (deleted) {
-        for (const c of changes) {
-          if (c.action !== 'delete') continue;
-          c.confidence = 'likely';
-          c.actionReason = DELETED_ROOT_REASON;
+      // Environments: var-files below the root, by their path inside it. Without any, one evaluation.
+      const envs = new Set([...varFilesOf(headSource, root, allRoots).map((f) => path.posix.relative(root, f)), ...varFilesOf(baseSource, baseRoot, allRoots).map((f) => path.posix.relative(baseRoot, f))]);
+      const rootDeleted = !move && baseRoots.includes(root) && !loadModule(headSource, root);
+      let deletedResources = 0;
+      for (const env of envs.size ? [...envs].sort() : [undefined]) {
+        const headFile = env !== undefined && headSource.blobId(path.posix.join(root, env)) ? path.posix.join(root, env) : undefined;
+        const baseFile = env !== undefined && baseSource.blobId(path.posix.join(baseRoot, env)) ? path.posix.join(baseRoot, env) : undefined;
+        const touchesEnv = touchesConfig || [headFile, baseFile].some((f) => f !== undefined && touchedPaths.has(f));
+        if (!touchesEnv && !(dataChanged.length && readsFiles(closure, headSource, baseSource))) continue;
+        // A var-file that is new at the head is a new environment: nothing of it exists yet.
+        const baseEval = env !== undefined && !baseFile ? undefined : evaluateRoot(baseSource, baseRoot, {}, baseFile ? [baseFile] : []);
+        const headEval = env !== undefined && !headFile ? undefined : evaluateRoot(headSource, root, {}, headFile ? [headFile] : []);
+        if (!touchesEnv && !dataChanged.some((p) => headEval?.readFiles.has(p) || baseEval?.readFiles.has(p))) continue;
+        // An evaluation with no instances still carries removed, moved and prevent_destroy blocks.
+        const changes = compareEvaluations(baseEval, headEval);
+        // A deleted root directory, or a deleted environment's var-file, plans nothing: the state is left
+        // behind, and its resources are destroyed only if someone runs destroy against it. Possible
+        // deletions, reviewed.
+        const envDeleted = env !== undefined && !headFile && Boolean(baseFile);
+        if (rootDeleted || envDeleted) {
+          for (const c of changes) {
+            if (c.action !== 'delete') continue;
+            c.confidence = 'likely';
+            c.actionReason = DELETED_ROOT_REASON;
+            if (c.mode === 'managed') deletedResources++;
+          }
+          if (envDeleted && !rootDeleted) {
+            rootItems.push({ kind: 'coverage', level: 'review', text: `Var-file ${baseFile} of root ${root} is deleted. Deleting it destroys nothing by itself: the resources of that environment are destroyed only if someone runs terraform destroy with it, and otherwise stay in AWS without Terraform managing them; confirm which is intended` });
+          }
         }
-        const n = changes.filter((c) => c.action === 'delete' && c.mode === 'managed').length;
+        // Exceptions are judged on the date of the change, so replaying history reproduces its gate.
+        roots.push({
+          root,
+          changes,
+          result: analyze(changes, { policy, now: opts.now ?? new Date(commit.date) }),
+          diagnostics: (headEval ?? baseEval)?.diagnostics ?? [],
+          ...(move ? { movedFrom: move.from } : {}),
+          ...(rootDeleted ? { deleted: true } : {}),
+          ...(env !== undefined ? { varFile: headFile ?? baseFile } : {}),
+        });
+      }
+      if (rootDeleted && roots.some((r) => r.root === root)) {
+        const n = deletedResources;
         rootItems.push({ kind: 'coverage', level: 'review', text: `Root ${root} is deleted with ${n} resource${n === 1 ? '' : 's'} in its configuration. Deleting the directory destroys nothing by itself: they are destroyed only if someone runs terraform destroy against its state, and otherwise stay in AWS without Terraform managing them; confirm which is intended` });
       }
-      if (move && !move.sameState) {
+      if (move && !move.sameState && roots.some((r) => r.root === root)) {
         rootItems.push({ kind: 'coverage', level: 'review', text: `Root ${move.from} moved to ${root} (${move.matched} of ${move.total} files kept or renamed). Its state location is not fixed in the configuration, so the existing resources carry over only if its state moves with it; moving the code destroys nothing, but without the state ${root} would create new copies and leave the old resources unmanaged` });
       }
-      // Exceptions are judged on the date of the change, so replaying history reproduces its gate.
-      roots.push({ root, changes, result: analyze(changes, { policy, now: opts.now ?? new Date(commit.date) }), diagnostics: headEval.diagnostics, ...(move ? { movedFrom: move.from } : {}), ...(deleted ? { deleted } : {}) });
     }
   }
 
@@ -131,13 +161,28 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     .flatMap((c) => [c.path, c.oldPath])
     .filter((p): p is string => Boolean(p) && /\.(tf|tofu|tf\.json)$/.test(p!))
     .filter((p) => !aliases(p).some((a) => covered.has(path.posix.dirname(a))));
-  // Inputs static replay does not evaluate: Terragrunt inputs, and tfvars passed with -var-file.
-  const evaluatedRoots = new Set(roots.map((r) => r.root));
-  const autoLoaded = /(^|\/)(terraform\.tfvars|[^/]*\.auto\.tfvars)(\.json)?$/;
-  const unevaluated = changed
-    .flatMap((c) => [c.path, c.oldPath])
-    .filter((p): p is string => Boolean(p))
-    .filter((p) => /(^|\/)terragrunt\.hcl$/.test(p) || (/\.tfvars(\.json)?$/.test(p) && !(autoLoaded.test(p) && evaluatedRoots.has(path.posix.dirname(p)))));
+  // Inputs static replay does not evaluate: Terragrunt inputs, and tfvars no root is known to load.
+  const evaluatedInputs = new Set<string>();
+  for (const r of roots) {
+    if (r.varFile) evaluatedInputs.add(r.varFile);
+    for (const [src, dir] of [[headSource, r.root], [baseSource, r.movedFrom ?? r.root]] as const) {
+      for (const f of src.listFiles(dir)) if (AUTO_LOADED.test(f)) evaluatedInputs.add(path.posix.join(dir, f));
+    }
+    if (r.varFile && r.movedFrom) evaluatedInputs.add(path.posix.join(r.movedFrom, path.posix.relative(r.root, r.varFile)));
+  }
+  const inputPaths = [...new Set(changed.flatMap((c) => [c.path, c.oldPath]).filter((p): p is string => Boolean(p)))];
+  const terragrunt = inputPaths.filter((p) => /(^|\/)terragrunt\.hcl$/.test(p));
+  const unattributed = inputPaths.filter((p) => /\.tfvars(\.json)?$/.test(p) && !evaluatedInputs.has(p));
+  // A var-file evaluated with a root that does not declare a variable it changes: that value goes elsewhere.
+  const undeclared: string[] = [];
+  for (const r of roots) {
+    if (!r.varFile || !touchedPaths.has(r.varFile)) continue;
+    const names = varChanges(baseSource, headSource, r.varFile);
+    if (!Array.isArray(names)) continue;
+    const declared = new Set([...(loadModule(headSource, r.root)?.variables.keys() ?? []), ...(loadModule(baseSource, r.movedFrom ?? r.root)?.variables.keys() ?? [])]);
+    const missing = names.filter((n) => !declared.has(n));
+    if (missing.length) undeclared.push(`${r.varFile} sets ${missing.slice(0, 8).join(', ')}, which ${r.root} does not declare`);
+  }
   const combined = combineRoots(roots);
   // An external module Diffseal cannot read offline: a new source or version can replace or delete
   // anything inside it, so the change is reviewed, never passed.
@@ -149,9 +194,18 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     if (combined.gate.result === 'pass') combined.gate.result = 'review';
     addGateItem(combined.gate, { kind: 'coverage', level: 'review', text: 'Module lock changed while module source remains unavailable offline; review the dependency change' });
   }
-  if (unevaluated.length) {
+  if (unattributed.length) {
     if (combined.gate.result === 'pass') combined.gate.result = 'review';
-    addGateItem(combined.gate, { kind: 'coverage', level: 'review', text: `Inputs changed that static replay does not evaluate (${[...new Set(unevaluated)].slice(0, 5).join(', ')}); review them by hand or with a plan` });
+    const files = unattributed.slice(0, 5).map((f) => `${f} (${describeVarChanges(baseSource, headSource, f)})`);
+    addGateItem(combined.gate, { kind: 'coverage', level: 'review', text: `Inputs changed that static replay does not evaluate: ${files.join('; ')}${unattributed.length > 5 ? `; and ${unattributed.length - 5} more` : ''}. No root loads ${unattributed.length === 1 ? 'this file' : 'these files'} automatically or from a directory below it, so the roots that use ${unattributed.length === 1 ? 'it' : 'them'} were not evaluated with ${unattributed.length === 1 ? 'it' : 'them'}; review by hand or with a plan` });
+  }
+  if (undeclared.length) {
+    if (combined.gate.result === 'pass') combined.gate.result = 'review';
+    addGateItem(combined.gate, { kind: 'coverage', level: 'review', text: `Inputs changed that static replay does not evaluate: ${[...new Set(undeclared)].slice(0, 5).join('; ')}, so the root that uses ${undeclared.length === 1 ? 'that value' : 'those values'} is not known; review by hand or with a plan` });
+  }
+  if (terragrunt.length) {
+    if (combined.gate.result === 'pass') combined.gate.result = 'review';
+    addGateItem(combined.gate, { kind: 'coverage', level: 'review', text: `Inputs changed that static replay does not evaluate: Terragrunt configuration ${terragrunt.slice(0, 5).join(', ')}${terragrunt.length > 5 ? ` and ${terragrunt.length - 5} more` : ''}. Diffseal does not read Terragrunt, so its inputs were not evaluated; review by hand or with a plan` });
   }
   if (uncovered.length) {
     if (combined.gate.result === 'pass') combined.gate.result = 'review';
@@ -179,6 +233,68 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     headSource,
     baseSource,
   };
+}
+
+const AUTO_LOADED = /^(terraform\.tfvars|[^/]*\.auto\.tfvars)(\.json)?$/;
+
+/**
+ * Var-files of a root: tfvars files in the root directory that Terraform does not load by itself, and
+ * tfvars files in directories below it that hold no Terraform configuration and belong to no other root
+ * (`envs/prod.tfvars`, `tfvars/dev.tfvars`). Each is one environment, passed with -var-file. Backend
+ * settings (a `backend` or `backends` directory, or `backend` in the file name) are not variables.
+ * A root with Terragrunt configuration in or below it has none.
+ */
+export function varFilesOf(source: GitSource, root: string, roots: Set<string>): string[] {
+  if (!loadModule(source, root)) return [];
+  const prefix = root === '.' ? '' : root + '/';
+  const files = source.allFiles();
+  // Terragrunt passes var-files its own way, which Diffseal does not read.
+  if (files.some((f) => f.startsWith(prefix) && /(^|\/)terragrunt\.hcl$/.test(f))) return [];
+  return files.filter((f) => {
+    if (!f.startsWith(prefix) || !/\.tfvars(\.json)?$/.test(f)) return false;
+    const rel = f.slice(prefix.length);
+    const parts = rel.split('/');
+    if (parts.length === 1 && AUTO_LOADED.test(rel)) return false;
+    if (parts.some((p) => /^backends?$/i.test(p)) || /backend/i.test(parts[parts.length - 1])) return false;
+    if (parts.some((p) => p === '.terraform' || p === 'node_modules')) return false;
+    // Every directory between the root and the file is configuration-free and not a root.
+    for (let i = 1; i < parts.length; i++) {
+      const dir = prefix + parts.slice(0, i).join('/');
+      if (roots.has(dir) || source.listFiles(dir).some(isConfigFile)) return false;
+    }
+    return true;
+  });
+}
+
+/** The variables a tfvars file changes between two commits: `new` or `deleted` for a whole file. */
+function varChanges(base: GitSource, head: GitSource, file: string): string[] | 'new' | 'deleted' {
+  const read = (src: GitSource) => {
+    const text = src.readFile(file);
+    if (text === undefined) return undefined;
+    if (file.endsWith('.json')) {
+      try {
+        const v = JSON.parse(text);
+        return new Map(Object.entries(v && typeof v === 'object' ? v : {}).map(([k, x]) => [k, JSON.stringify(x)]));
+      } catch {
+        return new Map<string, string>();
+      }
+    }
+    const { body } = parseHcl(text);
+    return new Map(body.attributes.map((a) => [a.name, text.slice(a.expr.range.start.offset, a.expr.range.end.offset).replace(/\s+/g, ' ')]));
+  };
+  const was = read(base);
+  const now = read(head);
+  if (!was) return 'new';
+  if (!now) return 'deleted';
+  return [...new Set([...was.keys(), ...now.keys()])].filter((k) => was.get(k) !== now.get(k)).sort();
+}
+
+function describeVarChanges(base: GitSource, head: GitSource, file: string): string {
+  const names = varChanges(base, head, file);
+  if (names === 'new') return 'new file';
+  if (names === 'deleted') return 'deleted';
+  if (!names.length) return 'no variable value changed';
+  return `sets ${names.slice(0, 8).join(', ')}${names.length > 8 ? ` and ${names.length - 8} more` : ''}`;
 }
 
 const listRoots = (roots: string[]) => (roots.length > 5 ? `${roots.slice(0, 5).join(', ')} and ${roots.length - 5} more` : roots.join(', '));
@@ -314,7 +430,9 @@ export function shortRootLabels(roots: string[]): Record<string, string> {
  * findings and blast rows that are identical across roots collapse into one row naming every root.
  */
 export function combineRoots(roots: RootReplay[]): AnalysisResult {
-  const labels = shortRootLabels(roots.map((r) => r.root));
+  // A root replayed per environment is labelled by its var-file's name too.
+  const name = (r: RootReplay) => (r.varFile ? `${r.root}/${path.posix.basename(r.varFile)}` : r.root);
+  const labels = shortRootLabels(roots.map(name));
   const label = (root: string, r: string) => (labels[root] ? `${labels[root]}: ${r}` : r);
   const gate: Gate = { result: 'pass', reasons: [], items: [] };
   const rank = { pass: 0, review: 1, block: 2 } as const;
@@ -328,7 +446,9 @@ export function combineRoots(roots: RootReplay[]): AnalysisResult {
   const findings = new Map<string, { roots: string[]; f: AnalysisResult['findings'][number] }>();
   const blast = new Map<string, { roots: string[]; b: AnalysisResult['blast'][number] }>();
   const reasons = new Map<string, { roots: string[]; item: GateItem }>();
-  for (const { root, result } of roots) {
+  for (const replayed of roots) {
+    const { result } = replayed;
+    const root = name(replayed);
     out.changes.push(...result.changes.map((c) => ({ ...c, address: label(root, c.address) })));
     for (const f of result.findings) {
       const k = JSON.stringify([f.ruleId, f.resource, f.status, f.detail, f.preExisting]);

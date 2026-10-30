@@ -42,6 +42,6 @@ Every case has a `kind` field with one of three values:
      - `baseLinks`, `headLinks` (optional): symbolic links in each snapshot (link path to link text).
    - Expected outputs (`expect`):
      - The `AnalysisExpectation` fields, checked against the combined result of every replayed root. With more than one root, change addresses carry a root label.
-     - `replayedRoots`: the roots replayed, in order.
+     - `replayedRoots`: the roots replayed, in order; a root replayed with a var-file is written `root [var-file path]`.
      - `rootDiagnostics`: every diagnostic of every replayed root.
      - `reasonsNotContain`: substrings no gate reason may contain.

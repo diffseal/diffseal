@@ -307,7 +307,7 @@ export async function runFixtureCase(tc: FixtureCase): Promise<void> {
       snapshot(tc.base, tc.baseLinks, 'base');
       snapshot(tc.head, tc.headLinks, 'head');
       const r = await replayCommit({ repo: dir, head: 'HEAD', moduleCache: path.join(dir, '.no-module-cache') });
-      if (tc.expect.replayedRoots !== undefined) expect(r.roots.map((x) => x.root)).toEqual(tc.expect.replayedRoots);
+      if (tc.expect.replayedRoots !== undefined) expect(r.roots.map((x) => (x.varFile ? `${x.root} [${x.varFile}]` : x.root))).toEqual(tc.expect.replayedRoots);
       if (tc.expect.rootDiagnostics !== undefined) expect(r.roots.flatMap((x) => x.diagnostics)).toEqual(tc.expect.rootDiagnostics);
       if (tc.expect.reasonsNotContain) {
         const joined = r.combined.gate.reasons.join(' ');

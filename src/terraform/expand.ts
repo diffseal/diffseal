@@ -74,19 +74,24 @@ const RESOURCE_META = new Set(['count', 'for_each', 'depends_on', 'provider', 'l
 const MODULE_META = new Set(['source', 'version', 'count', 'for_each', 'providers', 'depends_on']);
 const MAX_DEPTH = 25;
 
-export function evaluateRoot(source: FileSource, rootDir: string, rootVars: Record<string, unknown> = {}): RootEvaluation {
+/**
+ * Evaluate a root module. `varFiles` are repository paths passed as `-var-file`, in order; they take
+ * precedence over terraform.tfvars and *.auto.tfvars, and `rootVars` over all of them.
+ */
+export function evaluateRoot(source: FileSource, rootDir: string, rootVars: Record<string, unknown> = {}, varFiles: string[] = []): RootEvaluation {
   const root = normalize(rootDir);
   const cfg = loadModule(source, root);
   const result: RootEvaluation = { root, instances: [], moved: [], removed: [], imports: [], diagnostics: [], accounts: [], readFiles: new Set(), preventDestroy: new Set() };
   if (!cfg) return result;
   result.accounts = [...new Set(cfg.providerAccounts)];
 
-  const vars = { ...readTfvars(source, root), ...rootVars };
+  const fromFiles = (evidence: boolean) => Object.assign({}, ...varFiles.map((f) => readVarFile(source, f, evidence))) as Record<string, unknown>;
+  const vars = { ...readTfvars(source, root), ...fromFiles(false), ...rootVars };
   const inputs = new Map<string, () => unknown>(Object.entries(vars).map(([k, v]) => [k, () => v]));
   const top = new ModuleInstance(source, cfg, '', '', inputs, new Map(), root, 0, result.readFiles);
   top.collect(result);
   const evidence: RootEvaluation = { ...result, instances: [], diagnostics: [], moved: [], removed: [], imports: [], preventDestroy: new Set() };
-  const evidenceVars = { ...readTfvars(source, root, true), ...rootVars };
+  const evidenceVars = { ...readTfvars(source, root, true), ...fromFiles(true), ...rootVars };
   const evidenceInputs = new Map<string, () => unknown>(Object.entries(evidenceVars).map(([k, v]) => [k, () => v]));
   new ModuleInstance(source, cfg, '', '', evidenceInputs, new Map(), root, 0, result.readFiles, undefined, true).collect(evidence);
   const byAddress = new Map(evidence.instances.map((i) => [i.address, i.attrs]));
@@ -102,19 +107,24 @@ function readTfvars(source: FileSource, root: string, configurationEvidence = fa
     ...names.filter((f) => f === 'terraform.tfvars' || f === 'terraform.tfvars.json'),
     ...names.filter((f) => f.endsWith('.auto.tfvars') || f.endsWith('.auto.tfvars.json')).sort(),
   ];
-  for (const f of files) {
-    const text = source.readFile(path.posix.join(root, f)) ?? '';
-    if (f.endsWith('.json')) {
-      try {
-        Object.assign(out, JSON.parse(text));
-      } catch {
-        // An unreadable tfvars file leaves its variables unset (unknown), never guessed.
-      }
-      continue;
+  for (const f of files) Object.assign(out, readVarFile(source, path.posix.join(root, f), configurationEvidence));
+  return out;
+}
+
+/** The variables a tfvars file sets. An unreadable file leaves its variables unset (unknown), never guessed. */
+export function readVarFile(source: FileSource, file: string, configurationEvidence = false): Record<string, unknown> {
+  const text = source.readFile(file) ?? '';
+  if (file.endsWith('.json')) {
+    try {
+      const parsed = JSON.parse(text);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
     }
-    const { body } = parseHcl(text);
-    for (const a of body.attributes) out[a.name] = toPlain(evaluate(a.expr, { root: () => undefined, configurationEvidence }));
   }
+  const out: Record<string, unknown> = {};
+  const { body } = parseHcl(text);
+  for (const a of body.attributes) out[a.name] = toPlain(evaluate(a.expr, { root: () => undefined, configurationEvidence }));
   return out;
 }
 

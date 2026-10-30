@@ -1,0 +1,216 @@
+{
+ "suite": "replay/var-files",
+ "description": "Inputs from tfvars files: var-files below a root are evaluated with it, one environment each; inputs Diffseal cannot attribute are reviewed by name.",
+ "cases": [
+  {
+   "kind": "replay",
+   "name": "a var-file in a directory below its root is evaluated with that root, one environment per file (source case: terraform-aws-eks-blueprints, spokes/workspaces/<env>.tfvars passed by the root's deploy script)",
+   "base": {
+    "spokes/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type = string\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n",
+    "spokes/workspaces/dev.tfvars": "queue_name = \"jobs-dev\"\n",
+    "spokes/workspaces/prod.tfvars": "queue_name = \"jobs-prod\"\n"
+   },
+   "head": {
+    "spokes/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type = string\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n",
+    "spokes/workspaces/dev.tfvars": "queue_name = \"jobs-dev\"\n",
+    "spokes/workspaces/prod.tfvars": "queue_name = \"jobs-prod-v2\"\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "spokes [spokes/workspaces/prod.tfvars]"
+    ],
+    "changes": [
+     {
+      "address": "aws_sqs_queue.q",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block",
+     "reasonsContain": [
+      "aws_sqs_queue.q"
+     ]
+    },
+    "reasonsNotContain": [
+     "does not evaluate"
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a configuration change in a root with var-files is evaluated once per environment, with known values",
+   "base": {
+    "spokes/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type = string\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n",
+    "spokes/workspaces/dev.tfvars": "queue_name = \"jobs-dev\"\n",
+    "spokes/workspaces/prod.tfvars": "queue_name = \"jobs-prod\"\n"
+   },
+   "head": {
+    "spokes/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type = string\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\nresource \"aws_sqs_queue\" \"dlq\" {\n  name = \"${var.queue_name}-dlq\"\n}\n",
+    "spokes/workspaces/dev.tfvars": "queue_name = \"jobs-dev\"\n",
+    "spokes/workspaces/prod.tfvars": "queue_name = \"jobs-prod\"\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "spokes [spokes/workspaces/dev.tfvars]",
+     "spokes [spokes/workspaces/prod.tfvars]"
+    ],
+    "changedAddresses": [
+     "create dev.tfvars: aws_sqs_queue.dlq",
+     "create prod.tfvars: aws_sqs_queue.dlq"
+    ],
+    "changes": [
+     {
+      "address": "prod.tfvars: aws_sqs_queue.dlq",
+      "confidence": "proven",
+      "after": {
+       "name": "jobs-prod-dlq"
+      }
+     }
+    ],
+    "gate": {
+     "result": "pass"
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a new var-file is a new environment: its resources are created",
+   "base": {
+    "spokes/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type = string\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n",
+    "spokes/workspaces/dev.tfvars": "queue_name = \"jobs-dev\"\n",
+    "spokes/workspaces/prod.tfvars": "queue_name = \"jobs-prod\"\n"
+   },
+   "head": {
+    "spokes/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type = string\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n",
+    "spokes/workspaces/dev.tfvars": "queue_name = \"jobs-dev\"\n",
+    "spokes/workspaces/prod.tfvars": "queue_name = \"jobs-prod\"\n",
+    "spokes/workspaces/test.tfvars": "queue_name = \"jobs-test\"\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "spokes [spokes/workspaces/test.tfvars]"
+    ],
+    "changedAddresses": [
+     "create aws_sqs_queue.q"
+    ],
+    "gate": {
+     "result": "pass"
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a tfvars file no root loads is reviewed, naming the file and the variables it changes (source case: govuk-infrastructure 94e4f1f15, terraform/variables/<env>/<root>.tfvars)",
+   "base": {
+    "terraform/deployments/rds/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"engine_version\" {\n  type = string\n}\n",
+    "terraform/variables/integration/rds.tfvars": "engine_version = \"14\"\ninstance_class = \"db.r6g.large\"\nname = \"x\"\n"
+   },
+   "head": {
+    "terraform/deployments/rds/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"engine_version\" {\n  type = string\n}\n",
+    "terraform/variables/integration/rds.tfvars": "engine_version = \"18\"\ninstance_class = \"db.r6g.xlarge\"\nname = \"x\"\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "terraform/variables/integration/rds.tfvars",
+      "engine_version, instance_class"
+     ]
+    },
+    "reasonsNotContain": [
+     "name,"
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a changed terragrunt.hcl is reviewed and says Terragrunt inputs are not read",
+   "base": {
+    "aws/q/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type = string\n}\n",
+    "env/prod/q/terragrunt.hcl": "inputs = {\n  queue_name = \"a\"\n}\n"
+   },
+   "head": {
+    "aws/q/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type = string\n}\n",
+    "env/prod/q/terragrunt.hcl": "inputs = {\n  queue_name = \"b\"\n}\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "env/prod/q/terragrunt.hcl",
+      "Terragrunt"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "backend settings passed with -backend-config are not environments",
+   "base": {
+    "spokes/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type = string\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n",
+    "spokes/workspaces/dev.tfvars": "queue_name = \"jobs-dev\"\n",
+    "spokes/workspaces/prod.tfvars": "queue_name = \"jobs-prod\"\n",
+    "spokes/workspaces/backends/prod.tfvars": "key = \"a\"\n"
+   },
+   "head": {
+    "spokes/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type = string\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = var.queue_name\n}\n",
+    "spokes/workspaces/dev.tfvars": "queue_name = \"jobs-dev\"\n",
+    "spokes/workspaces/prod.tfvars": "queue_name = \"jobs-prod\"\n",
+    "spokes/workspaces/backends/prod.tfvars": "key = \"b\"\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "spokes/workspaces/backends/prod.tfvars"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a tfvars file in a Terragrunt directory is not a var-file of that directory: Terragrunt passes it, and Diffseal does not read Terragrunt (source case: notification-terraform 4ee07817e, env/production_config.tfvars)",
+   "base": {
+    "env/variables.tf": "variable \"enable_scan\" {\n  type = bool\n}\n",
+    "env/terragrunt.hcl": "terraform {}\n",
+    "env/production_config.tfvars": "enable_scan = false\n",
+    "aws/scan/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"enable_scan\" {\n  type = bool\n}\n"
+   },
+   "head": {
+    "env/variables.tf": "variable \"enable_scan\" {\n  type = bool\n}\n",
+    "env/terragrunt.hcl": "terraform {}\n",
+    "env/production_config.tfvars": "enable_scan = true\n",
+    "aws/scan/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"enable_scan\" {\n  type = bool\n}\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "env/production_config.tfvars (sets enable_scan)"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a var-file below a root that changes a variable the root does not declare is reviewed, naming the variable",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type = string\n}\n",
+    "r/envs/prod.tfvars": "queue_name = \"q\"\nimage_tag = \"1\"\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"queue_name\" {\n  type = string\n}\n",
+    "r/envs/prod.tfvars": "queue_name = \"q\"\nimage_tag = \"2\"\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "r/envs/prod.tfvars sets image_tag, which r does not declare"
+     ]
+    }
+   }
+  }
+ ]
+}
