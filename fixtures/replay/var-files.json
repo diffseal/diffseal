@@ -547,6 +547,30 @@
      "result": "review"
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 14: a tfvars file unreadable at both commits (an encrypted file) leaves a deletion proven",
+   "base": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"postgres\"\n}\n",
+    "app/secrets.auto.tfvars": "\u0000GITCRYPT\u0000 binary"
+   },
+   "head": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "app/secrets.auto.tfvars": "\u0000GITCRYPT\u0000 binary"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_db_instance.main",
+      "action": "delete",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
   }
  ]
 }

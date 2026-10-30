@@ -167,7 +167,12 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
         // An evaluation with no instances still carries removed, moved and prevent_destroy blocks.
         const changes = compareEvaluations(baseEval, headEval);
         // Terraform refuses a var-file that does not parse; values that fell back to defaults prove nothing.
-        const brokenVarFile = [...headEval.diagnostics, ...baseEval.diagnostics].map((d) => d.slice(0, d.indexOf(':'))).find((f) => /\.tfvars(\.json)?$/.test(f));
+        // Only a tfvars file read at one commit and not the other: then defaults stand in for its values on
+        // one side only. Unreadable at both (an encrypted file), both sides lack the same values.
+        const brokenAt = (e: { diagnostics: string[] }) => new Set(e.diagnostics.map((d) => d.slice(0, d.indexOf(':'))).filter((f) => /\.tfvars(\.json)?$/.test(f)));
+        const brokenHead = brokenAt(headEval);
+        const brokenBase = brokenAt(baseEval);
+        const brokenVarFile = [...brokenHead].find((f) => !brokenBase.has(f)) ?? [...brokenBase].find((f) => !brokenHead.has(f));
         if (brokenVarFile) {
           for (const c of changes) {
             if (c.action === 'no-op' || c.confidence !== 'proven') continue;
@@ -195,7 +200,8 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
           ...(rootDeleted ? { deleted: true } : {}),
           ...(headFile ? { varFile: headFile } : {}),
           ...(baseFile && baseFile !== headFile ? { baseVarFile: baseFile } : {}),
-          ...(headSource.linkedDir(root) ?? baseSource.linkedDir(root) ? { aliasOf: headSource.linkedDir(root) ?? baseSource.linkedDir(root) } : {}),
+          // A link pointing at the same root at both commits; a retargeted link is a deployment of its own.
+          ...(headSource.linkedDir(root) !== undefined && headSource.linkedDir(root) === baseSource.linkedDir(root) ? { aliasOf: headSource.linkedDir(root) } : {}),
         });
       }
       if (rootDeleted && deletedResources) {
