@@ -491,6 +491,23 @@
      "result": "block"
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 9: adding a backend setting that keeps the bucket and key is not a change of state location",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"s\"\n    key    = \"app\"\n  }\n}\n",
+    "r/q.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"s\"\n    key    = \"app\"\n    use_lockfile = true\n  }\n}\n",
+    "r/q.tf": "resource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n}\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "pass"
+    }
+   }
   }
  ]
 }

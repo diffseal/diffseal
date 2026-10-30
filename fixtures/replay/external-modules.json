@@ -150,6 +150,24 @@
      ]
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 9: a local module that cannot be read is reviewed when its call changes, never an unseen update",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"m\" {\n  source = \"./missing\"\n  bucket = \"logs\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"m\" {\n  source = \"./missing\"\n  bucket = \"logs-v2\"\n}\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "Local module ./missing cannot be read"
+     ]
+    }
+   }
   }
  ]
 }

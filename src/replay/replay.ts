@@ -142,8 +142,8 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
       const location = loadModule(baseSource, baseRoot)?.stateKey;
       const adopted = location !== undefined && headRoots.some((h) => h !== root && loadModule(headSource, h)?.stateKey === location);
       const rootDeleted = !move && !adopted && baseRoots.includes(root) && !loadModule(headSource, root);
-      const was = loadModule(baseSource, baseRoot)?.stateLocation;
-      const now = loadModule(headSource, root)?.stateLocation;
+      const was = loadModule(baseSource, baseRoot)?.stateKey;
+      const now = loadModule(headSource, root)?.stateKey;
       if (!move && was !== undefined && now !== undefined && was !== now && touchesConfig) {
         rootItems.push({ kind: 'coverage', level: 'review', text: `Root ${root} changes its state location. Terraform then plans against the other state, which this replay does not compare; confirm the state was moved, or what the other state holds` });
       }
@@ -395,6 +395,12 @@ export function externalModuleItems(roots: RootReplay[]): GateItem[] {
   for (const { root, changes } of roots) {
     for (const c of changes) {
       if (c.type !== 'terraform_module_call' || c.mode !== 'managed') continue;
+      // A local module path that cannot be read (a missing directory, a refused link) hides its resources.
+      const local = [c.before?.source, c.after?.source].find((x) => typeof x === 'string' && (x.startsWith('./') || x.startsWith('../')));
+      if (local !== undefined && c.action !== 'no-op') {
+        add(['local', c.address, local], root, (where) => `Local module ${local} cannot be read (${c.address} in ${where}), so what it changes is not known; review a plan`);
+        continue;
+      }
       const was = { source: c.before?.source, version: c.before?.version };
       const now = { source: c.after?.source, version: c.after?.version };
       if (c.action === 'delete') {

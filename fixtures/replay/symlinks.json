@@ -807,6 +807,42 @@
      ]
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 9: retargeting a directory link inside a linked directory, reached through the outer link, replays the root",
+   "base": {
+    "engines/postgres/main.tf": "resource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"postgres\"\n}\n",
+    "engines/mysql/main.tf": "resource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"mysql\"\n}\n",
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"db\" {\n  source = \"./lib/vpc\"\n}\n",
+    "mods/x.txt": "x"
+   },
+   "head": {
+    "engines/postgres/main.tf": "resource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"postgres\"\n}\n",
+    "engines/mysql/main.tf": "resource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"mysql\"\n}\n",
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"db\" {\n  source = \"./lib/vpc\"\n}\n",
+    "mods/x.txt": "x"
+   },
+   "baseLinks": {
+    "app/lib": "../mods",
+    "mods/vpc": "../engines/postgres"
+   },
+   "headLinks": {
+    "app/lib": "../mods",
+    "mods/vpc": "../engines/mysql"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "app: module.db.aws_db_instance.main",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
   }
  ]
 }

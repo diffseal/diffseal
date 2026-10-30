@@ -165,7 +165,9 @@ function defaultExpr(own: string): string | undefined {
 /** Records Optional+Computed and the literal default of one top-level argument. */
 function recordArgumentFacts(entry: Entry, key: string, value: string, pkgSrc: string) {
   const own = ownFields(value);
-  if (/Optional\s*:\s*true/.test(own) && /Computed\s*:\s*true/.test(own)) (entry.optionalComputed ??= []).push(key);
+  // Fields only: text in strings and comments ("Computed: true when ...") is not a schema field.
+  const code = own.replace(/\/\/[^\n]*/g, '').replace(/"(?:[^"\\]|\\.)*"/g, '""').replace(/`[^`]*`/g, '``');
+  if (/(?:^|[\s,{])Optional\s*:\s*true/.test(code) && /(?:^|[\s,{])Computed\s*:\s*true/.test(code)) (entry.optionalComputed ??= []).push(key);
   const expr = defaultExpr(own);
   if (expr === undefined) return;
   const v = goLiteral(expr, pkgSrc);
