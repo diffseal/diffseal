@@ -196,7 +196,7 @@ export function evaluatePolicies(all: ResourceChange[], policy: PolicyConfig = {
           const introduced = result.issues.filter((i) => !priorMessages.has(i.message));
           const kept = result.issues.filter((i) => i.level !== 'UNKNOWN' && priorMessages.has(i.message)).length;
           // A policy update that grants nothing new introduces nothing, whatever its statement ids say.
-          if (!introduced.length || (rule.id === 'iam.least-privilege' && res.type !== 'aws_iam_role' && sameOwner(res.type, before!, after, recreated) && grantsWithin(resolvePolicyValue(before!.policy, res, 'policy', ctxBefore), resolvePolicyValue(after.policy, res, 'policy', ctx)))) {
+          if (!introduced.length || (rule.id === 'iam.least-privilege' && res.type !== 'aws_iam_role' && sameOwner(res.type, before!, after, recreated, res.references) && grantsWithin(resolvePolicyValue(before!.policy, res, 'policy', ctxBefore), resolvePolicyValue(after.policy, res, 'policy', ctx)))) {
             preExisting = true;
           } else if (kept) {
             status = (['FAIL', 'WARN', 'UNKNOWN'] as const).find((l) => introduced.some((i) => i.level === l))!;
@@ -222,14 +222,14 @@ export function evaluatePolicies(all: ResourceChange[], policy: PolicyConfig = {
 }
 
 /** An inline policy is narrower only for the same role, user or group; a managed policy has no owner here. */
-function sameOwner(type: string, before: Attrs, after: Attrs, recreated: string[]): boolean {
+function sameOwner(type: string, before: Attrs, after: Attrs, recreated: string[], references: Record<string, string[]>): boolean {
   const owner = { aws_iam_role_policy: 'role', aws_iam_user_policy: 'user', aws_iam_group_policy: 'group' }[type];
   if (!owner) return true;
   // An owner known only by reference (aws_iam_role.app.id) is the same when it names the same reference.
   const was = before[owner];
   const now = after[owner];
   if (was === undefined || was === null || stableKey(was) !== stableKey(now)) return false;
-  const refs = isUnknown(now) ? now.refs : [];
+  const refs = [...(isUnknown(now) ? now.refs : []), ...(references[owner] ?? [])];
   return !refs.some((r) => recreated.some((a) => a === r || a.startsWith(r + '[') || a.startsWith(r + '.')));
 }
 

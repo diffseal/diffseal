@@ -273,6 +273,26 @@
      "result": "review"
     }
    }
+  },
+  {
+   "kind": "terraform",
+   "name": "review 18: an inline policy naming its role by a known attribute of a replaced role belongs to a new principal",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"app\" {\n  name               = \"app\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  name   = \"p\"\n  role   = aws_iam_role.app.name\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"All\", Effect = \"Allow\", Action = \"s3:*\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"app\" {\n  name               = \"app-v2\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  name   = \"p\"\n  role   = aws_iam_role.app.name\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"Get\", Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "expect": {
+    "findings": [
+     {
+      "ruleId": "iam.least-privilege",
+      "resource": "aws_iam_role_policy.p",
+      "preExisting": null
+     }
+    ]
+   }
   }
  ]
 }

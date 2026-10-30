@@ -118,7 +118,9 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     const aliasTarget = (root: string) => {
       const h = headSource.linkedDir(root);
       const b = baseSource.linkedDir(root);
-      return h !== undefined && b !== undefined && h !== b ? undefined : (h ?? b);
+      if (h !== undefined) return b === undefined || b === h ? h : undefined;
+      // A link deleted with nothing left in its place; a real directory there now is a root of its own.
+      return b !== undefined && !loadModule(headSource, root) ? b : undefined;
     };
     const renamedTo = new Map(changed.filter((c) => c.status === 'R' && c.oldPath).map((c) => [c.oldPath!, c.path]));
     /**
@@ -180,7 +182,9 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
         const brokenHead = brokenAt(headEval, root);
         const brokenBase = brokenAt(baseEval, baseRoot);
         // Broken at both but edited: what was recovered from each says nothing certain either.
-        const editedBroken = [...brokenHead].find((f) => brokenBase.has(f) && headSource.blobId(path.posix.join(root, f)) !== baseSource.blobId(path.posix.join(baseRoot, f)));
+        // Only for the var-file this evaluation was made with: an edited auto-loaded file is reviewed by name.
+        const envFile = headFile ? path.posix.relative(root, headFile) : undefined;
+        const editedBroken = envFile !== undefined && brokenHead.has(envFile) && brokenBase.has(envFile) && headSource.blobId(headFile!) !== baseSource.blobId(baseFile ?? headFile!) ? envFile : undefined;
         const brokenVarFile = [...brokenHead].find((f) => !brokenBase.has(f)) ?? [...brokenBase].find((f) => !brokenHead.has(f)) ?? editedBroken;
         if (brokenVarFile) {
           for (const c of changes) {

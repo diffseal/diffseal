@@ -632,6 +632,33 @@
      "resultNot": "block"
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 18: an edited encrypted auto-loaded tfvars file does not hide a deletion in the same commit",
+   "base": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_db_instance\" \"main\" {\n  identifier = \"main\"\n  engine     = \"postgres\"\n}\n",
+    "app/secrets.auto.tfvars": "\u0000GITCRYPT\u0000 one"
+   },
+   "head": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "app/secrets.auto.tfvars": "\u0000GITCRYPT\u0000 two"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_db_instance.main",
+      "action": "delete",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block",
+     "reasonsContain": [
+      "app/secrets.auto.tfvars"
+     ]
+    }
+   }
   }
  ]
 }
