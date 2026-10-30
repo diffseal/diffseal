@@ -13,7 +13,7 @@ function opened(v: unknown): { value: unknown; wrap: (x: unknown) => unknown } |
 }
 
 /** Environment variables a compute resource hands to its code: name -> value expression result. */
-export function environmentOf(type: string, attrs: Attrs | null | undefined): Record<string, unknown> | undefined {
+function environmentOf(type: string, attrs: Attrs | null | undefined): Record<string, unknown> | undefined {
   if (!attrs) return undefined;
   if (type === 'aws_lambda_function') {
     const env = first(attrs.environment);

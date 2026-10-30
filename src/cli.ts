@@ -227,6 +227,10 @@ export async function main(argv: string[]): Promise<number> {
     return 1;
   }
   const cmd = args._[0];
+  if (cmd === 'check-app') {
+    console.error(CHECK_APP_REMOVED);
+    return 1;
+  }
   if (args.flags.has('--version') || args.flags.has('-v')) {
     console.log(VERSION);
     return 0;

@@ -24,7 +24,7 @@ yarn global add diffseal@beta
 pnpm add -g diffseal@beta
 ```
 
-During the beta, install the `beta` tag as shown. The CLI needs Node.js 18 or later. The package includes the CLI, the MCP server and their parser assets.
+During the beta, install the `beta` tag as shown. The CLI needs Node.js 18 or later. The package includes the CLI and the MCP server.
 
 For a one-off run without installing:
 

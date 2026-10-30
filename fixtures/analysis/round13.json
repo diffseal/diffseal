@@ -290,6 +290,102 @@
           ]
         }
       }
+    },
+    {
+      "kind": "terraform",
+      "name": "round 13 codex and gemini (reconcile, app, policy): inline bucket encryption with a computed customer key remains UNKNOWN",
+      "root": "r",
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_kms_key\" \"k\" {}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"b\"\n  server_side_encryption_configuration {\n    rule {\n      apply_server_side_encryption_by_default {\n        sse_algorithm     = \"aws:kms\"\n        kms_master_key_id = aws_kms_key.k.arn\n      }\n    }\n  }\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "create aws_kms_key.k",
+          "create aws_s3_bucket.b"
+        ],
+        "changes": [
+          {
+            "address": "aws_kms_key.k",
+            "action": "create",
+            "confidence": "proven"
+          },
+          {
+            "address": "aws_s3_bucket.b",
+            "action": "create",
+            "confidence": "proven",
+            "after": {
+              "bucket": "b"
+            }
+          }
+        ],
+        "findings": [
+          {
+            "ruleId": "kms.rotation",
+            "resource": "aws_kms_key.k",
+            "status": "FAIL",
+            "preExisting": null,
+            "detailContains": "Automatic key rotation disabled"
+          },
+          {
+            "ruleId": "s3.encryption",
+            "resource": "aws_s3_bucket.b",
+            "status": "UNKNOWN",
+            "preExisting": null,
+            "detailContains": "key not known until apply"
+          },
+          {
+            "ruleId": "s3.public-access",
+            "resource": "aws_s3_bucket.b",
+            "status": "UNKNOWN",
+            "preExisting": null,
+            "detailContains": "No bucket-level public access block. New buckets block public access by default since April 2023 and an account-level block may apply, but neither is visible here"
+          },
+          {
+            "ruleId": "s3.versioning",
+            "resource": "aws_s3_bucket.b",
+            "status": "WARN",
+            "preExisting": null,
+            "detailContains": "Object versioning not enabled"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_kms_key.k",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_kms_key"
+          },
+          {
+            "resource": "aws_s3_bucket.b",
+            "action": "create",
+            "severity": "INFO",
+            "dataLoss": false,
+            "reasonContains": "Creates aws_s3_bucket"
+          }
+        ],
+        "cost": {
+          "fixedMonthlyDeltaUsd": 1,
+          "items": [
+            {
+              "resource": "aws_kms_key.k",
+              "kind": "fixed",
+              "noteContains": "$1/month per key + $0.03 per 10k requests"
+            },
+            {
+              "resource": "aws_s3_bucket.b",
+              "kind": "usage",
+              "noteContains": "No fixed charge; billed by requests, storage or duration"
+            }
+          ]
+        },
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "FAIL kms.rotation: aws_kms_key.k: Automatic key rotation disabled"
+          ]
+        }
+      }
     }
   ]
 }
