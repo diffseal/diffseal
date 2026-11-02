@@ -65,8 +65,8 @@ export function changeRecord(input: {
   /** Serialized size the record is trimmed to; MAX_RECORD_BYTES unless a test says otherwise. */
   maxBytes?: number;
   /**
-   * Where a trimmed record says the full list is, as in "the diffseal-0123456 artifact of this run".
-   * The replay report for the commit unless the caller keeps the full report somewhere else.
+   * Where else a trimmed record says the full list is, as in "the diffseal-0123456 artifact of this run".
+   * The note names the replay report for the commit too, which can be written again after the artifact expires.
    */
   fullListIn?: string;
 }): ChangeRecord {
@@ -109,7 +109,7 @@ export function changeRecord(input: {
     }),
     access: [],
     notes,
-  }, input.maxBytes ?? MAX_RECORD_BYTES, input.fullListIn ?? 'the replay report for this commit (the JSON that diffseal replay writes)');
+  }, input.maxBytes ?? MAX_RECORD_BYTES, `${input.fullListIn ? `${input.fullListIn}, and in ` : ''}the replay report for this commit (the JSON that diffseal replay writes)`);
 }
 
 /**

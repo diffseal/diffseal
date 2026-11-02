@@ -6,6 +6,8 @@ export interface ReportMeta {
   /** Short caveats for the footer, e.g. static-analysis assumptions. */
   notes?: string[];
   version?: string;
+  /** Every row and no length limit: the report kept as a file, not posted as a comment. */
+  full?: boolean;
 }
 
 /** GitHub rejects comment bodies over 65,536 characters. */
@@ -41,11 +43,12 @@ const codeCell = (s: string) => code(s).replace(/\|/g, '\\|');
 
 export function renderMarkdown(result: AnalysisResult, meta: ReportMeta): string {
   const out: string[] = [];
+  const rowLimit = meta.full ? Infinity : MAX_ROWS;
   const attention = result.findings.filter((f) => !f.preExisting && !f.accepted && (f.status === 'FAIL' || f.status === 'WARN' || f.status === 'UNKNOWN'));
 
   out.push(`## Diffseal: ${GATE_LABEL[result.gate.result]}`);
   if (meta.title) out.push('', meta.title);
-  const callout = renderCallout(result.gate, { blast: result.blast, findings: result.findings });
+  const callout = renderCallout(result.gate, { blast: result.blast, findings: result.findings }, meta.full ? Infinity : 8);
   if (callout.length) out.push('', ...callout);
   out.push('', summaryLine(result, attention));
 
@@ -53,20 +56,20 @@ export function renderMarkdown(result: AnalysisResult, meta: ReportMeta): string
   if (result.blast.length) {
     out.push('', '### Resources', '', '| Risk | Resource | Action | Why |', '| :-- | :-- | :-- | :-- |');
     const rows = [...notable, ...result.blast.filter((b) => !notable.includes(b))];
-    for (const b of rows.slice(0, MAX_ROWS)) out.push(blastRow(b));
-    if (rows.length > MAX_ROWS) out.push(`| | ...and ${rows.length - MAX_ROWS} more | | |`);
+    for (const b of rows.slice(0, rowLimit)) out.push(blastRow(b));
+    if (rows.length > rowLimit) out.push(`| | ...and ${rows.length - MAX_ROWS} more | | |`);
   }
 
   if (attention.length) {
     out.push('', '### Findings', '', '| Status | Check | Resource | Detail | Controls |', '| :-- | :-- | :-- | :-- | :-- |');
-    for (const f of sortFindings(attention).slice(0, MAX_ROWS)) out.push(findingRow(f));
-    if (attention.length > MAX_ROWS) out.push(`| | | ...and ${attention.length - MAX_ROWS} more | | |`);
+    for (const f of sortFindings(attention).slice(0, rowLimit)) out.push(findingRow(f));
+    if (attention.length > rowLimit) out.push(`| | | ...and ${attention.length - MAX_ROWS} more | | |`);
   }
 
   const costRows = result.cost.items.filter((i) => i.kind !== 'usage');
   if (costRows.length) {
     out.push('', '### Cost', '', '| Resource | Monthly | Basis |', '| :-- | :-- | :-- |');
-    for (const i of costRows.slice(0, MAX_ROWS)) {
+    for (const i of costRows.slice(0, rowLimit)) {
       out.push(`| ${codeCell(i.resource)} | ${i.monthlyDeltaUsd === undefined ? 'n/a' : formatUsd(i.monthlyDeltaUsd)} | ${cell(i.note)} |`);
     }
   }
@@ -75,7 +78,7 @@ export function renderMarkdown(result: AnalysisResult, meta: ReportMeta): string
   if (evidence.length) {
     out.push('', `<details><summary>${evidenceSummary(evidence)}</summary>`, '');
     out.push('| Status | Check | Resource | Detail | Controls |', '| :-- | :-- | :-- | :-- | :-- |');
-    for (const f of sortFindings(evidence).slice(0, 150)) out.push(findingRow(f));
+    for (const f of sortFindings(evidence).slice(0, meta.full ? Infinity : 150)) out.push(findingRow(f));
     out.push('', '</details>');
   }
 
@@ -83,7 +86,7 @@ export function renderMarkdown(result: AnalysisResult, meta: ReportMeta): string
   out.push('', '---', footer(meta.version, notes));
 
   let md = out.join('\n') + '\n';
-  if (md.length > MAX_CHARS) {
+  if (!meta.full && md.length > MAX_CHARS) {
     md = md.slice(0, MAX_CHARS) + '\n\n_Report truncated to fit a GitHub comment. Use `--json` for the full result._\n';
   }
   return md;
@@ -111,7 +114,8 @@ const CALLOUT: Record<'review' | 'block', [kind: string, lead: string]> = {
  */
 function renderCallout(
   gate: AnalysisResult['gate'],
-  from: { blast?: BlastFinding[]; findings?: Finding[] }
+  from: { blast?: BlastFinding[]; findings?: Finding[] },
+  limit: number
 ): string[] {
   if (gate.result === 'pass') return [];
   const known = new Map<string, string>();
@@ -128,8 +132,8 @@ function renderCallout(
     `> [!${kind}]`,
     `> **${lead}**`,
     '>',
-    ...items.slice(0, 8).map((i) => `> - ${i}`),
-    ...(items.length > 8 ? [`> - ...and ${items.length - 8} more`] : []),
+    ...items.slice(0, limit).map((i) => `> - ${i}`),
+    ...(items.length > limit ? [`> - ...and ${items.length - limit} more`] : []),
   ];
 }
 

@@ -48,7 +48,7 @@ test('the untrimmed record goes to onRecord, and a trimmed record says where the
   await uploadRun({ ...s.options, fullListIn: 'the diffseal-abc1234 artifact of this run', onRecord: (r) => full.push(r) });
   const body = JSON.parse(String(s.calls[1].init?.body)) as RunUpload;
   expect(body.record.resources.length).toBeLessThan(changes.length);
-  expect(body.record.notes.at(-1)!.endsWith('The full list is in the diffseal-abc1234 artifact of this run.')).toBe(true);
+  expect(body.record.notes.at(-1)!.endsWith('The full list is in the diffseal-abc1234 artifact of this run, and in the replay report for this commit (the JSON that diffseal replay writes).')).toBe(true);
   expect(full).toHaveLength(1);
   expect(full[0].resources).toHaveLength(changes.length);
   expect(full[0].change.commit).toBe('merge');

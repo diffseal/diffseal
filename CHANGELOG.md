@@ -4,12 +4,12 @@
 
 ### Added
 
-- The Action writes the full reports of each run to a directory and names it in a new `report-dir` output: `report.json` (the JSON that `diffseal replay` writes, or in `plan` mode the analysis result), `report.md` (the whole Markdown report) and, when the run built a change record to upload, `change-record.json` with every resource. A new `artifact-name` output gives `diffseal-` and the short commit reviewed. The job summary is cut short on a large change and a large change record leaves out rows, so these files are the one place with everything. `docs/guide/action.md` shows the `actions/upload-artifact` step that keeps them as an artifact of the run.
+- The Action writes the full reports of each run to a directory and names it in a new `report-dir` output: `report.json` (the JSON that `diffseal replay` writes, or in `plan` mode the analysis result), `report.md` (the Markdown report with every reason, row and diagnostic, where the summary and comment stop at 8 reasons, 40 rows per table and 60,000 characters) and, when the run built a change record to upload, `change-record.json` with every resource. A new `artifact-name` output gives `diffseal-` and the short commit reviewed. The job summary is cut short on a large change and a large change record leaves out rows, so these files are the one place with everything. `docs/guide/action.md` shows the `actions/upload-artifact` step that keeps them as an artifact of the run.
 - The trusted upload workflow keeps them as the `diffseal-<short sha>` artifact of the run, for 90 days unless its new `retention-days` input says otherwise. It does so only when a review ran, also when the review failed the step, and needs no new permission. A failed artifact upload warns and does not fail the job.
 
 ### Changed
 
-- A change record that leaves out resources to fit the upload limit now says the full list is in the `diffseal-<short sha>` artifact of this run, with a link to the run, when the Action is told that a later step keeps the reports (the new `report-artifact` input, which the trusted upload workflow sets). Records written by `diffseal replay` and `diffseal evidence` still point to the replay report.
+- When the Action is told that a later step keeps the reports (the new `report-artifact` input, which the trusted upload workflow sets), a change record that leaves out resources to fit the upload limit says the full list is in the `diffseal-<short sha>` artifact of this run, with a link to the run. It still names the replay report too, which can be written again once the artifact has expired. Records written by `diffseal replay` and `diffseal evidence` point only to the replay report, as before.
 
 ## 0.6.2-beta, 2026-11-02
 

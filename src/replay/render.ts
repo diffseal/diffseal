@@ -7,18 +7,20 @@ export const VERSION = '0.6.2-beta';
  * The replay report. A pull request check passes `commit: false`: there the head is the merge commit
  * GitHub creates, and its subject and author say nothing about the change.
  */
-export function renderReplay(r: ReplayResult, opts: { commit?: boolean } = {}): string {
+export function renderReplay(r: ReplayResult, opts: { commit?: boolean; full?: boolean } = {}): string {
   // Only facts about this change: which commits were compared, and the roots when the resource names do not say.
   const notes = [`Compared \`${r.base.slice(0, 9)}\` with \`${r.head.slice(0, 9)}\`.`];
   if (r.roots.length > 1 || r.roots.some((x) => x.movedFrom || x.deleted)) notes.push(`Roots: ${rootNames(r.roots).join(', ')}.`);
   const diagnostics = [...new Set(r.roots.flatMap((x) => x.diagnostics))];
-  if (diagnostics.length) notes.push(`HCL diagnostics: ${diagnostics.slice(0, 3).join('; ')}${diagnostics.length > 3 ? ' ...' : ''}`);
+  const shown = opts.full ? diagnostics.length : 3;
+  if (diagnostics.length) notes.push(`HCL diagnostics: ${diagnostics.slice(0, shown).join('; ')}${diagnostics.length > shown ? ' ...' : ''}`);
   for (const n of r.notes ?? []) notes.push(`${n}.`);
   const c = r.commit;
   return renderMarkdown(r.combined, {
     title: opts.commit === false ? undefined : `Commit \`${c.sha.slice(0, 9)}\` ${cell(c.subject)}, by ${cell(c.author)} on ${c.date.slice(0, 10)}.`,
     notes,
     version: VERSION,
+    full: opts.full,
   });
 }
 

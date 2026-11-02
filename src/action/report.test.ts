@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { artifactName, artifactPlace, writeReports, REPORT_FILES } from './report.js';
+import { plan, rc } from '../testing/planFixtures.js';
 
 test('the artifact is named after the commit reviewed', () => {
   expect(artifactName('0123456789abcdef0123456789abcdef01234567')).toBe('diffseal-0123456');
@@ -81,5 +82,25 @@ test('the Action writes the full reports and names the artifact in its outputs',
     fs.writeFileSync(path.join(dir, 'outputs'), '');
     expect(actionRun(dir, { INPUT_MODE: 'app' }).status).toBe(1);
     expect(fs.readFileSync(path.join(dir, 'outputs'), 'utf8')).toBe('');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('the report file keeps every row that the job summary leaves out', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'diffseal-action-full-'));
+  try {
+    fs.mkdirSync(path.join(dir, 'tmp'));
+    fs.writeFileSync(path.join(dir, 'event.json'), '{}');
+    fs.writeFileSync(path.join(dir, 'tfplan.json'), JSON.stringify(plan(Array.from({ length: 50 }, (_, i) => rc(`aws_sqs_queue.q${i}`, 'aws_sqs_queue', ['delete'], {})))));
+    const r = actionRun(dir, { INPUT_MODE: 'plan', INPUT_ADVISORY: 'true', GITHUB_SHA: 'a'.repeat(40) });
+    expect(r.status).toBe(0);
+    const outputs = fs.readFileSync(path.join(dir, 'outputs'), 'utf8');
+    expect(outputs).toContain(`artifact-name=diffseal-${'a'.repeat(7)}\n`);
+    const reportDir = /^report-dir=(.*)$/m.exec(outputs)![1];
+    const summary = fs.readFileSync(path.join(dir, 'summary'), 'utf8');
+    const full = fs.readFileSync(path.join(reportDir, 'report.md'), 'utf8');
+    expect(summary).toContain('...and 10 more');
+    expect(full).not.toContain('more |');
+    for (let i = 0; i < 50; i++) expect(full).toContain(`\`aws_sqs_queue.q${i}\``);
+    expect(JSON.parse(fs.readFileSync(path.join(reportDir, 'report.json'), 'utf8')).changes).toHaveLength(50);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

@@ -83,7 +83,7 @@ When `onlyUpdate` is `true`, Diffseal updates an existing Diffseal comment if on
 The job summary is cut short on a large change, and an uploaded change record over 900 KiB leaves out its lowest-risk resources. To keep everything, the Action writes the full reports of each run to a new directory under `$RUNNER_TEMP` and names it in the `report-dir` output:
 
 - `report.json`: the replay result in `pr` mode, the same JSON that `diffseal replay` writes, or the analysis result in `plan` mode, the same JSON as `diffseal review --json`.
-- `report.md`: the whole Markdown report, as written to the job summary and the comment.
+- `report.md`: the Markdown report with every reason, row and diagnostic. The job summary and the comment show at most 8 reasons and 40 rows per table, and are cut at 60,000 characters.
 - `change-record.json`: the change record with every resource, when the Action built one to upload.
 
 The Action uploads nothing itself. Add the standard `actions/upload-artifact` step after it to keep the directory as an artifact of the run:
@@ -101,13 +101,14 @@ The Action uploads nothing itself. Add the standard `actions/upload-artifact` st
           name: ${{ steps.diffseal.outputs.artifact-name }}
           path: ${{ steps.diffseal.outputs.report-dir }}
           retention-days: 90
+          overwrite: true
 ```
 
-The `if` condition uploads the report when the gate fails the step too, and skips it when the Action stopped before reviewing anything, because `report-dir` is then not set. Uploading an artifact needs no `permissions:` entry. If one workflow run reviews more than once, for example per root in a matrix, give each artifact its own name.
+The `if` condition uploads the report when the gate fails the step too, and skips it when the Action stopped before reviewing anything, because `report-dir` is then not set. `overwrite: true` lets a re-run of the job replace the artifact of the earlier attempt instead of failing on the same name. Uploading an artifact needs no `permissions:` entry. If one workflow run reviews more than once, for example per root in a matrix, or also calls the trusted upload workflow, give each artifact its own name, such as `${{ steps.diffseal.outputs.artifact-name }}-prod`.
 
 Anyone who can read the repository can download its artifacts. In `plan` mode `report.json` holds the planned attribute values that Terraform does not mark sensitive; sensitive values are written as `(sensitive)`.
 
-The [trusted upload workflow](#upload-to-diffseal) already does this. Its artifact is named `diffseal-<short sha>` after the commit it reviewed, which for a pull request is GitHub's test merge commit, the same commit as the uploaded record. When the record leaves out resources, its note says the full list is in that artifact and links the workflow run.
+The [trusted upload workflow](#upload-to-diffseal) already does this. Its artifact is named `diffseal-<short sha>` after the commit it reviewed, which for a pull request is GitHub's test merge commit, the same commit as the uploaded record. When the record leaves out resources, its note says the full list is in that artifact, links the workflow run, and names the replay report for the commit, which `diffseal replay` can write again after the artifact has expired.
 
 ## Base commit resolution
 

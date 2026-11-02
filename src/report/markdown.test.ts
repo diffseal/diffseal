@@ -158,3 +158,33 @@ test('wildcards in resource patterns are not read as Markdown emphasis (review o
   // Underscores inside identifiers never form emphasis in GFM, so they stay readable.
   expect(cell('hash_key _x_')).toBe('hash_key \\_x\\_');
 });
+
+test('a full report keeps every row and is never cut short; the comment report is', () => {
+  const pad = 'x'.repeat(200);
+  const changes = Array.from({ length: 400 }, (_, i) => rc(`aws_sqs_queue.q_${pad}_${i}`, 'aws_sqs_queue', ['delete'], {}));
+  const r = analyze(readPlan(plan(changes)));
+  expect(r.blast.length).toBeGreaterThan(40);
+  const short = renderMarkdown(r, {});
+  expect(short).toContain('...and 360 more |');
+  const full = renderMarkdown(r, { full: true });
+  expect(full.length).toBeGreaterThan(60_000);
+  expect(full).not.toContain('more |');
+  expect(full).not.toContain('_Report truncated');
+  for (let i = 0; i < 400; i++) expect(full).toContain(`q_${pad}_${i}\``);
+  // Every gate reason too: some, like coverage reasons, appear nowhere else in the report.
+  const reasons = Array.from({ length: 12 }, (_, i) => `Terraform changed outside every analyzed root (r${i}.tf); it was not checked`);
+  const reviewed = { ...r, gate: { items: [], result: 'review' as const, reasons } };
+  expect(renderMarkdown(reviewed, {})).toContain('> - ...and 4 more');
+  const fullReview = renderMarkdown(reviewed, { full: true });
+  expect(fullReview).not.toContain('> - ...and');
+  for (let i = 0; i < 12; i++) expect(fullReview).toContain(`(r${i}.tf)`);
+});
+
+test('a full replay report lists every HCL diagnostic; the comment lists three', async () => {
+  const { renderReplay } = await import('../replay/render.js');
+  const { combineRoots } = await import('../replay/replay.js');
+  const diagnostics = Array.from({ length: 5 }, (_, i) => `main.tf:${i + 1}: bad`);
+  const r = { commit: { sha: 'c'.repeat(40), parents: [], subject: 's', author: 'a', date: '2026-11-02' }, base: 'b'.repeat(40), head: 'c'.repeat(40), roots: [{ root: 'infra', diagnostics }], combined: combineRoots([]), notes: [] } as never;
+  expect(renderReplay(r)).not.toContain('main.tf:4: bad');
+  for (const d of diagnostics) expect(renderReplay(r, { full: true })).toContain(d);
+});

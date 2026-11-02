@@ -166,8 +166,8 @@ describe('changeRecord', () => {
       const note = (r: typeof record) => r.notes.find((n) => n.includes('left out'))!;
       expect(note(record).endsWith('The full list is in the replay report for this commit (the JSON that diffseal replay writes).')).toBe(true);
       const named = changeRecord({ commit, base: 'b'.repeat(40), roots, result: big, engine: { version: 't', replaceCatalog: 'x' }, fullListIn: 'the diffseal-ccccccc artifact of this run' });
-      expect(note(named).endsWith('The full list is in the diffseal-ccccccc artifact of this run.')).toBe(true);
-      expect(note(named)).not.toContain('diffseal replay');
+      // The artifact expires; the replay report can be written again from the commit.
+      expect(note(named).endsWith('The full list is in the diffseal-ccccccc artifact of this run, and in the replay report for this commit (the JSON that diffseal replay writes).')).toBe(true);
       expect(Buffer.byteLength(JSON.stringify(named))).toBeLessThanOrEqual(MAX_RECORD_BYTES);
     });
 

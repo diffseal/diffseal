@@ -55,6 +55,8 @@ async function main(): Promise<number> {
   const { policy, changed: policyChanged } = policyPath ? readPolicy(workspace, policyPath, base) : { policy: {}, changed: false };
 
   let markdown: string;
+  // The report kept as a file has every row; the summary and comment are limited to fit a comment.
+  let fullMarkdown: string;
   let gate: 'pass' | 'review' | 'block';
   let hasReport = true;
   let replay: ReplayResult | undefined;
@@ -63,7 +65,9 @@ async function main(): Promise<number> {
     const planFile = path.resolve(workspace, input('plan-json', 'tfplan.json'));
     const result = analyze(readPlan(JSON.parse(fs.readFileSync(planFile, 'utf8'))), { policy });
     if (policyChanged) reviewPolicyChange(result.gate, policyPath);
-    markdown = renderMarkdown(result, { title: `Plan review of \`${path.basename(planFile)}\`.`, version: VERSION });
+    const meta = { title: `Plan review of \`${path.basename(planFile)}\`.`, version: VERSION };
+    markdown = renderMarkdown(result, meta);
+    fullMarkdown = renderMarkdown(result, { ...meta, full: true });
     gate = result.gate.result;
     json = result;
   } else if (mode === 'pr') {
@@ -81,6 +85,7 @@ async function main(): Promise<number> {
     });
     replay = r;
     markdown = renderReplay(r, { commit: false });
+    fullMarkdown = renderReplay(r, { commit: false, full: true });
     gate = r.combined.gate.result;
     hasReport = Boolean(r.roots.length || r.combined.gate.reasons.length || policyChanged);
     json = replayJson(r);
@@ -105,9 +110,10 @@ async function main(): Promise<number> {
   });
   if (uploaded) setOutput('upload-id', uploaded.id);
   markdown = uploadComment(markdown, gate, uploaded);
+  fullMarkdown = uploadComment(fullMarkdown, gate, uploaded);
   // The outputs are set only once the reports are written, so a workflow uploads them only after a review.
   try {
-    const dir = writeReports(process.env.RUNNER_TEMP || os.tmpdir(), { json, markdown, record: fullRecord });
+    const dir = writeReports(process.env.RUNNER_TEMP || os.tmpdir(), { json, markdown: fullMarkdown, record: fullRecord });
     setOutput('report-dir', dir);
     setOutput('artifact-name', artifact);
   } catch (e) {
