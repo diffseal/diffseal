@@ -33,6 +33,8 @@ export interface TerragruntDeployment {
   dir: string;
   /** Files it includes, resolved. */
   includes: string[];
+  /** Other repository files its inputs read: with file(), read_terragrunt_config() and the like. */
+  reads: Set<string>;
   /** The Terraform module directory it runs. */
   moduleDir?: string;
   /** Why it cannot be evaluated at all. */
@@ -76,7 +78,7 @@ function parseFile(source: FileSource, file: string): ParsedFile | undefined {
 
 const sliceOf = (f: ParsedFile, r: { start: { offset: number }; end: { offset: number } }) => f.text.slice(r.start.offset, r.end.offset).replace(/\s+/g, ' ');
 const abs = (repoPath: string) => '/' + (repoPath === '.' ? '' : repoPath);
-const fromAbs = (p: string, base: string) => normalize(p.startsWith('/') ? p.slice(1) || '.' : path.posix.join(base, p));
+const fromAbs = (p: string, base: string) => normalize(p.startsWith('/') ? p.replace(/^\/+/, '') || '.' : path.posix.join(base, p));
 const inside = (p: string) => p !== '..' && !p.startsWith('../');
 
 /** Every `terragrunt.hcl` and every file one of them includes. */
@@ -84,7 +86,7 @@ export function terragruntFiles(source: FileSource): Set<string> {
   const out = new Set<string>();
   for (const d of terragruntDeployments(source).values()) {
     out.add(d.file);
-    for (const i of d.includes) out.add(i);
+    for (const i of [...d.includes, ...d.reads]) out.add(i);
   }
   for (const f of source.allFiles()) if (TERRAGRUNT_FILE.test(f)) out.add(f);
   return out;
@@ -109,7 +111,7 @@ export function terragruntDeployments(source: FileSource): Map<string, Terragrun
 function readDeployment(source: FileSource, file: string): TerragruntDeployment | undefined {
   const child = parseFile(source, file);
   if (!child) return undefined;
-  const d: TerragruntDeployment = { file, dir: child.dir, includes: [], problems: [], inputs: new Map(), elements: new Map(), generates: false };
+  const d: TerragruntDeployment = { file, dir: child.dir, includes: [], reads: new Set(), problems: [], inputs: new Map(), elements: new Map(), generates: false };
   if (child.broken) d.problems.push(`${file} does not parse`);
 
   // Includes, resolved in the child's context.
@@ -120,7 +122,7 @@ function readDeployment(source: FileSource, file: string): TerragruntDeployment 
   for (const b of includeBlocks) {
     const label = b.labels[0] ?? '';
     const expr = attrOf(b.body, 'path');
-    const v = expr ? evalIn(source, child, expr, pathFns({ includeDirs: preIncludes }), file).value : undefined;
+    const v = expr ? evalIn(source, child, expr, pathFns({ includeDirs: preIncludes })).value : undefined;
     if (typeof v !== 'string') {
       d.problems.push(`include${label ? ` "${label}"` : ''} has a path that is not known statically`);
       continue;
@@ -133,21 +135,23 @@ function readDeployment(source: FileSource, file: string): TerragruntDeployment 
     }
     if (parsed.broken) d.problems.push(`${target} does not parse`);
     const mergeExpr = attrOf(b.body, 'merge_strategy');
-    const merge = mergeExpr ? String(evalIn(source, child, mergeExpr, pathFns({ includeDirs: preIncludes }), file).value ?? 'shallow') : 'shallow';
+    const merge = mergeExpr ? String(evalIn(source, child, mergeExpr, pathFns({ includeDirs: preIncludes })).value ?? 'shallow') : 'shallow';
     preIncludes.set(label, parsed.dir);
     parents.push({ label, file: parsed, merge });
     d.includes.push(target);
   }
   const fns = pathFns({ includeDirs: preIncludes });
+  const parentTexts = new Map(parents.map((p) => [p.label, p.file.text]));
 
   // The module it runs: the child's source wins over a parent's.
   const sourceOf = (f: ParsedFile) => {
     const tf = f.body.blocks.find((b) => b.type === 'terraform');
     return tf ? attrOf(tf.body, 'source') : undefined;
   };
-  const withSource = [child, ...parents.filter((p) => p.merge !== 'no_merge').map((p) => p.file)].find((f) => sourceOf(f));
+  // A later include overrides an earlier one, and the child overrides both.
+  const withSource = [child, ...parents.filter((p) => p.merge !== 'no_merge').map((p) => p.file).reverse()].find((f) => sourceOf(f));
   if (withSource) {
-    const r = evalIn(source, withSource, sourceOf(withSource)!, fns, file);
+    const r = evalIn(source, withSource, sourceOf(withSource)!, fns);
     const s = r.value;
     if (typeof s !== 'string') d.problems.push(`terraform source is not known statically${r.constructs.length ? ` (it reads ${r.constructs.join(', ')})` : ''}`);
     else if (isRemote(s)) d.problems.push(`terraform source ${s} is not a local path`);
@@ -175,12 +179,14 @@ function readDeployment(source: FileSource, file: string): TerragruntDeployment 
       for (const item of expr.items) {
         const key = item.key.kind === 'paren' ? undefined : literalKey(item.key);
         if (key === undefined) return `inputs in ${f.file} has a key that is not known statically`;
-        const r = evalIn(source, f, item.value, fns, file);
+        const r = evalIn(source, f, item.value, fns, f === child ? parentTexts : new Map());
+        for (const p of r.reads) d.reads.add(p);
         out.set(key, { value: r.value, file: f.file, fingerprint: r.fingerprint, constructs: r.constructs });
       }
       return out;
     }
-    const r = evalIn(source, f, expr, fns, file);
+    const r = evalIn(source, f, expr, fns, f === child ? parentTexts : new Map());
+    for (const p of r.reads) d.reads.add(p);
     const plain = r.value;
     if (!plain || typeof plain !== 'object' || Array.isArray(plain) || isUnknown(plain)) {
       return `inputs in ${f.file} is not known statically${r.constructs.length ? ` (it reads ${r.constructs.join(', ')})` : ''}`;
@@ -203,7 +209,8 @@ function readDeployment(source: FileSource, file: string): TerragruntDeployment 
     const deep = parents.some((p) => p.merge === 'deep');
     for (const [k, v] of own) {
       const was = d.inputs.get(k);
-      if (deep && was && isObject(was.value) && isObject(v.value)) {
+      const mergeable = (a: unknown, b: unknown) => (isObject(a) && isObject(b)) || (Array.isArray(a) && Array.isArray(b));
+      if (deep && was && mergeable(was.value, v.value)) {
         d.inputs.set(k, { value: deepMerge(was.value, v.value), file: v.file, fingerprint: was.fingerprint + '\n' + v.fingerprint, constructs: [...new Set([...was.constructs, ...v.constructs])] });
       } else d.inputs.set(k, v);
     }
@@ -234,9 +241,12 @@ function isObject(v: unknown): v is Record<string, unknown> {
   return Boolean(v) && typeof v === 'object' && !Array.isArray(v) && !isUnknown(v);
 }
 
-function deepMerge(a: Record<string, unknown>, b: Record<string, unknown>): Record<string, unknown> {
+/** Terragrunt's deep merge: maps merge key by key, lists are appended, anything else the child sets wins. */
+function deepMerge(a: unknown, b: unknown): unknown {
+  if (Array.isArray(a) && Array.isArray(b)) return [...a, ...b];
+  if (!isObject(a) || !isObject(b)) return b;
   const out: Record<string, unknown> = { ...a };
-  for (const [k, v] of Object.entries(b)) out[k] = isObject(out[k]) && isObject(v) ? deepMerge(out[k] as Record<string, unknown>, v) : v;
+  for (const [k, v] of Object.entries(b)) out[k] = k in out ? deepMerge(out[k], v) : v;
   return out;
 }
 
@@ -318,8 +328,11 @@ function substitute(e: Expr, fns: (name: string, args: unknown[]) => unknown): E
       }
       return { ...e, args };
     }
-    case 'template':
-      return { ...e, parts: parts(e.parts) };
+    case 'template': {
+      // "${get_terragrunt_dir()}/x" becomes the text "/live/app/x".
+      const folded = parts(e.parts).map((p): TemplatePart => (p.kind === 'interp' && p.expr.kind === 'literal' && typeof p.expr.value === 'string' ? { kind: 'text', value: p.expr.value } : p));
+      return { ...e, parts: folded };
+    }
     case 'tuple':
       return { ...e, items: e.items.map(s) };
     case 'object':
@@ -407,48 +420,69 @@ function constructsOf(f: ParsedFile, e: Expr): string[] {
   return [...out].sort();
 }
 
-/** Evaluate an expression of one file: its locals, pure functions, path functions in the child's context. */
-function evalIn(source: FileSource, f: ParsedFile, expr: Expr, fns: (name: string, args: unknown[]) => unknown, childFile: string): { value: unknown; fingerprint: string; constructs: string[] } {
+/** Functions whose first argument names a file they read. */
+const FILE_READERS = new Set(['file', 'templatefile', 'filebase64', 'read_terragrunt_config', 'read_tfvars_file', 'sops_decrypt_file']);
+
+interface Evaluated {
+  value: unknown;
+  /** Text of the expression and of everything it reads: locals, dependency blocks, included parents, files. */
+  fingerprint: string;
+  constructs: string[];
+  /** Repository files it reads. */
+  reads: string[];
+}
+
+/**
+ * Evaluate an expression of one file: its locals, pure functions, path functions in the child's context.
+ * `includes` holds the text of each parent by label, for inputs read from an exposed include.
+ */
+function evalIn(source: FileSource, f: ParsedFile, expr: Expr, fns: (name: string, args: unknown[]) => unknown, includes: Map<string, string> = new Map()): Evaluated {
   const constructs = constructsOf(f, expr);
-  // Dependency blocks an input reads are part of what it depends on (their mocks are not).
+  const resolvePath = (p: string) => fromAbs(p, f.dir);
+  // What the expression reads, itself and through locals.
+  const exprs = [expr, ...[...localsRead(f, expr)].map((n) => f.locals.get(n)).filter((x): x is Expr => Boolean(x))];
   const deps = new Set<string>();
-  walk(expr, (x) => {
-    if (x.kind === 'getattr' && x.obj.kind === 'scope' && x.obj.name === 'dependency') deps.add(x.name);
-  });
-  for (const n of localsRead(f, expr)) {
-    const def = f.locals.get(n);
-    if (def) walk(def, (x) => {
+  const exposed = new Set<string>();
+  const reads = new Set<string>();
+  for (const e of exprs) {
+    walk(e, (x) => {
       if (x.kind === 'getattr' && x.obj.kind === 'scope' && x.obj.name === 'dependency') deps.add(x.name);
+      if (x.kind === 'getattr' && x.obj.kind === 'scope' && x.obj.name === 'include') exposed.add(x.name);
+    });
+    walk(substitute(e, fns), (x) => {
+      if (x.kind !== 'call' || !FILE_READERS.has(x.name) || !x.args[0]) return;
+      const p = literalKey(x.args[0]);
+      if (p !== undefined && inside(resolvePath(p))) reads.add(resolvePath(p));
     });
   }
+  // Dependency blocks an input reads are part of what it depends on (their mocks are not), with the locals they read.
   const depText = [...deps].sort().map((name) => {
     const b = f.body.blocks.find((x) => x.type === 'dependency' && x.labels[0] === name);
-    return b ? `dependency.${name}: ${b.body.attributes.filter((a) => !MOCK_ATTRIBUTES.test(a.name)).map((a) => `${a.name} = ${sliceOf(f, a.expr.range)}`).join('; ')}` : `dependency.${name}: (none)`;
+    if (!b) return `dependency.${name}: (none)`;
+    const attrs = b.body.attributes.filter((a) => !MOCK_ATTRIBUTES.test(a.name));
+    return `dependency.${name}: ${attrs.map((a) => `${a.name} = ${sliceOf(f, a.expr.range)}`).join('; ')}\n${attrs.flatMap((a) => localFingerprints(f, a.expr)).join('\n')}`;
   });
-  const fingerprint = [sliceOf(f, expr.range), ...localFingerprints(f, expr), ...depText].join('\n');
-  const memo = new Map<string, unknown>();
+  // An exposed include can read anything in the parent: all of its text counts.
+  const exposedText = [...exposed].sort().map((label) => `include.${label}: ${includes.get(label) ?? '(none)'}`);
+  const fileText = [...reads].sort().map((p) => `file ${p}: ${source.readFile(p) ?? '(missing)'}`);
+  const fingerprint = [sliceOf(f, expr.range), ...localFingerprints(f, expr), ...depText, ...exposedText, ...fileText].join('\n');
+  let locals: LazyMap | undefined;
   const scope: EvalScope = {
     root(name) {
-      if (name === 'local') {
-        return new LazyMap(new Map([...f.locals.keys()].map((k) => [k, () => {
-          if (!memo.has(k)) memo.set(k, evaluate(substitute(f.locals.get(k)!, fns), scope));
-          return memo.get(k);
-        }])));
-      }
+      // One map for every reference, so a cycle between locals is found instead of recursing.
+      if (name === 'local') return (locals ??= new LazyMap(new Map([...f.locals.keys()].map((k) => [k, () => evaluate(substitute(f.locals.get(k)!, fns), scope)]))));
       if (OUTSIDE.has(name)) return new Unknown(`${name} is not evaluated`);
       return undefined;
     },
     readFile(p) {
-      // Relative to the file that holds the expression, inside the repository only.
-      if (p.startsWith('/')) return undefined;
-      const candidate = normalize(path.posix.join(f.dir, p));
+      // Relative to the file that holds the expression, or from the repository root; inside it only.
+      const candidate = resolvePath(p);
       return inside(candidate) ? source.readFile(candidate) : undefined;
     },
   };
-  void childFile;
   let value: unknown = constructs.length ? new Unknown(`reads ${constructs.join(', ')}`) : toPlain(evaluate(substitute(expr, fns), scope));
   if (value === undefined) value = new Unknown('not known statically');
-  return { value, fingerprint, constructs };
+  return { value, fingerprint, constructs, reads: [...reads] };
 }
 
 /** True when two input values are the same, known value. */

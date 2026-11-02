@@ -259,6 +259,49 @@
      "static replay does not evaluate"
     ]
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review round 1: a root new in this change that a base pattern covers is evaluated in its mapped environments",
+   "base": {
+    ".diffseal.json": "{\"roots\": {\"ops/*\": {\"workspaces\": [\"prod\"]}}}",
+    "ops/a/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  count = terraform.workspace == \"prod\" ? 1 : 0\n  name  = \"a\"\n}\n"
+   },
+   "head": {
+    ".diffseal.json": "{\"roots\": {\"ops/*\": {\"workspaces\": [\"prod\"]}}}",
+    "ops/a/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  count = terraform.workspace == \"prod\" ? 1 : 0\n  name  = \"a\"\n}\n",
+    "ops/b/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  count = terraform.workspace == \"prod\" ? 1 : 0\n  name  = \"b\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "ops/b (workspace prod)"
+    ],
+    "changedAddresses": [
+     "create aws_sqs_queue.q[0]"
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review round 1: a root moved in this change keeps the mapping of its old directory",
+   "base": {
+    ".diffseal.json": "{\"roots\": {\"infra/old\": {\"workspaces\": [\"prod\"]}}}",
+    "infra/old/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"p\" {\n  name = \"p\"\n}\n",
+    "infra/old/q.tf": "resource \"aws_sqs_queue\" \"q\" {\n  count = terraform.workspace == \"prod\" ? 1 : 0\n  name  = \"q\"\n}\n"
+   },
+   "head": {
+    ".diffseal.json": "{\"roots\": {\"infra/old\": {\"workspaces\": [\"prod\"]}}}",
+    "infra/new/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"p\" {\n  name = \"p\"\n}\n",
+    "infra/new/q.tf": "resource \"aws_sqs_queue\" \"q\" {\n  count = terraform.workspace == \"prod\" ? 1 : 0\n  name  = \"q2\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "infra/new (workspace prod)"
+    ],
+    "changedAddresses": [
+     "replace aws_sqs_queue.q[0]"
+    ]
+   }
   }
  ]
 }

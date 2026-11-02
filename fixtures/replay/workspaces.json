@@ -227,6 +227,44 @@
      }
     ]
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review round 1: a root new in this change is evaluated in each workspace it tells apart, against nothing",
+   "base": {
+    "other/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+   },
+   "head": {
+    "other/main.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "svc/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  count = terraform.workspace == \"prod\" ? 1 : 0\n  name  = \"q\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "svc",
+     "svc (workspace prod)"
+    ],
+    "changedAddresses": [
+     "create workspace prod: aws_sqs_queue.q[0]"
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review round 1: names the base already tells apart are evaluated first, so a change cannot push them past the cap",
+   "base": {
+    "svc/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  count = terraform.workspace == \"prod\" ? 1 : 0\n  name  = \"q\"\n}\n"
+   },
+   "head": {
+    "svc/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  count = terraform.workspace == \"prod\" ? 1 : 0\n  name  = \"q2\"\n}\nlocals {\n  x = contains([\"a1\", \"a2\", \"a3\", \"a4\", \"a5\", \"a6\", \"a7\", \"a8\", \"a9\"], terraform.workspace)\n}\n"
+   },
+   "expect": {
+    "changedAddresses": [
+     "replace workspace prod: aws_sqs_queue.q[0]"
+    ],
+    "notesContain": [
+     "not a8, a9"
+    ]
+   }
   }
  ]
 }

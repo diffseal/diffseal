@@ -277,6 +277,219 @@
      "update modules/app/(no inputs): aws_cloudwatch_log_group.g"
     ]
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review round 1: a deep merge appends the child's list to the parent's, so a name removed in the parent destroys its table",
+   "base": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"names\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name = var.name\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  for_each     = toset(var.names)\n  name         = each.key\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n",
+    "live/root.hcl": "inputs = {\n  names = [\"critical\"]\n}\n",
+    "live/app/terragrunt.hcl": "terraform {\n  source = \"../../modules//app\"\n}\ninclude \"root\" {\n  path           = find_in_parent_folders(\"root.hcl\")\n  merge_strategy = \"deep\"\n}\ninputs = {\n  name  = \"app\"\n  names = [\"extra\"]\n}\n"
+   },
+   "head": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"names\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name = var.name\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  for_each     = toset(var.names)\n  name         = each.key\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n",
+    "live/root.hcl": "inputs = {\n  names = []\n}\n",
+    "live/app/terragrunt.hcl": "terraform {\n  source = \"../../modules//app\"\n}\ninclude \"root\" {\n  path           = find_in_parent_folders(\"root.hcl\")\n  merge_strategy = \"deep\"\n}\ninputs = {\n  name  = \"app\"\n  names = [\"extra\"]\n}\n"
+   },
+   "expect": {
+    "changedAddresses": [
+     "delete aws_dynamodb_table.t[\"critical\"]"
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review round 1: an input read from an exposed include is reviewed when the parent it reads changes",
+   "base": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"names\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name = var.name\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  for_each     = toset(var.names)\n  name         = each.key\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n",
+    "live/root.hcl": "locals {\n  name = \"a\"\n}\n",
+    "live/app/terragrunt.hcl": "terraform {\n  source = \"../../modules//app\"\n}\ninclude \"root\" {\n  path   = find_in_parent_folders(\"root.hcl\")\n  expose = true\n}\ninputs = {\n  name = include.root.locals.name\n}\n"
+   },
+   "head": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"names\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name = var.name\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  for_each     = toset(var.names)\n  name         = each.key\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n",
+    "live/root.hcl": "locals {\n  name = \"b\"\n}\n",
+    "live/app/terragrunt.hcl": "terraform {\n  source = \"../../modules//app\"\n}\ninclude \"root\" {\n  path   = find_in_parent_folders(\"root.hcl\")\n  expose = true\n}\ninputs = {\n  name = include.root.locals.name\n}\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "input name reads include.root"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review round 1: with two includes that set a terraform source, the later one wins, as in Terragrunt",
+   "base": {
+    "modules/one/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"names\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name = var.name\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  for_each     = toset(var.names)\n  name         = each.key\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n",
+    "modules/two/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"names\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name = var.name\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  for_each     = toset(var.names)\n  name         = each.key\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n",
+    "live/a.hcl": "terraform {\n  source = \"../../modules//one\"\n}\n",
+    "live/b.hcl": "terraform {\n  source = \"../../modules//two\"\n}\n",
+    "live/app/terragrunt.hcl": "include \"a\" {\n  path = \"../a.hcl\"\n}\ninclude \"b\" {\n  path = \"../b.hcl\"\n}\ninputs = {\n  name = \"a\"\n}\n"
+   },
+   "head": {
+    "modules/one/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"names\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name = var.name\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  for_each     = toset(var.names)\n  name         = each.key\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n",
+    "modules/two/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"names\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name = var.name\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  for_each     = toset(var.names)\n  name         = each.key\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n",
+    "live/a.hcl": "terraform {\n  source = \"../../modules//one\"\n}\n",
+    "live/b.hcl": "terraform {\n  source = \"../../modules//two\"\n}\n",
+    "live/app/terragrunt.hcl": "include \"a\" {\n  path = \"../a.hcl\"\n}\ninclude \"b\" {\n  path = \"../b.hcl\"\n}\ninputs = {\n  name = \"b\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "modules/two (terragrunt live/app/terragrunt.hcl)"
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review round 1: a dependency redirected through a local is reviewed",
+   "base": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"names\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name = var.name\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  for_each     = toset(var.names)\n  name         = each.key\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n",
+    "live/app/terragrunt.hcl": "terraform {\n  source = \"../../modules//app\"\n}\nlocals {\n  target = \"../one\"\n}\ndependency \"upstream\" {\n  config_path = local.target\n}\ninputs = {\n  name = dependency.upstream.outputs.name\n}\n"
+   },
+   "head": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"names\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name = var.name\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  for_each     = toset(var.names)\n  name         = each.key\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n",
+    "live/app/terragrunt.hcl": "terraform {\n  source = \"../../modules//app\"\n}\nlocals {\n  target = \"../two\"\n}\ndependency \"upstream\" {\n  config_path = local.target\n}\ninputs = {\n  name = dependency.upstream.outputs.name\n}\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "input name reads dependency.upstream outputs"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review round 1: a changed Terragrunt configuration outside --roots-under is reviewed as not checked",
+   "rootsUnder": "elsewhere",
+   "base": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"names\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name = var.name\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  for_each     = toset(var.names)\n  name         = each.key\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n",
+    "elsewhere/main.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "live/app/terragrunt.hcl": "terraform {\n  source = \"../../modules//app\"\n}\ninputs = {\n  name = \"a\"\n}\n"
+   },
+   "head": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"names\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name = var.name\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  for_each     = toset(var.names)\n  name         = each.key\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n",
+    "elsewhere/main.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "live/app/terragrunt.hcl": "terraform {\n  source = \"../../modules//app\"\n}\ninputs = {\n  name = \"b\"\n}\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "live/app/terragrunt.hcl (it runs outside --roots-under elsewhere, so it was not checked)"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review round 1: locals that refer to each other do not crash the replay; the input is not known and is reviewed",
+   "base": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"names\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name = var.name\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  for_each     = toset(var.names)\n  name         = each.key\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n",
+    "live/app/terragrunt.hcl": "terraform {\n  source = \"../../modules//app\"\n}\nlocals {\n  a = local.b\n  b = local.a\n}\ninputs = {\n  name = \"${local.a}\"\n}\n"
+   },
+   "head": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"names\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name = var.name\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  for_each     = toset(var.names)\n  name         = each.key\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n",
+    "live/app/terragrunt.hcl": "terraform {\n  source = \"../../modules//app\"\n}\nlocals {\n  a = local.b\n  b = local.a\n}\ninputs = {\n  name = \"${local.a}-x\"\n}\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "input name is not known statically"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review round 1: paths built from get_repo_root() resolve, so the parent's inputs are read and its edit is evaluated",
+   "base": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"names\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name = var.name\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  for_each     = toset(var.names)\n  name         = each.key\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n",
+    "root.hcl": "inputs = {\n  name = \"a\"\n}\n",
+    "live/app/terragrunt.hcl": "terraform {\n  source = \"${get_repo_root()}/modules//app\"\n}\ninclude \"root\" {\n  path = \"${get_repo_root()}/root.hcl\"\n}\n"
+   },
+   "head": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"names\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name = var.name\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  for_each     = toset(var.names)\n  name         = each.key\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n",
+    "root.hcl": "inputs = {\n  name = \"b\"\n}\n",
+    "live/app/terragrunt.hcl": "terraform {\n  source = \"${get_repo_root()}/modules//app\"\n}\ninclude \"root\" {\n  path = \"${get_repo_root()}/root.hcl\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "modules/app (terragrunt live/app/terragrunt.hcl)"
+    ],
+    "changes": [
+     {
+      "address": "aws_cloudwatch_log_group.g",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ],
+    "reasonsNotContain": [
+     "static replay does not evaluate"
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review round 1: an edit to a file read with read_terragrunt_config is reviewed, naming it",
+   "base": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"names\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name = var.name\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  for_each     = toset(var.names)\n  name         = each.key\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n",
+    "live/env.hcl": "locals {\n  name = \"a\"\n}\n",
+    "live/app/terragrunt.hcl": "terraform {\n  source = \"../../modules//app\"\n}\nlocals {\n  env = read_terragrunt_config(find_in_parent_folders(\"env.hcl\"))\n}\ninputs = {\n  name = local.env.locals.name\n}\n"
+   },
+   "head": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"names\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name = var.name\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  for_each     = toset(var.names)\n  name         = each.key\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n",
+    "live/env.hcl": "locals {\n  name = \"b\"\n}\n",
+    "live/app/terragrunt.hcl": "terraform {\n  source = \"../../modules//app\"\n}\nlocals {\n  env = read_terragrunt_config(find_in_parent_folders(\"env.hcl\"))\n}\ninputs = {\n  name = local.env.locals.name\n}\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "input name reads read_terragrunt_config"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review round 1: a file an input reads with file() is evaluated, and its edit replays the configuration",
+   "base": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"names\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name = var.name\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  for_each     = toset(var.names)\n  name         = each.key\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n",
+    "live/app/terragrunt.hcl": "terraform {\n  source = \"../../modules//app\"\n}\ninputs = {\n  name = trimspace(file(\"${get_terragrunt_dir()}/name.txt\"))\n}\n",
+    "live/app/name.txt": "a\n"
+   },
+   "head": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"names\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name = var.name\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  for_each     = toset(var.names)\n  name         = each.key\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n",
+    "live/app/terragrunt.hcl": "terraform {\n  source = \"../../modules//app\"\n}\ninputs = {\n  name = trimspace(file(\"${get_terragrunt_dir()}/name.txt\"))\n}\n",
+    "live/app/name.txt": "b\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "modules/app (terragrunt live/app/terragrunt.hcl)"
+    ],
+    "changes": [
+     {
+      "address": "aws_cloudwatch_log_group.g",
+      "action": "replace",
+      "confidence": "proven",
+      "after": {
+       "name": "b"
+      }
+     }
+    ],
+    "reasonsNotContain": [
+     "static replay does not evaluate"
+    ]
+   }
   }
  ]
 }

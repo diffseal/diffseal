@@ -48,6 +48,27 @@ describe('combineRoots', () => {
   });
 });
 
+describe('combineRoots cost', () => {
+  const nat = () => analyze(readPlan(plan([rc('aws_nat_gateway.n', 'aws_nat_gateway', ['create'], { subnet_id: 's' })])));
+  test('the default workspace is a deployment: its cost counts beside the other workspaces (review round 1)', () => {
+    const one = nat().cost.fixedMonthlyDeltaUsd;
+    expect(one).toBeGreaterThan(0);
+    const merged = combineRoots([
+      { root: 'app', changes: [], result: nat(), diagnostics: [] },
+      { root: 'app', workspace: 'prod', changes: [], result: nat(), diagnostics: [] },
+    ]);
+    expect(merged.cost.fixedMonthlyDeltaUsd).toBe(Math.round(2 * one * 100) / 100);
+  });
+  test('the evaluation without a var-file is a check, and its cost is left out', () => {
+    const one = nat().cost.fixedMonthlyDeltaUsd;
+    const merged = combineRoots([
+      { root: 'app', changes: [], result: nat(), diagnostics: [] },
+      { root: 'app', varFiles: ['app/prod.tfvars'], changes: [], result: nat(), diagnostics: [] },
+    ]);
+    expect(merged.cost.fixedMonthlyDeltaUsd).toBe(one);
+  });
+});
+
 describe('replayCommit', () => {
   const OPEN_PORT =
     'resource "aws_vpc_security_group_ingress_rule" "devices" {\n  security_group_id = "sg-1"\n  cidr_ipv4 = "0.0.0.0/0"\n  from_port = 25004\n  to_port = 25004\n  ip_protocol = "tcp"\n}\n';

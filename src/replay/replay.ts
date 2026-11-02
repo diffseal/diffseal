@@ -185,8 +185,16 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
      */
     const environments = (root: string, baseRoot: string, rootsSet: Set<string>, configTouched: boolean) => {
       const out: Variant[] = [];
-      const both = Boolean(loadModule(headSource, root) && loadModule(baseSource, baseRoot));
-      const mapped = both ? mappedEnvironments(mappings, root) : undefined;
+      // A root new in this change is evaluated in its environments too, against nothing; a deleted one only as it was.
+      const atHead = Boolean(loadModule(headSource, root));
+      const atBase = Boolean(loadModule(baseSource, baseRoot));
+      const both = atHead && atBase;
+      // A root moved in this change keeps the mapping of its old directory.
+      const fromBase = baseRoot !== root ? mappedEnvironments(mappings, baseRoot) : undefined;
+      const mapped = !atHead
+        ? undefined
+        : (mappedEnvironments(mappings, root) ??
+          fromBase?.map((e) => ({ ...e, varFiles: e.varFiles.map((f) => (f === baseRoot || f.startsWith(baseRoot + '/') ? path.posix.join(root, path.posix.relative(baseRoot, f)) : f)) })));
       if (mapped) {
         if (mapped.length > MAX_MAPPED_ENVIRONMENTS) noteFor(root, `Root ${root} maps ${mapped.length} environments in .diffseal.json; the first ${MAX_MAPPED_ENVIRONMENTS} were evaluated`);
         for (const env of mapped.slice(0, MAX_MAPPED_ENVIRONMENTS)) {
@@ -200,24 +208,26 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
           const missing = headFiles.filter((f, i) => headSource.blobId(f) === undefined && baseSource.blobId(baseFiles[i]) === undefined && !headSource.linkProblem(f));
           if (missing.length) noteFor(root, `.diffseal.json maps ${missing.join(', ')} for ${root}, which exists at neither commit`);
           // A var-file added or deleted is a new or removed environment: reviewed by name, not compared.
-          if (headFiles.some((f, i) => (headSource.blobId(f) === undefined && !headSource.linkProblem(f)) || (baseSource.blobId(baseFiles[i]) === undefined && !baseSource.linkProblem(baseFiles[i])))) continue;
+          // A new root has no base to compare with: its environments are all new.
+          if (headFiles.some((f, i) => (headSource.blobId(f) === undefined && !headSource.linkProblem(f)) || (atBase && baseSource.blobId(baseFiles[i]) === undefined && !baseSource.linkProblem(baseFiles[i])))) continue;
           out.push({ headFiles, baseFiles, ...(env.workspace ? { workspace: env.workspace } : {}), mapped: true });
         }
       } else {
         out.push({ headFiles: [], baseFiles: [] });
-        if (both) {
+        if (atHead) {
           // Workspaces the configuration tells apart, read from both commits. Only needed when an evaluation
           // in a workspace can be compared: the configuration or one of the root's var-files changed.
-          const headFilesAll = varFilesOf(headSource, root, rootsSet).filter((f) => !mappedFiles.has(f));
-          const baseFilesAll = varFilesOf(baseSource, baseRoot, rootsSet).filter((f) => !mappedFiles.has(f));
+          // Var-files pair only across both commits; a new root's var-files are new inputs, reviewed.
+          const headFilesAll = both ? varFilesOf(headSource, root, rootsSet).filter((f) => !mappedFiles.has(f)) : [];
+          const baseFilesAll = both ? varFilesOf(baseSource, baseRoot, rootsSet).filter((f) => !mappedFiles.has(f)) : [];
           const needed = configTouched || [...headFilesAll, ...baseFilesAll].some((f) => touchedPaths.has(f));
-          const reads = needed && (readsWorkspace(headSource, root) || readsWorkspace(baseSource, baseRoot));
+          const reads = needed && (readsWorkspace(headSource, root) || (atBase && readsWorkspace(baseSource, baseRoot)));
           let names: string[] = [];
           if (reads) {
-            names = [...new Set([
-              ...workspaceNames(headSource, root, rootVarValues(headSource, root, headFilesAll)),
-              ...workspaceNames(baseSource, baseRoot, rootVarValues(baseSource, baseRoot, baseFilesAll)),
-            ])].sort();
+            // Names the base tells apart come first, so a change cannot push them past the cap.
+            const baseNames = atBase ? workspaceNames(baseSource, baseRoot, rootVarValues(baseSource, baseRoot, baseFilesAll)) : [];
+            const headNames = workspaceNames(headSource, root, rootVarValues(headSource, root, headFilesAll)).filter((n) => !baseNames.includes(n));
+            names = [...baseNames, ...headNames];
             if (!names.length) noteFor(root, `Root ${root} reads terraform.workspace, but no workspace names could be found in its configuration, so it was evaluated as workspace default only; list its workspaces under roots in .diffseal.json`);
             else if (names.length > MAX_WORKSPACES) {
               noteFor(root, `Root ${root} tells ${names.length} workspaces apart; ${MAX_WORKSPACES} were evaluated besides default (${names.slice(0, MAX_WORKSPACES).join(', ')}), not ${names.slice(MAX_WORKSPACES).join(', ')}`);
@@ -307,7 +317,7 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
         // A Terragrunt configuration may run another module at the base.
         const envBaseRoot = tg ? tg.baseRoot : baseRoot;
         const envClosure = tg && envBaseRoot !== baseRoot ? new Set([...closure, ...moduleClosure(baseSource, envBaseRoot)]) : closure;
-        const tgFiles = tg ? [tg.file, ...tg.head.includes, ...(tg.base?.includes ?? [])] : [];
+        const tgFiles = tg ? [tg.file, ...tg.head.includes, ...tg.head.reads, ...(tg.base?.includes ?? []), ...(tg.base?.reads ?? [])] : [];
         const touchesEnv =
           (tg && envBaseRoot !== baseRoot ? [...changedDirs].some((d) => envClosure.has(d)) || moduleLockChanged : touchesConfig) ||
           [...headFiles, ...baseFiles, ...tgFiles].some((f) => touchedPaths.has(f));
@@ -470,7 +480,7 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   // A configuration's lines are given once, under its own file when that changed too.
   const said = new Set<string>();
   for (const f of [...tgChanged].sort((a, b) => Number(/(^|\/)terragrunt\.hcl$/.test(b)) - Number(/(^|\/)terragrunt\.hcl$/.test(a)))) {
-    const reading = (m: Map<string, TerragruntDeployment>) => [...m.values()].filter((d) => d.file === f || d.includes.includes(f));
+    const reading = (m: Map<string, TerragruntDeployment>) => [...m.values()].filter((d) => d.file === f || d.includes.includes(f) || d.reads.has(f));
     const keys = [...new Set([...reading(headDeployments), ...reading(baseDeployments)].map((d) => d.file))].sort();
     const why: string[] = [];
     if (!keys.length) why.push('no Terragrunt configuration that runs a local Terraform module reads it');
@@ -482,8 +492,11 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
         why.push(`${where}${k} no longer runs a module here; what it deployed is destroyed only if someone runs terragrunt destroy against its state`);
         continue;
       }
-      // Outside --roots-under: not replayed, as any root there.
-      if (!inScope(head) && (!base || !inScope(base))) continue;
+      // Outside --roots-under: not replayed, and so not checked.
+      if (!inScope(head) && (!base || !inScope(base))) {
+        why.push(`${where}it runs outside --roots-under ${opts.rootsUnder}, so it was not checked`);
+        continue;
+      }
       const declared = (src: GitSource, d?: TerragruntDeployment) => new Set(d?.moduleDir ? loadModule(src, d.moduleDir)?.variables.keys() ?? [] : []);
       const lines = unevaluatedChanges(base, head, { head: declared(headSource, head), base: declared(baseSource, base) }).filter((l) => !said.has(`${k}\0${l}`));
       for (const l of lines) said.add(`${k}\0${l}`);
@@ -853,7 +866,9 @@ export function combineRoots(roots: RootReplay[]): AnalysisResult {
     // A root with var-files is deployed with them: its evaluation without one is a check, not a deployment.
     // A directory link to a root replayed too is the same deployment, counted once.
     const alias = replayed.aliasOf !== undefined && roots.some((r) => r.root === replayed.aliasOf);
-    if (!(withEnvs.has(replayed.root) && !variant(replayed)) && !alias) {
+    // Workspace default is a deployment of its own; the evaluation without a var-file or Terragrunt inputs is not.
+    const check = !variant(replayed) && roots.some((r) => r.root === replayed.root && (r.varFiles?.length || r.terragrunt));
+    if (!check && !alias) {
       out.cost.items.push(...result.cost.items.map((i) => ({ ...i, resource: label(root, i.resource) })));
       out.cost.fixedMonthlyDeltaUsd = Math.round((out.cost.fixedMonthlyDeltaUsd + result.cost.fixedMonthlyDeltaUsd) * 100) / 100;
     }
