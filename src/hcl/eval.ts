@@ -1,4 +1,4 @@
-import { createHmac, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { isIP } from 'node:net';
 import { Redacted, UNKNOWN_PART, Unknown, hasRedacted, isRedacted, isUnknown, reveal } from '../core/model.js';
 import { knownConfiguration } from '../core/configuration.js';
@@ -132,8 +132,14 @@ function refsOf(...vals: unknown[]): string[] {
  */
 const PATHS = new WeakMap<Unknown, string>();
 
+/**
+ * Paths longer than this are kept as a digest. A derived identity embeds the identity of every operand,
+ * escaped once more at each level, so without a bound it grows exponentially with nesting depth.
+ */
+const MAX_PATH = 256;
+
 function withPath<T extends Unknown>(u: T, path: string | undefined): T {
-  if (path) PATHS.set(u, path);
+  if (path) PATHS.set(u, path.length > MAX_PATH ? `#${createHash('sha256').update(path).digest('hex').slice(0, 32)}` : path);
   return u;
 }
 
