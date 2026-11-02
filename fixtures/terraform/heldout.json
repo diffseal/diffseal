@@ -101,6 +101,39 @@
           "result": "block"
         }
       }
+    },
+    {
+      "kind": "terraform",
+      "name": "a module for_each over a map with literal keys and partly unknown values keeps its keys when a resource over the same map is evaluated first and the map reads another module, so moved blocks into its instances match (source case: beneficiary-fhir-data 01fc5569f)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  version = module.service.version\n  runners = {\n    lambda = { image = \"${aws_ecr_repository.r.repository_url}:${local.version}\" }\n    docker = { image = \"amazonlinux:3\" }\n  }\n}\nresource \"aws_ecr_repository\" \"r\" {\n  name = \"runner\"\n}\nresource \"aws_codebuild_project\" \"runner\" {\n  for_each     = local.runners\n  name         = each.key\n  service_role = \"arn:aws:iam::123456789012:role/codebuild\"\n  artifacts {\n    type = \"NO_ARTIFACTS\"\n  }\n  environment {\n    compute_type = \"BUILD_GENERAL1_SMALL\"\n    image        = each.value.image\n    type         = \"ARM_CONTAINER\"\n  }\n  source {\n    type = \"NO_SOURCE\"\n  }\n}\nresource \"aws_cloudwatch_log_group\" \"runner\" {\n  for_each = local.runners\n  name     = each.key\n}\n",
+        "r/modules/service/main.tf": "output \"version\" {\n  value = \"1.2.3\"\n}\n",
+        "r/modules/logs/main.tf": "variable \"name\" {}\nresource \"aws_cloudwatch_log_group\" \"this\" {\n  name = var.name\n}\noutput \"name\" {\n  value = aws_cloudwatch_log_group.this.name\n}\n",
+        "r/service.tf": "module \"service\" {\n  source = \"./modules/service\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  version = module.service.version\n  runners = {\n    lambda = { image = \"${aws_ecr_repository.r.repository_url}:${local.version}\" }\n    docker = { image = \"amazonlinux:3\" }\n  }\n}\nresource \"aws_ecr_repository\" \"r\" {\n  name = \"runner\"\n}\nresource \"aws_codebuild_project\" \"runner\" {\n  for_each     = local.runners\n  name         = each.key\n  service_role = \"arn:aws:iam::123456789012:role/codebuild\"\n  artifacts {\n    type = \"NO_ARTIFACTS\"\n  }\n  environment {\n    compute_type = \"BUILD_GENERAL1_SMALL\"\n    image        = each.value.image\n    type         = \"ARM_CONTAINER\"\n  }\n  source {\n    type = \"NO_SOURCE\"\n  }\n}\nmodule \"log_group_runner\" {\n  source   = \"./modules/logs\"\n  for_each = local.runners\n  name     = each.key\n}\nmoved {\n  from = aws_cloudwatch_log_group.runner[\"lambda\"]\n  to   = module.log_group_runner[\"lambda\"].aws_cloudwatch_log_group.this\n}\nmoved {\n  from = aws_cloudwatch_log_group.runner[\"docker\"]\n  to   = module.log_group_runner[\"docker\"].aws_cloudwatch_log_group.this\n}\n",
+        "r/modules/service/main.tf": "output \"version\" {\n  value = \"1.2.3\"\n}\n",
+        "r/modules/logs/main.tf": "variable \"name\" {}\nresource \"aws_cloudwatch_log_group\" \"this\" {\n  name = var.name\n}\noutput \"name\" {\n  value = aws_cloudwatch_log_group.this.name\n}\n",
+        "r/service.tf": "module \"service\" {\n  source = \"./modules/service\"\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "move module.log_group_runner[\"docker\"].aws_cloudwatch_log_group.this",
+          "move module.log_group_runner[\"lambda\"].aws_cloudwatch_log_group.this"
+        ],
+        "changes": [
+          {
+            "address": "module.log_group_runner[\"lambda\"].aws_cloudwatch_log_group.this",
+            "action": "move",
+            "previousAddress": "aws_cloudwatch_log_group.runner[\"lambda\"]"
+          }
+        ],
+        "gate": {
+          "result": "pass"
+        }
+      }
     }
   ]
 }
