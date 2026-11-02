@@ -14,14 +14,14 @@
       },
       "expect": {
         "changedAddresses": [
-          "update aws_instance.web"
+          "replace aws_instance.web"
         ],
         "changes": [
           {
             "address": "aws_instance.web",
-            "action": "update",
-            "confidence": "unknown",
-            "actionReasonContains": "only the expression or data source behind it changed",
+            "action": "replace",
+            "confidence": "likely",
+            "actionReasonContains": "replace_because_cannot_update",
             "after": {
               "instance_type": "t3.micro"
             }

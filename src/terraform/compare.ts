@@ -149,12 +149,15 @@ export function compareEvaluations(base: RootEvaluation | undefined, head: RootE
   }
 
   // A possible replacement whose forcing arguments are unknown at both commits and differ only in the
-  // expression or data source behind them is not likely: the value most often stays the same. It is an
-  // unknown update, unless what the value reads is a resource this change creates, replaces or deletes.
+  // expression behind them is not likely: the value most often stays the same. It is an unknown update,
+  // unless what the value reads is a resource this change creates, replaces or deletes, or a data source
+  // whose arguments change (a new AMI filter selects another image).
   const touched = new Set(out.filter((c) => c.action === 'create' || c.action === 'replace' || c.action === 'delete').map((c) => configAddressOf(c.address)));
+  const selects = (m: Map<string, StaticInstance>, ref: string) =>
+    [...m.values()].filter((i) => i.mode === 'data' && i.configAddress === ref).map((i) => stableKey(dataSelector(i.type, i.attrs))).sort().join('\u0000');
   for (const c of out) {
     const refs = UNKNOWN_ORIGIN.get(c);
-    if (!refs || refs.some((r) => touched.has(r))) continue;
+    if (!refs || refs.some((r) => touched.has(r) || (/(^|\.)data\./.test(r) && selects(before, r) !== selects(after, r)))) continue;
     const keys = (c.replacePaths ?? []).map((p) => p[0]);
     c.action = 'update';
     c.confidence = 'unknown';
@@ -358,15 +361,35 @@ function sameBody(a: Attrs | null, b: Attrs | null): boolean {
   return stableKey(strip(a)) === stableKey(strip(b));
 }
 
-/** Possible replacements that differ only in the origin of unknown values -> the managed resources those values read. */
+/** Possible replacements that differ only in the origin of unknown values -> the resources and data sources those values read. */
 const UNKNOWN_ORIGIN = new WeakMap<ResourceChange, string[]>();
 
 const configAddressOf = (a: string) => a.replace(/\[("([^"\\]|\\.)*"|[^\]]*)\]/g, '');
-const managedRefs = (u: { refs: string[] }) => [...new Set(u.refs.filter((r) => !/(^|\.)data\./.test(r)).map(configAddressOf))].sort();
+const isDataRef = (r: string) => /(^|\.)data\./.test(r);
 
 /**
- * The managed resources read by two values that differ only where both are unknown, with the same
- * known text around the unknown parts and reading the same managed resources; undefined when they
+ * Settings of terraform_remote_state that say how to reach the state, not which state is read: changing
+ * them (a role moved into assume_role) reads the same outputs.
+ */
+const REMOTE_STATE_ACCESS = new Set([
+  'role_arn', 'assume_role', 'assume_role_with_web_identity', 'profile', 'access_key', 'secret_key', 'token',
+  'shared_credentials_file', 'shared_credentials_files', 'shared_config_files', 'external_id', 'session_name',
+  'sts_endpoint', 'iam_endpoint', 'endpoints', 'max_retries', 'retry_mode', 'skip_credentials_validation',
+  'skip_metadata_api_check', 'skip_region_validation', 'skip_requesting_account_id', 'skip_s3_checksum',
+  'dynamodb_table', 'use_lockfile', 'encrypt', 'kms_key_id', 'acl',
+]);
+
+/** The arguments of a data source that select what it reads. */
+function dataSelector(type: string, attrs: Attrs): unknown {
+  if (type !== 'terraform_remote_state') return attrs;
+  const config = reveal(attrs.config);
+  if (config === null || typeof config !== 'object' || Array.isArray(config) || isUnknown(config)) return attrs;
+  return { ...attrs, config: Object.fromEntries(Object.entries(config as Attrs).filter(([k]) => !REMOTE_STATE_ACCESS.has(k))) };
+}
+
+/**
+ * The resources and data sources read by two values that differ only where both are unknown, with the
+ * same known text around the unknown parts and reading the same managed resources; undefined when they
  * differ in anything known, or when one side is known where the other is not.
  */
 function unknownOriginOnly(before: unknown, after: unknown): string[] | undefined {
@@ -378,9 +401,10 @@ function unknownOriginOnly(before: unknown, after: unknown): string[] | undefine
     // No pattern, or `{?}` alone, says nothing about the value's text.
     const text = (u: typeof b) => (u.pattern === undefined || u.pattern === UNKNOWN_PART ? undefined : u.pattern);
     if (text(b) !== text(a)) return undefined;
-    const rb = managedRefs(b);
-    const ra = managedRefs(a);
-    return rb.join(',') === ra.join(',') ? ra : undefined;
+    // The same managed resources on both sides; data sources may differ (checked against their arguments).
+    const refs = (u: typeof b) => [...new Set(u.refs.map(configAddressOf))];
+    const managed = (u: typeof b) => refs(u).filter((r) => !isDataRef(r)).sort().join(',');
+    return managed(b) === managed(a) ? [...new Set([...refs(b), ...refs(a)])] : undefined;
   }
   const merge = (parts: Array<string[] | undefined>) => (parts.some((x) => x === undefined) ? undefined : [...new Set(parts.flat() as string[])]);
   if (Array.isArray(b) && Array.isArray(a)) return b.length === a.length ? merge(b.map((x, i) => unknownOriginOnly(x, a[i]))) : undefined;

@@ -187,10 +187,10 @@
       "name": "two unknown values with the same known text around them that differ only in origin are an unknown update (source case: forms-terraform 5e27579a2)",
       "root": "r",
       "base": {
-        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_ssm_parameter\" \"env\" {\n  name = \"/env\"\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"gc-forms-api-${data.aws_ssm_parameter.env.value}-pipeline\"\n}\n"
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"env\" {}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"gc-forms-api-${var.env}-pipeline\"\n}\n"
       },
       "head": {
-        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_ssm_parameter\" \"environment\" {\n  name = \"/config/env\"\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"gc-forms-api-${data.aws_ssm_parameter.environment.value}-pipeline\"\n}\n"
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"env\" {}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"gc-forms-api-${trimspace(var.env)}-pipeline\"\n}\n"
       },
       "expect": {
         "changes": [
@@ -436,6 +436,29 @@
             "actionReasonContains": "rename to module.buckets[\"dpc\"].aws_sqs_queue.this"
           }
         ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "an unknown value read from a remote state that now reads another state key is still a possible replacement",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"terraform_remote_state\" \"accounts\" {\n  backend = \"s3\"\n  config = {\n    bucket   = \"state\"\n    key      = \"accounts.tfstate\"\n    role_arn = \"arn:aws:iam::111111111111:role/r\"\n  }\n}\nresource \"aws_security_group\" \"egress\" {\n  name   = \"egress\"\n  vpc_id = data.terraform_remote_state.accounts.outputs.vpc_id\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"terraform_remote_state\" \"accounts\" {\n  backend = \"s3\"\n  config = {\n    bucket   = \"state\"\n    key      = \"network.tfstate\"\n    role_arn = \"arn:aws:iam::111111111111:role/r\"\n  }\n}\nresource \"aws_security_group\" \"egress\" {\n  name   = \"egress\"\n  vpc_id = data.terraform_remote_state.accounts.outputs.vpc_id\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "aws_security_group.egress",
+            "action": "replace",
+            "confidence": "likely"
+          }
+        ],
+        "gate": {
+          "result": "review"
+        }
       }
     }
   ]
