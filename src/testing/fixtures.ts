@@ -108,6 +108,9 @@ export interface ReplayFixtureCase {
   head: Record<string, string>;
   baseLinks?: Record<string, string>;
   headLinks?: Record<string, string>;
+  /** Git submodules in each snapshot (path -> commit id); their content is never in the repository. */
+  baseSubmodules?: Record<string, string>;
+  headSubmodules?: Record<string, string>;
   /** Replay only the roots under this path, as `diffseal replay --roots-under` does. */
   rootsUnder?: string;
   expect: AnalysisExpectation & {
@@ -295,7 +298,7 @@ export async function runFixtureCase(tc: FixtureCase): Promise<void> {
       const r = spawnSync('git', ['-C', dir, '-c', 'user.email=t@t', '-c', 'user.name=t', '-c', 'commit.gpgsign=false', '-c', 'core.symlinks=true', ...args], { encoding: 'utf8' });
       if (r.status !== 0) throw new Error(`git ${args[0]}: ${r.stderr}`);
     };
-    const snapshot = (files: Record<string, string>, links: Record<string, string> = {}, msg: string) => {
+    const snapshot = (files: Record<string, string>, links: Record<string, string> = {}, msg: string, submodules: Record<string, string> = {}) => {
       for (const entry of fs.readdirSync(dir)) if (entry !== '.git') fs.rmSync(path.join(dir, entry), { recursive: true, force: true });
       for (const [f, c] of Object.entries(files)) {
         fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true });
@@ -306,12 +309,13 @@ export async function runFixtureCase(tc: FixtureCase): Promise<void> {
         fs.symlinkSync(target, path.join(dir, f));
       }
       git('add', '-A');
+      for (const [p, sha] of Object.entries(submodules)) git('update-index', '--add', '--cacheinfo', `160000,${sha},${p}`);
       git('commit', '-q', '--allow-empty', '-m', msg);
     };
     try {
       git('init', '-q');
-      snapshot(tc.base, tc.baseLinks, 'base');
-      snapshot(tc.head, tc.headLinks, 'head');
+      snapshot(tc.base, tc.baseLinks, 'base', tc.baseSubmodules);
+      snapshot(tc.head, tc.headLinks, 'head', tc.headSubmodules);
       const r = await replayCommit({ repo: dir, head: 'HEAD', moduleCache: path.join(dir, '.no-module-cache'), ...(tc.rootsUnder ? { rootsUnder: tc.rootsUnder } : {}) });
       const rootName = (x: (typeof r.roots)[number]) => `${x.root}${x.varFiles?.length ? ` [${x.varFiles.join(', ')}]` : ''}${x.workspace ? ` (workspace ${x.workspace})` : ''}${x.terragrunt ? ` (terragrunt ${x.terragrunt})` : ''}`;
       if (tc.expect.replayedRoots !== undefined) expect(r.roots.map(rootName)).toEqual(tc.expect.replayedRoots);

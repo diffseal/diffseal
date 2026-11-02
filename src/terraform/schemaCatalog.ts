@@ -58,3 +58,14 @@ export const PROVIDER_SCHEMA_SHA256 = snapshot.schema_sha256;
 export const PROVIDER_SCHEMA_MAX_DEPTH = snapshot.max_depth;
 export const PROVIDER_SCHEMA_LOCK_H1 = snapshot.lock.h1;
 export const PROVIDER_SCHEMA_RESOURCE_COUNT = Object.keys(snapshot.resources).length;
+
+/**
+ * Whether the provider leaves the object in AWS when Terraform destroys it: `skip_destroy = true`, read
+ * from the last applied values, on a type whose schema has that argument (the provider's delete then
+ * only removes it from state). Not for a value that is unknown or sensitive.
+ */
+export function retainedOnDestroy(type: string, before: Record<string, unknown> | null | undefined): boolean {
+  if (!resourceSchema(type)?.bool.has('skip_destroy')) return false;
+  const v = before?.skip_destroy;
+  return v === true || v === 'true';
+}

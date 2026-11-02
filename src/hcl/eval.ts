@@ -1,4 +1,4 @@
-import { createHmac, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { isIP } from 'node:net';
 import { Redacted, UNKNOWN_PART, Unknown, hasRedacted, isRedacted, isUnknown, reveal } from '../core/model.js';
 import { knownConfiguration } from '../core/configuration.js';
@@ -132,8 +132,14 @@ function refsOf(...vals: unknown[]): string[] {
  */
 const PATHS = new WeakMap<Unknown, string>();
 
+/**
+ * Paths longer than this are kept as a digest. A derived identity embeds the identity of every operand,
+ * escaped once more at each level, so without a bound it grows exponentially with nesting depth.
+ */
+const MAX_PATH = 256;
+
 function withPath<T extends Unknown>(u: T, path: string | undefined): T {
-  if (path) PATHS.set(u, path);
+  if (path) PATHS.set(u, path.length > MAX_PATH ? `#${createHash('sha256').update(path).digest('hex').slice(0, 32)}` : path);
   return u;
 }
 
@@ -448,6 +454,14 @@ function appendValue(v: unknown, acc: TemplateAcc) {
     return;
   }
   if (v === null || v === undefined) throw new EvalError('null value in template');
+  // A partly unknown jsonencode() result is JSON text whose unknown parts are not known: its known parts
+  // are kept, and its identity is the whole value, so an edit anywhere in it is a change.
+  if (typeof v === 'object' && JSON_KEPT.has(v)) {
+    acc.unknown = true;
+    acc.text += jsonPattern(v, acc);
+    (acc.paths ??= []).push(`jsonencode(${keyOf(v)})`);
+    return;
+  }
   if (typeof v === 'object') throw new EvalError('cannot interpolate a collection into a string');
   acc.text += String(v);
 }
@@ -918,6 +932,33 @@ function callFunction(rawName: string, argExprs: Expr[], expandFinal: boolean, s
  * escapes HTML characters and Unicode line separators. Construct objects as text
  * because JavaScript reorders integer keys even after sorting an object's entries.
  */
+/** Partly unknown jsonencode() results kept as structure: a template interpolates them as JSON text. */
+const JSON_KEPT = new WeakSet<object>();
+
+/**
+ * The JSON text of a partly unknown jsonencode() result, with `{?}` for each unknown part (a string
+ * built from a template keeps its known text). A sensitive part is never written: it is `{?}` too.
+ */
+function jsonPattern(value: unknown, acc: TemplateAcc): string {
+  const encode = (v: unknown): string => {
+    if (isUnknown(v)) {
+      for (const r of v.refs) acc.refs.add(r);
+      return v.pattern !== undefined && v.pattern !== UNKNOWN_PART ? JSON.stringify(v.pattern) : UNKNOWN_PART;
+    }
+    if (isRedacted(v)) {
+      acc.sensitive = true;
+      return UNKNOWN_PART;
+    }
+    if (Array.isArray(v)) return `[${v.map(encode).join(',')}]`;
+    if (v && typeof v === 'object') {
+      return `{${Object.keys(v).sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)))
+        .map((k) => `${JSON.stringify(k)}:${encode((v as Record<string, unknown>)[k])}`).join(',')}}`;
+    }
+    return JSON.stringify(v);
+  };
+  return encode(value);
+}
+
 function terraformJson(value: unknown): string {
   const encode = (v: unknown): string => {
     if (Array.isArray(v)) return `[${v.map(encode).join(',')}]`;
@@ -936,7 +977,9 @@ function applyFunction(name: string, rawName: string, args: unknown[], scope: Ev
   if (name === 'jsonencode') {
     const plain = toPlain(args[0]);
     // Keep structure when parts are unknown: policy documents are analyzed as objects either way.
-    return containsUnknown(plain) ? plain : terraformJson(plain);
+    if (!containsUnknown(plain)) return terraformJson(plain);
+    if (plain !== null && typeof plain === 'object' && !isUnknown(plain) && !isRedacted(plain)) JSON_KEPT.add(plain);
+    return plain;
   }
   if (name === 'coalesce') {
     for (const a of args) {

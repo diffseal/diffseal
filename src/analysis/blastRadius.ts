@@ -4,6 +4,7 @@ import { typed } from '../policy/values.js';
 import { describeGrants, diffGrants } from '../policy/grants.js';
 import { describeEnvDiff, diffEnvironment } from '../terraform/environment.js';
 import { REPLACE_ON_CHANGE, ROUTINE_REPLACE } from '../terraform/replaceCatalog.js';
+import { retainedOnDestroy } from '../terraform/schemaCatalog.js';
 
 const POLICY_TYPES = new Set(['aws_iam_policy', 'aws_iam_role_policy', 'aws_iam_user_policy', 'aws_iam_group_policy']);
 
@@ -27,7 +28,7 @@ function policyUpdate(c: ResourceChange, changed: string[], note: string): Blast
 }
 
 /** Deleting or replacing these loses data that Terraform cannot recreate. */
-const STATEFUL: Record<string, string> = {
+export const STATEFUL: Record<string, string> = {
   aws_s3_bucket: 'the objects in the bucket',
   aws_dynamodb_table: 'the items in the table',
   aws_dynamodb_global_table: 'the items in the table',
@@ -77,6 +78,17 @@ const IDENTITY_OR_ENDPOINT: Record<string, string> = {
   aws_sns_topic: 'subscriptions recreated, messages published during the swap are lost',
   aws_acm_certificate: 'listeners referencing the certificate',
   aws_iot_topic_rule: 'IoT messages during the swap',
+};
+
+/**
+ * Deleting these takes an entry point out of service with nothing to replace it: no data is lost, but
+ * requests fail until it is created again. Replacing them is a brief swap, rated below.
+ */
+const SERVES_TRAFFIC: Record<string, string> = {
+  aws_api_gateway_stage: 'the API stops serving requests on this stage; redeploying the API does not recreate it',
+  aws_apigatewayv2_stage: 'the API stops serving requests on this stage',
+  aws_lb_listener: 'the load balancer stops accepting connections on this port',
+  aws_alb_listener: 'the load balancer stops accepting connections on this port',
 };
 
 /** Guard attributes that make the provider or AWS refuse a destroy. */
@@ -163,6 +175,11 @@ export function analyzeBlastRadius(changes: ResourceChange[]): BlastFinding[] {
     const identity = IDENTITY_OR_ENDPOINT[c.type];
 
     const note = c.actionReason && !/^[a-z_]+$/.test(c.actionReason) ? ` (${c.actionReason})` : '';
+    // A plan deletes it, but with skip_destroy = true the provider only removes it from state.
+    if (c.action === 'delete' && !c.preventDestroy && retainedOnDestroy(c.type, before)) {
+      out.push({ severity: 'LOW', resource: c.address, type: c.type, action: c.action, reason: `Deletes ${c.type} from Terraform state only: skip_destroy = true, so the provider leaves it in AWS${note}`, dataLoss: false, downtime: 'no' });
+      continue;
+    }
     if (c.action === 'delete' || c.action === 'replace') {
       const verb = c.action === 'delete' ? 'Deletes' : 'Replaces';
       const inferred = !c.replacePaths?.length && c.action === 'replace' ? changedAttrs(c.before, c.after).filter((a) => REPLACE_ON_CHANGE[c.type]?.includes(a)) : [];
@@ -194,6 +211,9 @@ export function analyzeBlastRadius(changes: ResourceChange[]): BlastFinding[] {
         const possibly = c.confidence !== 'proven' ? 'Possibly ' : '';
         const text = `${verb} ${c.type}${forcedBy}${what}${order}${note}`;
         out.push({ severity: 'HIGH', resource: c.address, type: c.type, action: c.action, reason: possibly ? possibly + text[0].toLowerCase() + text.slice(1) : text, dataLoss: false, downtime: c.replaceOrder === 'create-first' ? 'possible' : 'yes' });
+      } else if (c.action === 'delete' && SERVES_TRAFFIC[c.type]) {
+        const text = `Deletes ${c.type}: ${SERVES_TRAFFIC[c.type]}${note}`;
+        out.push({ severity: 'HIGH', resource: c.address, type: c.type, action: c.action, reason: c.confidence !== 'proven' ? `Possibly ${text[0].toLowerCase()}${text.slice(1)}` : text, dataLoss: false, downtime: 'yes' });
       } else if (c.action === 'replace' && ROUTINE_REPLACE.has(c.type)) {
         const env = envChange(c);
         out.push({ severity: 'INFO', resource: c.address, type: c.type, action: c.action, reason: `Recreates ${c.type}${forcedBy}${order}${env ? `; ${env}` : ''}${note}`, dataLoss: false, downtime: 'no' });
