@@ -278,10 +278,14 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
             if (!b) continue;
             // prod.tfvars is most likely planned in workspace prod, when the configuration has one.
             const stem = path.posix.basename(h).replace(/\.tfvars(\.json)?$/, '');
-            // Or in the workspace built from an environment of that name (`app-prod` from `prod`).
-            const ws = names.includes(stem) ? stem : names.find((n) => builtFrom[n]?.includes(stem));
-            if (ws) paired.add(ws);
-            out.push({ headFiles: [h], baseFiles: [b], ...(ws ? { workspace: ws } : {}) });
+            // Or in each workspace built from an environment of that name (`app-prod` from `prod`): with a
+            // prefix the var-file itself may set, which one is planned is not known.
+            const built = names.filter((n) => Object.hasOwn(builtFrom, n) && builtFrom[n].includes(stem));
+            const spaces = names.includes(stem) ? [stem] : built.length ? built : [undefined];
+            for (const ws of spaces) {
+              if (ws) paired.add(ws);
+              out.push({ headFiles: [h], baseFiles: [b], ...(ws ? { workspace: ws } : {}) });
+            }
           }
           for (const n of names) if (!paired.has(n)) out.push({ headFiles: [], baseFiles: [], workspace: n });
         }
