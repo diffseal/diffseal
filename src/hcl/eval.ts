@@ -326,7 +326,90 @@ function keyString(k: unknown): string {
   throw new EvalError('object key must be a string');
 }
 
+/**
+ * A value read from a known collection by a key not known statically (`configs[var.env]`): every key's
+ * value, so reading through it keeps one value per key and its identity is made of those values only.
+ * An edit elsewhere in the collection then changes nothing read through the lookup, while an attribute
+ * whose value changes for any key still differs. Kept beside the value, never printed.
+ */
+interface Keyed {
+  /** The identity of the key. */
+  key: string;
+  keyRefs: string[];
+  candidates: Array<[string, unknown]>;
+}
+const KEYED = new WeakMap<Unknown, Keyed>();
+/** Collections with more keys than this keep the identity of the whole collection. */
+const MAX_KEYED = 64;
+
+/** Reading from a key that holds no such attribute fails only where that key is the one selected. */
+class KeyError {
+  constructor(readonly message: string) {}
+}
+
+const candidateKey = (v: unknown) => (v instanceof KeyError ? `error:${v.message}` : keyOf(v));
+
+function keyedUnknown(k: Omit<Keyed, 'candidates'>, candidates: Array<[string, unknown]>): Unknown {
+  const refs = new Set(k.keyRefs);
+  for (const [, v] of candidates) for (const u of flattenUnknowns(v)) for (const r of u.refs) refs.add(r);
+  const u = withPath(new Unknown('index not known', undefined, [...refs].sort()), `[?${k.key}]{${candidates.map(([c, v]) => `${JSON.stringify(c)}:${candidateKey(v)}`).join(',')}}`);
+  KEYED.set(u, { ...k, candidates });
+  return u;
+}
+
+/** The keyed value read one step further on every key. */
+function project(k: Keyed, step: (v: unknown) => unknown): Unknown {
+  return keyedUnknown(
+    k,
+    k.candidates.map(([c, v]) => {
+      if (v instanceof KeyError) return [c, v];
+      try {
+        return [c, step(v)];
+      } catch (e) {
+        if (e instanceof EvalError) return [c, new KeyError(e.message)];
+        throw e;
+      }
+    })
+  );
+}
+
+/** The entries of a known collection a key not known statically selects from, or undefined. */
+function keyedEntries(obj: unknown): Array<[string, unknown]> | undefined {
+  if (obj instanceof ResourceValue) return undefined;
+  const entries = Array.isArray(obj)
+    ? obj.map((v, i) => [String(i), v] as [string, unknown])
+    : obj instanceof Traversable
+      ? obj.entries()
+      : obj && typeof obj === 'object' && !isRedacted(obj)
+        ? Object.entries(obj as Record<string, unknown>)
+        : undefined;
+  return entries && entries.length <= MAX_KEYED ? entries : undefined;
+}
+
+/**
+ * The keys whose value differs between two values read by a key not known statically, compared per key,
+ * or undefined when neither holds such a value. Values read through different keys are not paired.
+ */
+export function keyedChanges(before: unknown, after: unknown): string[] | undefined {
+  const keyed = (v: unknown) => flattenUnknowns(v).map((u) => KEYED.get(u)).filter((k): k is Keyed => k !== undefined);
+  const b = keyed(before);
+  const a = keyed(after);
+  if (!b.length || !a.length) return undefined;
+  const out = new Set<string>();
+  const used = new Set<Keyed>();
+  for (const x of a) {
+    const y = b.find((k) => k.key === x.key && !used.has(k));
+    if (!y) return undefined;
+    used.add(y);
+    const was = new Map(y.candidates.map(([c, v]) => [c, candidateKey(v)]));
+    const now = new Map(x.candidates.map(([c, v]) => [c, candidateKey(v)]));
+    for (const c of new Set([...was.keys(), ...now.keys()])) if (was.get(c) !== now.get(c)) out.add(c);
+  }
+  return [...out].sort();
+}
+
 export function getAttr(obj: unknown, name: string): unknown {
+  if (isUnknown(obj) && KEYED.has(obj)) return project(KEYED.get(obj)!, (v) => getAttr(v, name));
   if (isUnknown(obj)) return withPath(new Unknown(obj.reason, obj.pattern === UNKNOWN_PART ? UNKNOWN_PART : undefined, obj.refs), `${PATHS.get(obj) ?? ''}.${name}`);
   if (isRedacted(obj)) return obj.revealed ? redact(getAttr(obj.revealed.value, name)) : obj;
   if (obj instanceof Traversable) return obj.getAttr(name);
@@ -339,11 +422,16 @@ export function getAttr(obj: unknown, name: string): unknown {
 }
 
 export function getIndex(obj: unknown, key: unknown): unknown {
+  if (isUnknown(obj) && KEYED.has(obj)) return project(KEYED.get(obj)!, (v) => getIndex(v, key));
   if (isUnknown(obj)) {
     const k = isUnknown(key) ? `?${PATHS.get(key) ?? ''}` : stableKey(key);
     return withPath(new Unknown(obj.reason, obj.pattern === UNKNOWN_PART ? UNKNOWN_PART : undefined, obj.refs), `${PATHS.get(obj) ?? ''}[${k}]`);
   }
-  if (isUnknown(key)) return derivedUnknown('index not known', '[]', [obj, key]);
+  if (isUnknown(key)) {
+    const entries = keyedEntries(obj);
+    if (entries) return keyedUnknown({ key: keyOf(key), keyRefs: [...key.refs] }, entries);
+    return derivedUnknown('index not known', '[]', [obj, key]);
+  }
   if (isRedacted(obj)) return obj.revealed ? redact(getIndex(obj.revealed.value, reveal(key))) : obj;
   if (isRedacted(key)) {
     if (!key.revealed) return unknownFrom('index not known');
@@ -997,6 +1085,11 @@ function applyFunction(name: string, rawName: string, args: unknown[], scope: Ev
   }
   if (name === 'lookup') {
     const [m, k, def] = args;
+    if (!isUnknown(m) && isUnknown(k)) {
+      // Each key's value, and the default for a key the map does not hold.
+      const entries = keyedEntries(m);
+      if (entries) return keyedUnknown({ key: keyOf(k), keyRefs: [...k.refs] }, args.length > 2 ? [...entries, ['\u0000default', def]] : entries);
+    }
     if (isUnknown(m) || isUnknown(k)) return derivedUnknown('lookup() argument not known', 'lookup', args);
     const map = toMap(m);
     const key = toStr(k);

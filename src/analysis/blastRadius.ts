@@ -136,13 +136,20 @@ interface UpdateRisk {
   why: string;
 }
 
+/** An engine version change on a database: AWS cannot downgrade an engine, and the upgrade restarts it. */
+const ENGINE_UPGRADE = 'upgrades the database engine in place, which cannot be rolled back, and the database restarts during the upgrade';
+
 /** In-place updates that still disrupt service. */
 const RISKY_UPDATES: Record<string, UpdateRisk[]> = {
   aws_db_instance: [
     { attrs: ['identifier'], severity: 'HIGH', downtime: 'yes', why: 'renames the instance in place; its endpoint DNS name changes, so clients using the old endpoint fail until reconfigured' },
-    { attrs: ['instance_class', 'allocated_storage', 'storage_type', 'iops', 'multi_az', 'engine_version', 'parameter_group_name', 'ca_cert_identifier'], severity: 'MEDIUM', downtime: 'possible', why: 'may reboot or fail over the database' },
+    { attrs: ['engine_version'], severity: 'HIGH', downtime: 'yes', why: ENGINE_UPGRADE },
+    { attrs: ['instance_class', 'allocated_storage', 'storage_type', 'iops', 'multi_az', 'parameter_group_name', 'ca_cert_identifier'], severity: 'MEDIUM', downtime: 'possible', why: 'may reboot or fail over the database' },
   ],
-  aws_rds_cluster: [{ attrs: ['engine_version', 'db_cluster_parameter_group_name', 'serverlessv2_scaling_configuration'], severity: 'MEDIUM', downtime: 'possible', why: 'may restart cluster instances' }],
+  aws_rds_cluster: [
+    { attrs: ['engine_version'], severity: 'HIGH', downtime: 'yes', why: ENGINE_UPGRADE },
+    { attrs: ['db_cluster_parameter_group_name', 'serverlessv2_scaling_configuration'], severity: 'MEDIUM', downtime: 'possible', why: 'may restart cluster instances' },
+  ],
   aws_rds_cluster_instance: [{ attrs: ['instance_class', 'db_parameter_group_name', 'ca_cert_identifier'], severity: 'MEDIUM', downtime: 'possible', why: 'may reboot the instance' }],
   aws_elasticache_replication_group: [{ attrs: ['node_type', 'engine_version', 'num_cache_clusters'], severity: 'MEDIUM', downtime: 'possible', why: 'may fail over or resize the cache' }],
   aws_security_group: [{ attrs: ['ingress', 'egress'], severity: 'MEDIUM', downtime: 'possible', why: 'removed rules cut traffic immediately' }],

@@ -1,5 +1,5 @@
 import { UNKNOWN_PART, isRedacted, isUnknown, reveal, type Action, type Attrs, type ResourceChange } from '../core/model.js';
-import { containsUnknown, redact, stableKey } from '../hcl/eval.js';
+import { containsUnknown, redact, stableKey, keyedChanges } from '../hcl/eval.js';
 import type { ReplaceTrigger, RootEvaluation, StaticInstance } from './expand.js';
 import { CONDITIONAL_REPLACE, NESTED_REPLACE, REPLACE_ON_CHANGE, REPLACE_SETS } from './replaceCatalog.js';
 import { argumentFacts, retainedOnDestroy } from './schemaCatalog.js';
@@ -514,6 +514,13 @@ function diffInstance(b: StaticInstance, a: StaticInstance): ResourceChange {
       confidence: certain.length ? 'proven' : 'likely',
       actionReason: 'replace_because_cannot_update',
     };
+    // A value read from a map by a key not known statically (`configs[var.env].name`) differs only where
+    // that value changed for some key: name those keys, since only an environment with one of them changes.
+    if (!certain.length) {
+      const keys = [...new Set(forcing.flatMap((k) => keyedChanges(masked(b.attrs[k], paths(k)), masked(a.attrs[k], paths(k))) ?? []))].sort();
+      const shown = keys.map((k) => (k === '\u0000default' ? 'the default' : k));
+      if (keys.length) change.actionReason = `${forcing.join(', ')} reads a value by a key not known statically, and that value changes for ${shown.length === 1 ? 'key' : 'keys'} ${shown.join(', ')}`;
+    }
     // Every forcing argument unknown at both commits, differing only in where the unknown comes from.
     // Not for a stateful type: a changed index or literal inside the expression is not seen here, and
     // replacing a database or bucket loses data, so its possible replacement stays reviewed.

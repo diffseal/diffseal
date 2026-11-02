@@ -159,6 +159,85 @@
      "result": "pass"
     }
    }
+  },
+  {
+   "kind": "terraform",
+   "name": "a map looked up by a variable without a default: an edit to another attribute of the map changes nothing read through the lookup (source case: iv-cbv-payroll)",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"environment_name\" {\n  type = string\n}\nmodule \"app_config\" {\n  source = \"../app-config\"\n}\nlocals {\n  environment_config = module.app_config.environment_configs[var.environment_name]\n  database_config    = local.environment_config.database_config\n}\ndata \"aws_vpc\" \"network\" {\n  tags = {\n    network_name = local.environment_config.network_name\n  }\n}\nresource \"aws_rds_cluster\" \"db\" {\n  cluster_identifier = local.database_config.cluster_name\n  engine             = \"aurora-postgresql\"\n  vpc_security_group_ids = [data.aws_vpc.network.id]\n}\n",
+    "app-config/main.tf": "locals {\n  environment_configs = {\n    dev  = module.dev_config\n    prod = module.prod_config\n  }\n}\nmodule \"dev_config\" {\n  source       = \"./env-config\"\n  cluster_name = \"app-dev\"\n  network      = \"dev\"\n  feature      = \"1\"\n}\nmodule \"prod_config\" {\n  source       = \"./env-config\"\n  cluster_name = \"app-prod\"\n  network      = \"prod\"\n  feature      = \"1\"\n}\noutput \"environment_configs\" {\n  value = local.environment_configs\n}\n",
+    "app-config/env-config/main.tf": "variable \"cluster_name\" {\n  type = string\n}\nvariable \"network\" {\n  type = string\n}\nvariable \"feature\" {\n  type = string\n}\noutput \"database_config\" {\n  value = { cluster_name = var.cluster_name, region = \"us-east-1\" }\n}\noutput \"network_name\" {\n  value = var.network\n}\noutput \"service_config\" {\n  value = { env = { FEATURE = var.feature } }\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"environment_name\" {\n  type = string\n}\nmodule \"app_config\" {\n  source = \"../app-config\"\n}\nlocals {\n  environment_config = module.app_config.environment_configs[var.environment_name]\n  database_config    = local.environment_config.database_config\n}\ndata \"aws_vpc\" \"network\" {\n  tags = {\n    network_name = local.environment_config.network_name\n  }\n}\nresource \"aws_rds_cluster\" \"db\" {\n  cluster_identifier = local.database_config.cluster_name\n  engine             = \"aurora-postgresql\"\n  vpc_security_group_ids = [data.aws_vpc.network.id]\n}\n",
+    "app-config/main.tf": "locals {\n  environment_configs = {\n    dev  = module.dev_config\n    prod = module.prod_config\n  }\n}\nmodule \"dev_config\" {\n  source       = \"./env-config\"\n  cluster_name = \"app-dev\"\n  network      = \"dev\"\n  feature      = \"3\"\n}\nmodule \"prod_config\" {\n  source       = \"./env-config\"\n  cluster_name = \"app-prod\"\n  network      = \"prod\"\n  feature      = \"2\"\n}\noutput \"environment_configs\" {\n  value = local.environment_configs\n}\n",
+    "app-config/env-config/main.tf": "variable \"cluster_name\" {\n  type = string\n}\nvariable \"network\" {\n  type = string\n}\nvariable \"feature\" {\n  type = string\n}\noutput \"database_config\" {\n  value = { cluster_name = var.cluster_name, region = \"us-east-1\" }\n}\noutput \"network_name\" {\n  value = var.network\n}\noutput \"service_config\" {\n  value = { env = { FEATURE = var.feature } }\n}\n"
+   },
+   "expect": {
+    "changedAddresses": [],
+    "gate": {
+     "result": "pass"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "a map looked up by a variable without a default: an attribute read through the lookup whose value changes for one key keeps the possible replacement and names that key",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"environment_name\" {\n  type = string\n}\nmodule \"app_config\" {\n  source = \"../app-config\"\n}\nlocals {\n  environment_config = module.app_config.environment_configs[var.environment_name]\n  database_config    = local.environment_config.database_config\n}\ndata \"aws_vpc\" \"network\" {\n  tags = {\n    network_name = local.environment_config.network_name\n  }\n}\nresource \"aws_rds_cluster\" \"db\" {\n  cluster_identifier = local.database_config.cluster_name\n  engine             = \"aurora-postgresql\"\n  vpc_security_group_ids = [data.aws_vpc.network.id]\n}\n",
+    "app-config/main.tf": "locals {\n  environment_configs = {\n    dev  = module.dev_config\n    prod = module.prod_config\n  }\n}\nmodule \"dev_config\" {\n  source       = \"./env-config\"\n  cluster_name = \"app-dev\"\n  network      = \"dev\"\n  feature      = \"1\"\n}\nmodule \"prod_config\" {\n  source       = \"./env-config\"\n  cluster_name = \"app-prod\"\n  network      = \"prod\"\n  feature      = \"1\"\n}\noutput \"environment_configs\" {\n  value = local.environment_configs\n}\n",
+    "app-config/env-config/main.tf": "variable \"cluster_name\" {\n  type = string\n}\nvariable \"network\" {\n  type = string\n}\nvariable \"feature\" {\n  type = string\n}\noutput \"database_config\" {\n  value = { cluster_name = var.cluster_name, region = \"us-east-1\" }\n}\noutput \"network_name\" {\n  value = var.network\n}\noutput \"service_config\" {\n  value = { env = { FEATURE = var.feature } }\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"environment_name\" {\n  type = string\n}\nmodule \"app_config\" {\n  source = \"../app-config\"\n}\nlocals {\n  environment_config = module.app_config.environment_configs[var.environment_name]\n  database_config    = local.environment_config.database_config\n}\ndata \"aws_vpc\" \"network\" {\n  tags = {\n    network_name = local.environment_config.network_name\n  }\n}\nresource \"aws_rds_cluster\" \"db\" {\n  cluster_identifier = local.database_config.cluster_name\n  engine             = \"aurora-postgresql\"\n  vpc_security_group_ids = [data.aws_vpc.network.id]\n}\n",
+    "app-config/main.tf": "locals {\n  environment_configs = {\n    dev  = module.dev_config\n    prod = module.prod_config\n  }\n}\nmodule \"dev_config\" {\n  source       = \"./env-config\"\n  cluster_name = \"app-dev\"\n  network      = \"dev\"\n  feature      = \"1\"\n}\nmodule \"prod_config\" {\n  source       = \"./env-config\"\n  cluster_name = \"app-prod-2\"\n  network      = \"prod\"\n  feature      = \"1\"\n}\noutput \"environment_configs\" {\n  value = local.environment_configs\n}\n",
+    "app-config/env-config/main.tf": "variable \"cluster_name\" {\n  type = string\n}\nvariable \"network\" {\n  type = string\n}\nvariable \"feature\" {\n  type = string\n}\noutput \"database_config\" {\n  value = { cluster_name = var.cluster_name, region = \"us-east-1\" }\n}\noutput \"network_name\" {\n  value = var.network\n}\noutput \"service_config\" {\n  value = { env = { FEATURE = var.feature } }\n}\n"
+   },
+   "expect": {
+    "changedAddresses": [
+     "replace aws_rds_cluster.db"
+    ],
+    "changes": [
+     {
+      "address": "aws_rds_cluster.db",
+      "action": "replace",
+      "confidence": "likely",
+      "actionReasonContains": "changes for key prod"
+     }
+    ],
+    "gate": {
+     "result": "review"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "a database engine version change is reviewed: it cannot be rolled back and restarts the database (source case: iv-cbv-payroll 5d02e3b9d)",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_rds_cluster\" \"db\" {\n  cluster_identifier = \"app\"\n  engine             = \"aurora-postgresql\"\n  engine_version     = \"14.15\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_rds_cluster\" \"db\" {\n  cluster_identifier = \"app\"\n  engine             = \"aurora-postgresql\"\n  engine_version     = \"14.17\"\n}\n"
+   },
+   "expect": {
+    "changedAddresses": [
+     "update aws_rds_cluster.db"
+    ],
+    "blast": [
+     {
+      "resource": "aws_rds_cluster.db",
+      "action": "update",
+      "severity": "HIGH",
+      "reasonContains": "cannot be rolled back"
+     }
+    ],
+    "gate": {
+     "result": "review"
+    }
+   }
   }
  ]
 }
