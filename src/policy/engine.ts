@@ -202,7 +202,7 @@ export function evaluatePolicies(all: ResourceChange[], policy: PolicyConfig = {
           const newPrincipal = rule.id === 'iam.least-privilege' && OWNERS[res.type] !== undefined && before![OWNERS[res.type].attr] != null && !ownerKept;
           if (!newPrincipal && (!introduced.length || (ownerKept && res.type !== 'aws_iam_role' && grantsWithin(resolvePolicyValue(before!.policy, res, 'policy', ctxBefore), resolvePolicyValue(after.policy, res, 'policy', ctx))))) {
             preExisting = true;
-          } else if (kept) {
+          } else if (kept && !newPrincipal) {
             status = (['FAIL', 'WARN', 'UNKNOWN'] as const).find((l) => introduced.some((i) => i.level === l))!;
             detail = `${capitalize(introduced.filter((i) => i.level === status).map((i) => i.message).join('; '))} (${kept} ${kept === 1 ? 'issue' : 'issues'} already present before this change)`;
           }

@@ -335,9 +335,13 @@
      {
       "ruleId": "iam.least-privilege",
       "resource": "aws_iam_role_policy.p",
-      "preExisting": null
+      "preExisting": null,
+      "status": "FAIL"
      }
-    ]
+    ],
+    "gate": {
+     "resultNot": "pass"
+    }
    }
   },
   {
@@ -355,9 +359,13 @@
      {
       "ruleId": "iam.least-privilege",
       "resource": "aws_iam_user_policy.p",
-      "preExisting": null
+      "preExisting": null,
+      "status": "FAIL"
      }
-    ]
+    ],
+    "gate": {
+     "resultNot": "pass"
+    }
    }
   },
   {
@@ -401,9 +409,13 @@
      {
       "ruleId": "iam.least-privilege",
       "resource": "aws_iam_user_policy.p",
-      "preExisting": null
+      "preExisting": null,
+      "status": "FAIL"
      }
-    ]
+    ],
+    "gate": {
+     "resultNot": "pass"
+    }
    }
   },
   {
@@ -421,9 +433,37 @@
      {
       "ruleId": "iam.least-privilege",
       "resource": "aws_iam_user_policy.p",
+      "preExisting": null,
+      "status": "FAIL"
+     }
+    ],
+    "gate": {
+     "resultNot": "pass"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "review 22: an inline policy of a new principal keeps its full result: a retained FAIL is not hidden behind a new WARN",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_user\" \"old\" {\n  name = \"deploy\"\n}\nresource \"aws_iam_user_policy\" \"p\" {\n  name   = \"p\"\n  user   = \"deploy\"\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"S3\", Effect = \"Allow\", Action = \"s3:*\", Resource = \"*\" }, { Sid = \"A\", Effect = \"Allow\", Action = \"sqs:SendMessage\", NotResource = \"arn:aws:sqs:eu-west-1:111111111111:x\" }]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_user\" \"new\" {\n  name = \"deploy\"\n}\nresource \"aws_iam_user_policy\" \"p\" {\n  name   = \"p\"\n  user   = \"deploy\"\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"S3\", Effect = \"Allow\", Action = \"s3:*\", Resource = \"*\" }, { Sid = \"B\", Effect = \"Allow\", Action = \"sqs:SendMessage\", NotResource = \"arn:aws:sqs:eu-west-1:111111111111:x\" }]\n  })\n}\n"
+   },
+   "expect": {
+    "findings": [
+     {
+      "ruleId": "iam.least-privilege",
+      "resource": "aws_iam_user_policy.p",
+      "status": "FAIL",
       "preExisting": null
      }
-    ]
+    ],
+    "gate": {
+     "resultNot": "pass"
+    }
    }
   }
  ]
