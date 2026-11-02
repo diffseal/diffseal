@@ -442,6 +442,52 @@
     ],
     "notes": []
    }
+  },
+  {
+   "kind": "replay",
+   "name": "held-out 3: a filter that tests the workspace with can(regex()) names its items as they are, and is not a transform (source case: beneficiary-fhir-data)",
+   "base": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  established_envs = [\"test\", \"sandbox\", \"prod\"]\n  env = try(one([for x in local.established_envs : x if can(regex(\"${x}$$\", terraform.workspace))]), \"invalid\")\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  count        = local.env == \"prod\" ? 1 : 0\n  name         = \"codes\"\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"code\"\n  attribute {\n    name = \"code\"\n    type = \"S\"\n  }\n}\n"
+   },
+   "head": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  established_envs = [\"test\", \"sandbox\", \"prod\"]\n  env = try(one([for x in local.established_envs : x if can(regex(\"${x}$$\", terraform.workspace))]), \"invalid\")\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "app",
+     "app (workspace prod)",
+     "app (workspace sandbox)",
+     "app (workspace test)"
+    ],
+    "changedAddresses": [
+     "delete workspace prod: aws_dynamodb_table.t[0]"
+    ],
+    "gate": {
+     "result": "block"
+    },
+    "notes": []
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "held-out 3: a transform with a part not known offline and no key compared with it is noted, not reviewed (source case: modernisation-platform bootstrap/single-sign-on)",
+   "base": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  app_name = replace(terraform.workspace, \"/-([[:alnum:]]+)$/\", \"\")\n  env_name = replace(terraform.workspace, \"${local.app_name}-\", \"\")\n  sso_data = { for d in jsondecode(data.aws_s3_object.envs.body).environments : d.name => d.access if d.name == local.env_name }\n}\ndata \"aws_s3_object\" \"envs\" {\n  bucket = \"b\"\n  key    = \"envs.json\"\n}\nresource \"aws_ssoadmin_account_assignment\" \"view_only\" {\n  for_each           = local.sso_data\n  instance_arn       = \"arn\"\n  permission_set_arn = \"arn\"\n  principal_id       = each.key\n  principal_type     = \"GROUP\"\n  target_id          = \"1\"\n  target_type        = \"AWS_ACCOUNT\"\n}\n"
+   },
+   "head": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  app_name = replace(terraform.workspace, \"/-([[:alnum:]]+)$/\", \"\")\n  env_name = replace(terraform.workspace, \"${local.app_name}-\", \"\")\n  sso_data = { for d in jsondecode(data.aws_s3_object.envs.body).environments : d.name => d.access if d.name == local.env_name }\n}\ndata \"aws_s3_object\" \"envs\" {\n  bucket = \"b\"\n  key    = \"envs.json\"\n}\nresource \"aws_ssoadmin_account_assignment\" \"view_only\" {\n  for_each           = local.sso_data\n  instance_arn       = \"arn\"\n  permission_set_arn = \"arn\"\n  principal_id       = each.key\n  principal_type     = \"USER\"\n  target_id          = \"1\"\n  target_type        = \"AWS_ACCOUNT\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "app"
+    ],
+    "gate": {
+     "result": "pass"
+    },
+    "notesContain": [
+     "no full workspace name could be built"
+    ]
+   }
   }
  ]
 }

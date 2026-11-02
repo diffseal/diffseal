@@ -60,7 +60,7 @@ export interface WorkspaceSurvey {
   unbuilt: string[];
   /** True when at least one full name was built from a derivation. */
   built: boolean;
-  /** True when a `count` or `for_each` depends on the workspace. */
+  /** True when a `count` or `for_each` depends on a part derived from the workspace. */
   gated: boolean;
 }
 
@@ -97,7 +97,13 @@ function derive(view: View, ws: string): unknown {
         break;
       case 'replace':
         if (typeof v !== 'string' || op.a === undefined || op.b === undefined || !op.a) return undefined;
-        v = v.split(op.a).join(op.b);
+        if (isPattern(op.a)) {
+          try {
+            v = v.replace(re2(op.a.slice(1, -1), 'g'), op.b.replace(/\$\{(\d+)\}/g, '$$$1'));
+          } catch {
+            return undefined;
+          }
+        } else v = v.split(op.a).join(op.b);
         break;
       case 'substr': {
         if (typeof v !== 'string') return undefined;
@@ -136,6 +142,9 @@ function derive(view: View, ws: string): unknown {
   }
   return v;
 }
+
+/** `replace(s, "/-[a-z]+$/", "")`: a search written between slashes is a regular expression. */
+const isPattern = (a: string) => a.length > 1 && a.startsWith('/') && a.endsWith('/');
 
 /** How a derivation is described in a note: `trimprefix(terraform.workspace, "app-")`. */
 function describe(view: View): string {
@@ -189,7 +198,7 @@ function undo(view: View, part: string): string[] | undefined {
         break;
       case 'replace': {
         const { a, b } = op;
-        if (a === undefined || b === undefined || !a) return undefined;
+        if (a === undefined || b === undefined || !a || isPattern(a)) return undefined;
         if (b === '') {
           // Removing a part: a prefix unless it starts with a separator and does not end with one.
           const suffix = SEPARATOR.test(a[0]) && !SEPARATOR.test(a[a.length - 1]);
@@ -515,7 +524,7 @@ export function surveyWorkspaces(source: FileSource, root: string, rootVarValues
           // split by it needs it on the prefix.
           for (const sep of ['-', '_', '.']) prefixes.add(op.prefix + sep);
         }
-        if (op.k === 'replace' && op.a && op.b === '') (SEPARATOR.test(op.a[0]) && !SEPARATOR.test(op.a[op.a.length - 1]) ? suffixes : prefixes).add(op.a);
+        if (op.k === 'replace' && op.a && !isPattern(op.a) && op.b === '') (SEPARATOR.test(op.a[0]) && !SEPARATOR.test(op.a[op.a.length - 1]) ? suffixes : prefixes).add(op.a);
         if (op.k === 'regex' && op.pattern) {
           // The literal start of an anchored pattern: `^app-(.+)$` starts names with `app-`.
           const lead = op.pattern.match(/^\^((?:[A-Za-z0-9_-]|\\[.-])+)/);
@@ -525,6 +534,18 @@ export function surveyWorkspaces(source: FileSource, root: string, rootVarValues
     }
   };
   for (const m of [wsLocals, wsOutputs, wsVars]) for (const per of m.values()) for (const views of per.values()) noteView(views);
+  // `startswith(terraform.workspace, "app-")`: names of this root start so. Read before any name is built.
+  for (const p of parsed.values()) {
+    for (const body of p.bodies) {
+      walkBody(body, (top) =>
+        walkExpr(top, (e) => {
+          if (e.kind !== 'call' || (e.name !== 'startswith' && e.name !== 'endswith') || e.args.length !== 2) return;
+          if (!viewsOf(e.args[0], p)?.some((v) => !v.length)) return;
+          for (const s of strings(resolve(e.args[1], p))) (e.name === 'startswith' ? prefixes : suffixes).add(s);
+        })
+      );
+    }
+  }
 
   const names = new Set<string>();
   const unbuilt = new Set<string>();
@@ -562,11 +583,12 @@ export function surveyWorkspaces(source: FileSource, root: string, rootVarValues
   const valuesOf = (values: unknown[]) => values.flatMap((v) => (v && typeof v === 'object' && !Array.isArray(v) ? strings(Object.values(v)) : []));
   const keysOf = (values: unknown[]) => values.flatMap((v) => (v && typeof v === 'object' && !Array.isArray(v) ? Object.keys(v) : []));
 
+  // In a filter, `can(regex("${x}$", terraform.workspace))` tests the name; the regex takes no part of it.
   const viewsIn = (e: Expr, p: Parsed): View[] => {
     const out: View[] = [];
     walkExpr(e, (x) => {
       const v = viewsOf(x, p);
-      if (v) out.push(...v);
+      if (v) out.push(...v.map((view) => (view.some((op) => op.k === 'regex') ? view.slice(0, view.findIndex((op) => op.k === 'regex')) : view)));
     });
     return out;
   };
@@ -590,9 +612,6 @@ export function surveyWorkspaces(source: FileSource, root: string, rootVarValues
           if (e.name === 'contains' && views) nameFrom(views, itemsOf(resolve(e.args[0], p)));
           const lookupViews = e.name === 'lookup' && e.args.length >= 2 ? viewsOf(e.args[1], p) : undefined;
           if (lookupViews) nameFrom(lookupViews, keysOf(resolve(e.args[0], p)));
-          // `startswith(terraform.workspace, "app-")`: names of this root start so.
-          const tested = (e.name === 'startswith' || e.name === 'endswith') && e.args.length === 2 ? viewsOf(e.args[0], p) : undefined;
-          if (tested?.some((v) => !v.length)) for (const s of strings(resolve(e.args[1], p))) (e.name === 'startswith' ? prefixes : suffixes).add(s);
           break;
         }
         case 'index': {
@@ -622,16 +641,18 @@ export function surveyWorkspaces(source: FileSource, root: string, rootVarValues
     for (const body of p.bodies) walkBody(body, (e) => visit(e, new Map()));
   }
 
-  // Does a count or for_each depend on the workspace? Locals, outputs and module inputs that read it, to a
-  // fixed point, then every resource, data source and module call.
+  // Does a count or for_each depend on a part derived from the workspace (not on the name as it is, which
+  // the names found cover)? Locals, outputs and module inputs that read one, to a fixed point, then every
+  // resource, data source and module call. A regex that only tests the name derives nothing.
   const tainted = new Set<string>();
+  const derives = (x: Expr, p: Parsed) => (x.kind !== 'getattr' ? viewsOf(x, p) : undefined)?.some((v) => v.length && v[v.length - 1].k !== 'regex') ?? false;
   const readsWs = (e: Expr | undefined, p: Parsed): boolean =>
     e !== undefined &&
     refersTo(e, (x) => {
+      if (derives(x, p)) return true;
       if (x.kind !== 'getattr') return false;
       if (x.obj.kind === 'scope') {
-        if (x.obj.name === 'terraform') return x.name === 'workspace';
-        if (x.obj.name === 'local' || x.obj.name === 'var') return tainted.has(`${p.dir}\0${x.obj.name}\0${x.name}`);
+        if (x.obj.name === 'local' || x.obj.name === 'var') return tainted.has(`${p.dir}\0${x.obj.name}\0${x.name}`) || Boolean(viewsOf(x, p)?.some((v) => v.length));
       }
       if (x.obj.kind === 'getattr' && x.obj.obj.kind === 'scope' && x.obj.obj.name === 'module') {
         const child = callOf(p, x.obj.name);

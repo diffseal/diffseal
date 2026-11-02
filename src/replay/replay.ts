@@ -257,7 +257,9 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
                 ? `Root ${root} derives its environment from terraform.workspace (${how}), but no full workspace name could be built from its configuration, so those environments were not evaluated${names.length ? '' : ' and it was evaluated as workspace default only'}`
                 : `Root ${root} derives its environment from terraform.workspace (${how}), and some environments it tells apart could not be turned into full workspace names, so they were not evaluated`;
               noteFor(root, `${what}; list its workspaces under roots in .diffseal.json`);
-              if (noneBuilt && surveys.some((x) => x.gated)) {
+              // Reviewed when the configuration tells environments apart through the transform (it compares
+              // or looks up keys) and a count or for_each depends on it; with no key, as with no name, a note.
+              if (noneBuilt && surveys.some((x) => x.unbuilt.length) && surveys.some((x) => x.gated)) {
                 reviewFor(root, `Root ${root} creates resources depending on terraform.workspace, which it transforms (${how}), and no full workspace name could be built, so what this change does in its environments is not known; list its workspaces under roots in .diffseal.json, or review a plan`);
               }
             } else if (!names.length) noteFor(root, `Root ${root} reads terraform.workspace, but no workspace names could be found in its configuration, so it was evaluated as workspace default only; list its workspaces under roots in .diffseal.json`);
