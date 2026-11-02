@@ -9,7 +9,7 @@
 
 ### Changed
 
-- When the Action is told that a later step keeps the reports (the new `report-artifact` input, which the trusted upload workflow sets), a change record that leaves out resources to fit the upload limit says the full list is in the `diffseal-<short sha>` artifact of this run, with a link to the run. It still names the replay report too, which can be written again once the artifact has expired. Records written by `diffseal replay` and `diffseal evidence` point only to the replay report, as before.
+- When the Action is told that a later step keeps the reports (the new `report-artifact` input, which the trusted upload workflow sets), a change record that leaves out resources to fit the upload limit says the full list is in the `change-record.json` of the `diffseal-<short sha>` artifact of this run, with the file's SHA-256, so a replaced artifact shows, and a link to the run. It still names the replay report too, which can be written again once the artifact has expired. Records written by `diffseal replay` and `diffseal evidence` point only to the replay report, as before.
 
 ## 0.6.2-beta, 2026-11-02
 

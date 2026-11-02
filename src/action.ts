@@ -9,7 +9,6 @@ import { VERSION, renderReplay, replayJson } from './replay/render.js';
 import { replayCommit } from './replay/replay.js';
 import { uploadRun, uploadComment } from './action/upload.js';
 import { artifactName, artifactPlace, writeReports } from './action/report.js';
-import type { ChangeRecord } from './evidence/changeRecord.js';
 import type { ReplayResult } from './replay/replay.js';
 import { upsertComment } from './action/comment.js';
 import { actionExitCode, eventBase, needsBase, pullRequestBase, readPolicy } from './action/inputs.js';
@@ -56,7 +55,8 @@ async function main(): Promise<number> {
 
   let markdown: string;
   // The report kept as a file has every row; the summary and comment are limited to fit a comment.
-  let fullMarkdown: string;
+  // Rendered only when written, so a failure there cannot stop the review.
+  let fullMarkdown: () => string;
   let gate: 'pass' | 'review' | 'block';
   let hasReport = true;
   let replay: ReplayResult | undefined;
@@ -67,7 +67,7 @@ async function main(): Promise<number> {
     if (policyChanged) reviewPolicyChange(result.gate, policyPath);
     const meta = { title: `Plan review of \`${path.basename(planFile)}\`.`, version: VERSION };
     markdown = renderMarkdown(result, meta);
-    fullMarkdown = renderMarkdown(result, { ...meta, full: true });
+    fullMarkdown = () => renderMarkdown(result, { ...meta, full: true });
     gate = result.gate.result;
     json = result;
   } else if (mode === 'pr') {
@@ -85,7 +85,7 @@ async function main(): Promise<number> {
     });
     replay = r;
     markdown = renderReplay(r, { commit: false });
-    fullMarkdown = renderReplay(r, { commit: false, full: true });
+    fullMarkdown = () => renderReplay(r, { commit: false, full: true });
     gate = r.combined.gate.result;
     hasReport = Boolean(r.roots.length || r.combined.gate.reasons.length || policyChanged);
     json = replayJson(r);
@@ -95,7 +95,7 @@ async function main(): Promise<number> {
 
   // The artifact a later workflow step keeps the full reports in, named after the commit reviewed.
   const artifact = artifactName(replay?.commit.sha ?? process.env.GITHUB_SHA);
-  let fullRecord: ChangeRecord | undefined;
+  let fullRecord: string | undefined;
   const uploaded = await uploadRun({
     upload: input('upload'),
     url: input('upload-url', 'https://api.diffseal.com'),
@@ -105,15 +105,14 @@ async function main(): Promise<number> {
     advisory: input('advisory', 'false') === 'true',
     replay,
     // Only a workflow that keeps the artifact sets report-artifact, so the record names it only then.
-    fullListIn: input('report-artifact', 'false') === 'true' ? artifactPlace(artifact, process.env) : undefined,
-    onRecord: (record) => { fullRecord = record; },
+    artifact: input('report-artifact', 'false') === 'true' ? artifactPlace(artifact, process.env) : undefined,
+    onRecord: (text) => { fullRecord = text; },
   });
   if (uploaded) setOutput('upload-id', uploaded.id);
   markdown = uploadComment(markdown, gate, uploaded);
-  fullMarkdown = uploadComment(fullMarkdown, gate, uploaded);
   // The outputs are set only once the reports are written, so a workflow uploads them only after a review.
   try {
-    const dir = writeReports(process.env.RUNNER_TEMP || os.tmpdir(), { json, markdown: fullMarkdown, record: fullRecord });
+    const dir = writeReports(process.env.RUNNER_TEMP || os.tmpdir(), { json, markdown: uploadComment(fullMarkdown(), gate, uploaded), record: fullRecord });
     setOutput('report-dir', dir);
     setOutput('artifact-name', artifact);
   } catch (e) {

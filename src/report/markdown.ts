@@ -49,7 +49,8 @@ export function renderMarkdown(result: AnalysisResult, meta: ReportMeta): string
   out.push(`## Diffseal: ${GATE_LABEL[result.gate.result]}`);
   if (meta.title) out.push('', meta.title);
   const callout = renderCallout(result.gate, { blast: result.blast, findings: result.findings }, meta.full ? Infinity : 8);
-  if (callout.length) out.push('', ...callout);
+  // Not out.push(...callout): a full report can list more reasons than Node takes as arguments.
+  if (callout.length) { out.push(''); for (const line of callout) out.push(line); }
   out.push('', summaryLine(result, attention));
 
   const notable = result.blast.filter((b) => b.severity !== 'INFO' || b.action !== 'create');

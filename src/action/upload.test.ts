@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 import { uploadRun, uploadComment, type UploadOptions, type RunUpload } from './upload.js';
 import { actionExitCode } from './inputs.js';
 import { combineRoots } from '../replay/replay.js';
@@ -39,26 +40,29 @@ test('OIDC audience and authorization, merge commit body and push body match the
     expect(body.pullRequest).toEqual(eventName === 'pull_request' ? { number: 7, headSha: 'head', baseSha: 'base' } : undefined);
   }
 });
-test('the untrimmed record goes to onRecord, and a trimmed record says where the full list is', async () => {
+test('the untrimmed record goes to onRecord, and a trimmed record names it with its digest', async () => {
   const s = setup();
   const pad = 'x'.repeat(150);
   const changes: ResourceChange[] = Array.from({ length: 6000 }, (_, i) => ({ address: `module.m_${pad}.aws_sns_topic.t[${i}]`, type: 'aws_sns_topic', name: 't', mode: 'managed', action: 'create', before: null, after: {}, references: {}, confidence: 'proven' }));
   s.options.replay!.combined = { ...s.options.replay!.combined, changes } as AnalysisResult;
-  const full: ChangeRecord[] = [];
-  await uploadRun({ ...s.options, fullListIn: 'the diffseal-abc1234 artifact of this run', onRecord: (r) => full.push(r) });
+  const texts: string[] = [];
+  await uploadRun({ ...s.options, artifact: 'the diffseal-abc1234 artifact of this run', onRecord: (text) => texts.push(text) });
   const body = JSON.parse(String(s.calls[1].init?.body)) as RunUpload;
   expect(body.record.resources.length).toBeLessThan(changes.length);
-  expect(body.record.notes.at(-1)!.endsWith('The full list is in the diffseal-abc1234 artifact of this run, and in the replay report for this commit (the JSON that diffseal replay writes).')).toBe(true);
-  expect(full).toHaveLength(1);
-  expect(full[0].resources).toHaveLength(changes.length);
-  expect(full[0].change.commit).toBe('merge');
-  expect(full[0].notes.some((n) => n.includes('left out') || n.startsWith('No approvals'))).toBe(false);
+  expect(texts).toHaveLength(1);
+  // Anyone who can run a job in the workflow run can replace the artifact; the digest shows whether it was.
+  const digest = createHash('sha256').update(texts[0]).digest('hex');
+  expect(body.record.notes.at(-1)!.endsWith(`The full list is in change-record.json (SHA-256 ${digest}) in the diffseal-abc1234 artifact of this run, and in the replay report for this commit (the JSON that diffseal replay writes).`)).toBe(true);
+  const full = JSON.parse(texts[0]) as ChangeRecord;
+  expect(full.resources).toHaveLength(changes.length);
+  expect(full.change.commit).toBe('merge');
+  expect(full.notes.some((n) => n.includes('left out') || n.startsWith('No approvals'))).toBe(false);
 });
 test('no record reaches onRecord when the upload stops before building one', async () => {
   for (const override of [{ upload: undefined }, { env: {} }]) {
-    const s = setup(); const full: ChangeRecord[] = [];
-    await uploadRun({ ...s.options, ...override, onRecord: (r) => full.push(r) });
-    expect(full).toHaveLength(0);
+    const s = setup(); const texts: string[] = [];
+    await uploadRun({ ...s.options, ...override, onRecord: (text) => texts.push(text) });
+    expect(texts).toHaveLength(0);
   }
 });
 test('fork pull requests without OIDC variables warn without fetching', async () => {

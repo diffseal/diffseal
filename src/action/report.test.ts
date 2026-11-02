@@ -24,14 +24,15 @@ test('reports go to a new directory of their own, the record only when there is 
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'diffseal-report-test-'));
   try {
     const a = writeReports(parent, { json: { gate: 'pass' }, markdown: '# Report\n' });
-    const b = writeReports(parent, { json: { gate: 'block' }, markdown: '# Other\n', record: { schema: 'diffseal.change-record/v1' } as never });
+    const b = writeReports(parent, { json: { gate: 'block' }, markdown: '# Other\n', record: '{"schema":"diffseal.change-record/v1"}\n' });
     expect(a).not.toBe(b);
     expect(path.dirname(a)).toBe(parent);
     expect(fs.readdirSync(a).sort()).toEqual([REPORT_FILES.markdown, REPORT_FILES.json].sort());
     expect(fs.readdirSync(b).sort()).toEqual([REPORT_FILES.record, REPORT_FILES.markdown, REPORT_FILES.json].sort());
     expect(JSON.parse(fs.readFileSync(path.join(a, REPORT_FILES.json), 'utf8'))).toEqual({ gate: 'pass' });
     expect(fs.readFileSync(path.join(a, REPORT_FILES.markdown), 'utf8')).toBe('# Report\n');
-    expect(JSON.parse(fs.readFileSync(path.join(b, REPORT_FILES.record), 'utf8')).schema).toBe('diffseal.change-record/v1');
+    // Written byte for byte, so the digest in the uploaded record matches the file.
+    expect(fs.readFileSync(path.join(b, REPORT_FILES.record), 'utf8')).toBe('{"schema":"diffseal.change-record/v1"}\n');
   } finally { fs.rmSync(parent, { recursive: true, force: true }); }
 });
 

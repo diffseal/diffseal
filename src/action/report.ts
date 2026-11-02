@@ -1,6 +1,5 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { ChangeRecord } from '../evidence/changeRecord.js';
 
 /**
  * The full reports of an Action run, written to files so a later workflow step can keep them as an
@@ -28,11 +27,12 @@ export function artifactPlace(name: string, env: NodeJS.ProcessEnv): string {
 }
 
 /** Writes the reports to a new directory under `parent` and returns its path. */
-export function writeReports(parent: string, reports: { json: unknown; markdown: string; record?: ChangeRecord }): string {
+export function writeReports(parent: string, reports: { json: unknown; markdown: string; record?: string }): string {
   fs.mkdirSync(parent, { recursive: true });
   const dir = fs.mkdtempSync(path.join(parent, 'diffseal-'));
   fs.writeFileSync(path.join(dir, REPORT_FILES.json), JSON.stringify(reports.json, null, 2) + '\n');
   fs.writeFileSync(path.join(dir, REPORT_FILES.markdown), reports.markdown);
-  if (reports.record) fs.writeFileSync(path.join(dir, REPORT_FILES.record), JSON.stringify(reports.record, null, 2) + '\n');
+  // The record's text as given, byte for byte: a trimmed record names its SHA-256.
+  if (reports.record !== undefined) fs.writeFileSync(path.join(dir, REPORT_FILES.record), reports.record);
   return dir;
 }

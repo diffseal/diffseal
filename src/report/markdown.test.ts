@@ -188,3 +188,20 @@ test('a full replay report lists every HCL diagnostic; the comment lists three',
   expect(renderReplay(r)).not.toContain('main.tf:4: bad');
   for (const d of diagnostics) expect(renderReplay(r, { full: true })).toContain(d);
 });
+
+test('a full report with a very long list of reasons renders on Node, which limits spread arguments', async () => {
+  const fs = await import('node:fs'), os = await import('node:os'), path = await import('node:path');
+  const { spawnSync } = await import('node:child_process');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'diffseal-markdown-node-'));
+  try {
+    const built = await Bun.build({ entrypoints: [path.join(import.meta.dirname, 'markdown.ts')], target: 'node', outdir: dir, naming: 'markdown.mjs' });
+    expect(built.success).toBe(true);
+    const script = `import { renderMarkdown } from ${JSON.stringify(path.join(dir, 'markdown.mjs'))};
+      const reasons = Array.from({ length: 200000 }, (_, i) => 'Terraform changed outside every analyzed root (r' + i + '.tf); it was not checked');
+      const md = renderMarkdown({ changes: [], findings: [], blast: [], cost: { items: [], fixedMonthlyDeltaUsd: 0, basis: '' }, gate: { result: 'review', reasons, items: [] } }, { full: true });
+      if (!md.includes('(r199999.tf)')) process.exit(3);`;
+    const r = spawnSync('node', ['--input-type=module', '-e', script], { encoding: 'utf8' });
+    expect(r.stderr).toBe('');
+    expect(r.status).toBe(0);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

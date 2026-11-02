@@ -108,7 +108,7 @@ The `if` condition uploads the report when the gate fails the step too, and skip
 
 Anyone who can read the repository can download its artifacts. In `plan` mode `report.json` holds the planned attribute values that Terraform does not mark sensitive; sensitive values are written as `(sensitive)`.
 
-The [trusted upload workflow](#upload-to-diffseal) already does this. Its artifact is named `diffseal-<short sha>` after the commit it reviewed, which for a pull request is GitHub's test merge commit, the same commit as the uploaded record. When the record leaves out resources, its note says the full list is in that artifact, links the workflow run, and names the replay report for the commit, which `diffseal replay` can write again after the artifact has expired.
+The [trusted upload workflow](#upload-to-diffseal) already does this. Its artifact is named `diffseal-<short sha>` after the commit it reviewed, which for a pull request is GitHub's test merge commit, the same commit as the uploaded record. When the record leaves out resources, its note says the full list is in the `change-record.json` of that artifact, gives that file's SHA-256 and links the workflow run. Any job in the same workflow run can replace an artifact, so check the file against the digest before relying on it, for example with `shasum -a 256 change-record.json`. The note also names the replay report for the commit, which `diffseal replay` can write again after the artifact has expired.
 
 ## Base commit resolution
 

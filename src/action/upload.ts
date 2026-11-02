@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { changeRecord, type ChangeRecord } from '../evidence/changeRecord.js';
 import { rootNames, type ReplayResult } from '../replay/replay.js';
 import { VERSION } from '../replay/render.js';
@@ -21,10 +22,13 @@ export interface UploadOptions {
   url?: string;
   advisory: boolean;
   replay?: ReplayResult;
-  /** Where the record says the full list is when it leaves resources out; see changeRecord. */
-  fullListIn?: string;
-  /** Receives the record with every resource, before any is left out, once one is built for upload. */
-  onRecord?: (record: ChangeRecord) => void;
+  /**
+   * The artifact a later step keeps the reports in, as in "the diffseal-0123456 artifact of this run".
+   * A record that leaves resources out then names that artifact's change-record.json and its SHA-256.
+   */
+  artifact?: string;
+  /** Receives the record with every resource as the JSON text to keep, once a record is built for upload. */
+  onRecord?: (text: string) => void;
   env?: NodeJS.ProcessEnv;
   fetchFn?: typeof fetch;
   log?: (message: string) => void;
@@ -65,11 +69,17 @@ export async function uploadRun(o: UploadOptions): Promise<RunUploadResponse | u
       }
       pullRequest = { number, headSha: pr.head.sha, baseSha: pr.base.sha };
     }
-    const input: Parameters<typeof changeRecord>[0] = { commit: r.commit, base: r.base, roots: rootNames(r.roots), result: r.combined, engine: { version: VERSION, replaceCatalog: REPLACE_CATALOG_SOURCE }, diagnostics: [...new Set(r.roots.flatMap((root) => root.diagnostics))], replayNotes: r.notes, fullListIn: o.fullListIn };
+    const input: Parameters<typeof changeRecord>[0] = { commit: r.commit, base: r.base, roots: rootNames(r.roots), result: r.combined, engine: { version: VERSION, replaceCatalog: REPLACE_CATALOG_SOURCE }, diagnostics: [...new Set(r.roots.flatMap((root) => root.diagnostics))], replayNotes: r.notes };
     // The service collects approvals from GitHub, so the record does not say they are missing.
     const withoutApprovalNote = (record: ChangeRecord) => ({ ...record, notes: record.notes.filter((note) => !note.startsWith('No approvals were supplied')) });
-    const record = withoutApprovalNote(changeRecord(input));
-    if (o.onRecord) o.onRecord(withoutApprovalNote(changeRecord({ ...input, maxBytes: Infinity })));
+    let fullListIn: string | undefined;
+    if (o.onRecord || o.artifact) {
+      const full = recordText(withoutApprovalNote(changeRecord({ ...input, maxBytes: Infinity })));
+      o.onRecord?.(full);
+      // Any job of the workflow run can replace an artifact, so the record carries the digest to check it against.
+      if (o.artifact) fullListIn = `change-record.json (SHA-256 ${createHash('sha256').update(full).digest('hex')}) in ${o.artifact}`;
+    }
+    const record = withoutApprovalNote(changeRecord({ ...input, fullListIn }));
     const body: RunUpload = { schema: 'diffseal.run/v1', event: o.eventName, commit: r.commit.sha, ...(pullRequest ? { pullRequest } : {}), action: { version: VERSION, mode: 'pr', advisory: o.advisory }, record };
     const serialized = JSON.stringify(body);
     if (Buffer.byteLength(serialized) > 1024 * 1024) throw new Error('change record exceeds the 1 MiB upload limit');
@@ -107,6 +117,11 @@ export async function uploadRun(o: UploadOptions): Promise<RunUploadResponse | u
       return result;
     }
   } catch (e) { warn(`Upload skipped: ${(e as Error).message}`); }
+}
+
+/** A change record as the JSON file the Action keeps; the digest in a trimmed record is of these bytes. */
+export function recordText(record: ChangeRecord): string {
+  return JSON.stringify(record, null, 2) + '\n';
 }
 
 /** The service's error and field path as one short line, or nothing when the body is not the documented error shape. */
