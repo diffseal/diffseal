@@ -58,6 +58,8 @@ export interface WorkspaceSurvey {
   unbuilt: string[];
   /** True when at least one full name was built from a derivation. */
   built: boolean;
+  /** For each full name built from a derivation, the keys it was built from (`app-prod` from `prod`). */
+  builtFrom: Record<string, string[]>;
   /** True when a `count` or `for_each` depends on a part derived from the workspace. */
   gated: boolean;
 }
@@ -267,7 +269,7 @@ export function surveyWorkspaces(source: FileSource, root: string, rootVarValues
     parsed.set(dir, p);
     perSource.set(dir, p);
   }
-  const empty: WorkspaceSurvey = { names: [], unbuilt: [], built: false, gated: false };
+  const empty: WorkspaceSurvey = { names: [], unbuilt: [], built: false, builtFrom: {}, gated: false };
   if (![...parsed.values()].length) return empty;
   const callOf = (p: Parsed, name: string) => {
     const mod = loadModule(source, p.dir);
@@ -534,6 +536,8 @@ export function surveyWorkspaces(source: FileSource, root: string, rootVarValues
     }
   };
   for (const m of [wsLocals, wsOutputs, wsVars]) for (const per of m.values()) for (const views of per.values()) noteView(views);
+  // Derivations written inline too, so the names built do not depend on the order of the blocks.
+  for (const p of parsed.values()) for (const body of p.bodies) walkBody(body, (top) => walkExpr(top, (x) => x.kind === 'call' && noteView(viewsOf(x, p) ?? [])));
   // `startswith(terraform.workspace, "app-")`: names of this root start so. Read before any name is built.
   for (const p of parsed.values()) {
     for (const body of p.bodies) {
@@ -549,6 +553,7 @@ export function surveyWorkspaces(source: FileSource, root: string, rootVarValues
 
   const names = new Set<string>();
   const unbuilt = new Set<string>();
+  const builtFrom: Record<string, string[]> = {};
   let builtFromTransform = false;
   /** Full names whose derivation by `view` gives `part`, checked by deriving again. */
   const build = (view: View, part: string): string[] => {
@@ -571,7 +576,10 @@ export function surveyWorkspaces(source: FileSource, root: string, rootVarValues
       for (const s of parts) {
         const built = build(view, s);
         if (built.length) any = true;
-        for (const n of built) names.add(n);
+        for (const n of built) {
+          names.add(n);
+          (builtFrom[n] ??= []).includes(s) || builtFrom[n].push(s);
+        }
       }
       // Keys that are the default workspace's own value need no name; other keys need one.
       const needed = parts.some((s) => derive(view, 'default') !== s);
@@ -686,6 +694,7 @@ export function surveyWorkspaces(source: FileSource, root: string, rootVarValues
     names: [...names].filter((n) => VALID_NAME.test(n)).sort(),
     unbuilt: [...unbuilt].sort(),
     built: builtFromTransform,
+    builtFrom,
     gated,
   };
 }

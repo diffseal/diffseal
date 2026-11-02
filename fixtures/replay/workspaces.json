@@ -568,6 +568,53 @@
     ],
     "notes": []
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review round 2 (held-out 3): a split part tested before the transform that states its prefix still builds its name",
+   "base": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  count        = terraform.workspace != \"default\" && split(\"-\", terraform.workspace)[1] == \"prod\" ? 1 : 0\n  name         = \"t\"\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\nresource \"aws_sqs_queue\" \"q\" {\n  count = trimprefix(terraform.workspace, \"app-\") == \"stage\" ? 1 : 0\n  name  = \"q\"\n}\n"
+   },
+   "head": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  count = trimprefix(terraform.workspace, \"app-\") == \"stage\" ? 1 : 0\n  name  = \"q\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "app",
+     "app (workspace app-prod)",
+     "app (workspace app-stage)"
+    ],
+    "changedAddresses": [
+     "delete workspace app-prod: aws_dynamodb_table.t[0]"
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review round 2 (held-out 3): a var-file named after an environment is evaluated in the workspace built from it",
+   "base": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"table\" {\n  type = string\n}\nlocals {\n  env = trimprefix(terraform.workspace, \"app-\")\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  count        = local.env == \"prod\" ? 1 : 0\n  name         = var.table\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n",
+    "app/prod.tfvars": "table = \"codes\"\n"
+   },
+   "head": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"table\" {\n  type = string\n}\nlocals {\n  env = trimprefix(terraform.workspace, \"app-\")\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  count        = local.env == \"prod\" ? 1 : 0\n  name         = var.table\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n",
+    "app/prod.tfvars": "table = \"codes-v2\"\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "app",
+     "app [app/prod.tfvars] (workspace app-prod)"
+    ],
+    "changedAddresses": [
+     "replace prod.tfvars, workspace app-prod: aws_dynamodb_table.t[0]"
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
   }
  ]
 }

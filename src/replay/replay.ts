@@ -238,6 +238,7 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
           const needed = configTouched || [...headFilesAll, ...baseFilesAll].some((f) => touchedPaths.has(f));
           const reads = needed && ((atHead && readsWorkspace(headSource, root)) || (atBase && readsWorkspace(baseSource, baseRoot)));
           let names: string[] = [];
+          const builtFrom: Record<string, string[]> = {};
           if (reads) {
             // Names the base tells apart come first, so a change cannot push them past the cap.
             const baseSurvey = atBase ? surveyWorkspaces(baseSource, baseRoot, rootVarValues(baseSource, baseRoot, baseFilesAll)) : undefined;
@@ -245,6 +246,7 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
             const baseNames = baseSurvey?.names ?? [];
             const headNames = (headSurvey?.names ?? []).filter((n) => !baseNames.includes(n));
             names = [...baseNames, ...headNames];
+            for (const x of [baseSurvey, headSurvey]) for (const [n, parts] of Object.entries(x?.builtFrom ?? {})) builtFrom[n] = [...new Set([...(builtFrom[n] ?? []), ...parts])];
             // A name derived from the workspace by removing a part (`trimprefix(terraform.workspace, "app-")`)
             // is an environment, not a workspace: never evaluated bare. When no full name can be built, the
             // environments are not evaluated, and a count or for_each that depends on them is reviewed.
@@ -276,7 +278,8 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
             if (!b) continue;
             // prod.tfvars is most likely planned in workspace prod, when the configuration has one.
             const stem = path.posix.basename(h).replace(/\.tfvars(\.json)?$/, '');
-            const ws = names.includes(stem) ? stem : undefined;
+            // Or in the workspace built from an environment of that name (`app-prod` from `prod`).
+            const ws = names.includes(stem) ? stem : names.find((n) => builtFrom[n]?.includes(stem));
             if (ws) paired.add(ws);
             out.push({ headFiles: [h], baseFiles: [b], ...(ws ? { workspace: ws } : {}) });
           }

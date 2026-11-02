@@ -480,6 +480,24 @@
      "result": "review"
     }
    }
+  },
+  {
+   "kind": "terraform",
+   "name": "review round 2 (held-out 3): a YAML scalar Terraform reads as a boolean (yes) is left unknown, so true to yes is no deletion",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  d = yamldecode(file(\"${path.module}/d.yaml\"))\n}\nresource \"aws_sqs_queue\" \"q\" {\n  for_each = { for k, v in local.d.queues : k => v if v == true }\n  name     = each.key\n}\n",
+    "r/d.yaml": "queues:\n  codes: true\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  d = yamldecode(file(\"${path.module}/d.yaml\"))\n}\nresource \"aws_sqs_queue\" \"q\" {\n  for_each = { for k, v in local.d.queues : k => v if v == true }\n  name     = each.key\n}\n",
+    "r/d.yaml": "queues:\n  codes: yes\n"
+   },
+   "expect": {
+    "gate": {
+     "resultNot": "block"
+    }
+   }
   }
  ]
 }

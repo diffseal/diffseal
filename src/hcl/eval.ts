@@ -1182,6 +1182,11 @@ function decodeYaml(text: string): unknown {
     });
     if (!plain) return undefined;
     const v = doc.toJS({ maxAliasCount: 100 });
+    // Terraform resolves plain scalars as YAML 1.1 does (`yes` and `on` are true, `010` is octal): a
+    // document that reads differently there is left unknown.
+    const old = parseAllDocuments(text, { version: '1.1', merge: false, uniqueKeys: true });
+    if (!Array.isArray(old) || old.length !== 1 || old[0].errors.length) return undefined;
+    if (JSON.stringify(old[0].toJS({ maxAliasCount: 100 })) !== JSON.stringify(v)) return undefined;
     return v === undefined ? null : v;
   } catch {
     return undefined;
