@@ -1105,6 +1105,136 @@
      "fixedMonthlyDeltaUsd": 1
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "a .tf link to a target without a .tf name is uncovered Terraform when no replayed root reads it (a root outside --roots-under)",
+   "base": {
+    "shared/config": "resource \"aws_dynamodb_table\" \"t\" {\n  name     = \"orders\"\n  hash_key = \"id\"\n}\n",
+    "a/main.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "b/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n}\n"
+   },
+   "head": {
+    "shared/config": "resource \"aws_dynamodb_table\" \"t\" {\n  name     = \"orders-v2\"\n  hash_key = \"id\"\n}\n",
+    "a/main.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "b/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n}\n"
+   },
+   "baseLinks": {
+    "a/table.tf": "../shared/config"
+   },
+   "headLinks": {
+    "a/table.tf": "../shared/config"
+   },
+   "rootsUnder": "b",
+   "expect": {
+    "replayedRoots": [],
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "outside every analyzed root",
+      "a/table.tf"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a .tf link to a target without a .tf name is uncovered Terraform when no replayed root reads it (a module no root calls)",
+   "base": {
+    "shared/lookup": "data \"aws_region\" \"r\" {}\n",
+    "m/outputs.tf": "output \"o\" {\n  value = 1\n}\n"
+   },
+   "head": {
+    "shared/lookup": "data \"aws_caller_identity\" \"c\" {}\n",
+    "m/outputs.tf": "output \"o\" {\n  value = 1\n}\n"
+   },
+   "baseLinks": {
+    "m/data.tf": "../shared/lookup"
+   },
+   "headLinks": {
+    "m/data.tf": "../shared/lookup"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "outside every analyzed root",
+      "m/data.tf"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a .tf link whose target is deleted makes the root not evaluable, not a deletion of its resources (the target directory is a deleted root of its own)",
+   "base": {
+    "shared/table.tf": "resource \"aws_dynamodb_table\" \"t\" {\n  name     = \"orders\"\n  hash_key = \"id\"\n}\n",
+    "env/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+   },
+   "head": {
+    "env/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+   },
+   "baseLinks": {
+    "env/table.tf": "../shared/table.tf"
+   },
+   "headLinks": {
+    "env/table.tf": "../shared/table.tf"
+   },
+   "expect": {
+    "changedAddresses": [
+     "delete shared: aws_dynamodb_table.t"
+    ],
+    "noProvenDelete": true,
+    "changes": [
+     {
+      "address": "env: aws_dynamodb_table.t",
+      "action": "no-op"
+     },
+     {
+      "address": "shared: aws_dynamodb_table.t",
+      "action": "delete",
+      "confidence": "likely"
+     }
+    ],
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "Root env cannot be planned",
+      "env/table.tf",
+      "Failed to read file"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a .tf link retargeted out of the repository makes the root not evaluable, not a deletion of its resources",
+   "base": {
+    "shared/table.tf": "resource \"aws_dynamodb_table\" \"t\" {\n  name     = \"orders\"\n  hash_key = \"id\"\n}\n",
+    "env/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+   },
+   "head": {
+    "shared/table.tf": "resource \"aws_dynamodb_table\" \"t\" {\n  name     = \"orders\"\n  hash_key = \"id\"\n}\n",
+    "env/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+   },
+   "baseLinks": {
+    "env/table.tf": "../shared/table.tf"
+   },
+   "headLinks": {
+    "env/table.tf": "../../../outside/table.tf"
+   },
+   "expect": {
+    "changedAddresses": [],
+    "noProvenDelete": true,
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "Root env cannot be planned",
+      "env/table.tf",
+      "Failed to read file"
+     ]
+    }
+   }
   }
  ]
 }

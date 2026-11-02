@@ -40,6 +40,7 @@ Every case has a `kind` field with one of three values:
    - Inputs:
      - `base`, `head`: whole snapshots of a repository (file path to contents). The runner commits the base, replaces the tree with the head, commits it, and replays the head commit as `diffseal replay` does, with an empty module cache.
      - `baseLinks`, `headLinks` (optional): symbolic links in each snapshot (link path to link text).
+     - `rootsUnder` (optional): replay only the roots under this path, as `diffseal replay --roots-under` does.
    - Expected outputs (`expect`):
      - The `AnalysisExpectation` fields, checked against the combined result of every replayed root. With more than one root, change addresses carry a root label.
      - `replayedRoots`: the roots replayed, in order; a root replayed with a var-file is written `root [var-file path]`.

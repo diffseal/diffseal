@@ -106,6 +106,8 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   }
   const roots: RootReplay[] = [];
   const rootItems: GateItem[] = [];
+  /** Configuration files read at the base that a root cannot read at the head (reported per root). */
+  const unreadableConfig = new Set<string>();
   const touchedPaths = new Set(changed.flatMap((c) => [c.path, c.oldPath]).filter((p): p is string => Boolean(p)).flatMap(aliases));
   if (changedDirs.size || dataChanged.length || moduleLockChanged) {
     const headRoots = discoverRoots(headSource, opts.rootsUnder);
@@ -164,6 +166,18 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
         rootItems.push({ kind: 'coverage', level: 'review', text: `Root ${root} changes its state location. Terraform then plans against the other state, which this replay does not compare; confirm the state was moved, or what the other state holds` });
       }
       let deletedResources = 0;
+      // A configuration file Terraform cannot read stops its plan with "Failed to read file": a .tf link
+      // whose target is deleted, missing or outside the repository. Read at the base, it is not deleted
+      // code: the root is not evaluable at the head, and nothing in that file is a deletion.
+      const unreadable = [...moduleClosure(headSource, root)]
+        .flatMap((d) => (loadModule(headSource, d)?.files ?? []).map((f) => path.posix.join(d, f)))
+        .filter((f) => headSource.linkProblem(f) !== undefined && baseSource.blobId(f) !== undefined)
+        .sort();
+      if (unreadable.length) {
+        for (const f of unreadable) unreadableConfig.add(f);
+        const named = unreadable.slice(0, 3).map((f) => `${f} (${headSource.linkProblem(f)})`).join('; ');
+        rootItems.push({ kind: 'coverage', level: 'review', text: `Root ${root} cannot be planned at this commit: ${named}${unreadable.length > 3 ? '; ...' : ''}. Terraform stops with "Failed to read file" when a configuration file cannot be read, so what this root plans was not checked; its resources in ${unreadable.length === 1 ? 'that file are' : 'those files are'} not shown as deletions` });
+      }
       for (const env of environments(root, baseRoot, allRoots)) {
         const { headFile, baseFile } = env;
         const touchesEnv = touchesConfig || [headFile, baseFile].some((f) => f !== undefined && touchedPaths.has(f));
@@ -173,7 +187,16 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
         const headEval = evaluateRoot(headSource, root, {}, headFile ? [headFile] : []);
         if (!touchesEnv && !dataChanged.some((p) => headEval.readFiles.has(p) || baseEval.readFiles.has(p))) continue;
         // An evaluation with no instances still carries removed, moved and prevent_destroy blocks.
-        const changes = compareEvaluations(baseEval, headEval);
+        let changes = compareEvaluations(baseEval, headEval);
+        if (unreadable.length) {
+          const lost = new Set(unreadable);
+          changes = changes.filter((c) => !(c.action === 'delete' && c.source && lost.has(c.source.file)));
+          for (const c of changes) {
+            if (c.action === 'no-op' || c.confidence !== 'proven') continue;
+            c.confidence = 'likely';
+            c.actionReason = `${unreadable[0]} cannot be read, so Terraform does not plan this root`;
+          }
+        }
         // Terraform refuses a var-file that does not parse; values that fell back to defaults prove nothing.
         // Only a tfvars file read at one commit and not the other: then defaults stand in for its values on
         // one side only. Unreadable at both (an encrypted file), both sides lack the same values.
@@ -237,10 +260,12 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     for (const d of moduleClosure(headSource, r.root)) covered.add(d);
     for (const d of moduleClosure(baseSource, r.movedFrom ?? r.root)) covered.add(d);
   }
-  const uncovered = tfChanged
-    .flatMap((c) => [c.path, c.oldPath])
-    .filter((p): p is string => Boolean(p) && /\.(tf|tofu|tf\.json)$/.test(p!))
-    .filter((p) => !aliases(p).some((a) => covered.has(path.posix.dirname(a))));
+  // A file is configuration under every name Terraform reads it by: a `.tf` link to a target without a
+  // `.tf` name (`r/table.tf -> ../shared/config`) is Terraform, named by the link.
+  const uncovered = [...new Set(tfChanged.flatMap((c) => [c.path, c.oldPath]).filter((p): p is string => Boolean(p)))]
+    .map((p) => ({ p, names: aliases(p).filter((a) => isConfigFile(path.posix.basename(a))) }))
+    .filter(({ names }) => names.length && !names.some((a) => covered.has(path.posix.dirname(a))))
+    .map(({ p, names }) => (isConfigFile(path.posix.basename(p)) ? p : `${names.slice(0, 3).join(', ')} (link to ${p})`));
   // A changed directory link that holds Terraform no replayed root reads is not checked.
   for (const p of linkedDirs) {
     const inside = [headSource, baseSource].flatMap((src) => src.allFiles().filter((f) => f.startsWith(p + '/') && isConfigFile(path.posix.basename(f))));
@@ -321,7 +346,8 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   }
   // Terraform would refuse configuration that does not parse; what the change touches is reviewed.
   const changedSet = new Set(changed.flatMap((c) => [c.path, c.oldPath]).filter((p): p is string => Boolean(p)).flatMap(aliases));
-  const broken = [...new Set(roots.flatMap((r) => r.diagnostics))].filter((d) => changedSet.has(d.slice(0, d.indexOf(':'))));
+  // A configuration link that cannot be read at the head is reviewed above, with its root.
+  const broken = [...new Set(roots.flatMap((r) => r.diagnostics))].filter((d) => changedSet.has(d.slice(0, d.indexOf(':'))) && !unreadableConfig.has(d.slice(0, d.indexOf(':'))));
   if (broken.length) {
     if (combined.gate.result === 'pass') combined.gate.result = 'review';
     addGateItem(combined.gate, { kind: 'coverage', level: 'review', text: `Terraform this change edits does not parse, so it was checked only in part (${broken.slice(0, 3).join('; ')}${broken.length > 3 ? '; ...' : ''})` });

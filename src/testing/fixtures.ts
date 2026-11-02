@@ -108,6 +108,8 @@ export interface ReplayFixtureCase {
   head: Record<string, string>;
   baseLinks?: Record<string, string>;
   headLinks?: Record<string, string>;
+  /** Replay only the roots under this path, as `diffseal replay --roots-under` does. */
+  rootsUnder?: string;
   expect: AnalysisExpectation & {
     /** Roots replayed, in order. */
     replayedRoots?: string[];
@@ -306,7 +308,7 @@ export async function runFixtureCase(tc: FixtureCase): Promise<void> {
       git('init', '-q');
       snapshot(tc.base, tc.baseLinks, 'base');
       snapshot(tc.head, tc.headLinks, 'head');
-      const r = await replayCommit({ repo: dir, head: 'HEAD', moduleCache: path.join(dir, '.no-module-cache') });
+      const r = await replayCommit({ repo: dir, head: 'HEAD', moduleCache: path.join(dir, '.no-module-cache'), ...(tc.rootsUnder ? { rootsUnder: tc.rootsUnder } : {}) });
       if (tc.expect.replayedRoots !== undefined) expect(r.roots.map((x) => (x.varFile ? `${x.root} [${x.varFile}]` : x.root))).toEqual(tc.expect.replayedRoots);
       if (tc.expect.rootDiagnostics !== undefined) expect(r.roots.flatMap((x) => x.diagnostics)).toEqual(tc.expect.rootDiagnostics);
       if (tc.expect.reasonsNotContain) {
