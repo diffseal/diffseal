@@ -7,7 +7,7 @@ import { discoverRoots, isConfigFile, loadModule, moduleClosure } from '../terra
 import { parseHcl } from '../hcl/parser.js';
 import { stableKey } from '../hcl/eval.js';
 import { evaluateRoot, readVarFile, type RootEvaluation } from '../terraform/expand.js';
-import { MAX_WORKSPACES, readsWorkspace, workspaceNames } from '../terraform/workspaces.js';
+import { MAX_WORKSPACES, readsWorkspace, surveyWorkspaces } from '../terraform/workspaces.js';
 import { inputValues, terragruntDeployments, terragruntFiles, unevaluatedChanges, type TerragruntDeployment } from '../terraform/terragrunt.js';
 import { MAX_MAPPED_ENVIRONMENTS, insideRepository, mappedEnvironments, readRootMappings } from './rootInputs.js';
 import { GitSource, changedPaths, commitInfo, type ChangedPath, type CommitInfo } from '../terraform/source.js';
@@ -240,11 +240,28 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
           let names: string[] = [];
           if (reads) {
             // Names the base tells apart come first, so a change cannot push them past the cap.
-            const baseNames = atBase ? workspaceNames(baseSource, baseRoot, rootVarValues(baseSource, baseRoot, baseFilesAll)) : [];
-            const headNames = atHead ? workspaceNames(headSource, root, rootVarValues(headSource, root, headFilesAll)).filter((n) => !baseNames.includes(n)) : [];
+            const baseSurvey = atBase ? surveyWorkspaces(baseSource, baseRoot, rootVarValues(baseSource, baseRoot, baseFilesAll)) : undefined;
+            const headSurvey = atHead ? surveyWorkspaces(headSource, root, rootVarValues(headSource, root, headFilesAll)) : undefined;
+            const baseNames = baseSurvey?.names ?? [];
+            const headNames = (headSurvey?.names ?? []).filter((n) => !baseNames.includes(n));
             names = [...baseNames, ...headNames];
-            if (!names.length) noteFor(root, `Root ${root} reads terraform.workspace, but no workspace names could be found in its configuration, so it was evaluated as workspace default only; list its workspaces under roots in .diffseal.json`);
-            else if (names.length > MAX_WORKSPACES) {
+            // A name derived from the workspace by removing a part (`trimprefix(terraform.workspace, "app-")`)
+            // is an environment, not a workspace: never evaluated bare. When no full name can be built, the
+            // environments are not evaluated, and a count or for_each that depends on them is reviewed.
+            const surveys = [baseSurvey, headSurvey].filter((x) => x !== undefined);
+            const noneBuilt = surveys.some((x) => x.transforms.length) && !surveys.some((x) => x.built);
+            const unbuilt = [...new Set(surveys.flatMap((x) => (noneBuilt ? [...x.transforms, ...x.unbuilt] : x.unbuilt)))].sort();
+            if (unbuilt.length) {
+              const how = unbuilt.slice(0, 3).join(', ') + (unbuilt.length > 3 ? ` and ${unbuilt.length - 3} more` : '');
+              const what = noneBuilt
+                ? `Root ${root} derives its environment from terraform.workspace (${how}), but no full workspace name could be built from its configuration, so those environments were not evaluated${names.length ? '' : ' and it was evaluated as workspace default only'}`
+                : `Root ${root} derives its environment from terraform.workspace (${how}), and some environments it tells apart could not be turned into full workspace names, so they were not evaluated`;
+              noteFor(root, `${what}; list its workspaces under roots in .diffseal.json`);
+              if (noneBuilt && surveys.some((x) => x.gated)) {
+                reviewFor(root, `Root ${root} creates resources depending on terraform.workspace, which it transforms (${how}), and no full workspace name could be built, so what this change does in its environments is not known; list its workspaces under roots in .diffseal.json, or review a plan`);
+              }
+            } else if (!names.length) noteFor(root, `Root ${root} reads terraform.workspace, but no workspace names could be found in its configuration, so it was evaluated as workspace default only; list its workspaces under roots in .diffseal.json`);
+            if (names.length > MAX_WORKSPACES) {
               noteFor(root, `Root ${root} tells ${names.length} workspaces apart; ${MAX_WORKSPACES} were evaluated besides default (${names.slice(0, MAX_WORKSPACES).join(', ')}), not ${names.slice(MAX_WORKSPACES).join(', ')}`);
               names = names.slice(0, MAX_WORKSPACES);
             }

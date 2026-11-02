@@ -1053,7 +1053,7 @@ function flattenUnknowns(v: unknown): Unknown[] {
 }
 
 /** Terraform regexes are RE2: translate named groups and leading inline flags; anything else invalid is an EvalError. */
-function re2(pattern: string, flags = ''): RegExp {
+export function re2(pattern: string, flags = ''): RegExp {
   // JavaScript accepts lookaround and backreferences; RE2 rejects them.
   if (/\(\?(?:[=!]|<[=!])|\\[1-9]/.test(pattern)) throw new EvalError('regular expression uses a construct unsupported by RE2');
   const classes: Record<string, string> = { alpha: 'A-Za-z', alnum: '0-9A-Za-z', digit: '0-9', lower: 'a-z', upper: 'A-Z', xdigit: '0-9A-Fa-f', word: '0-9A-Za-z_', space: '\\t\\n\\v\\f\\r ', blank: '\\t ', ascii: '\\x00-\\x7f', cntrl: '\\x00-\\x1f\\x7f', graph: '!-~', print: ' -~', punct: '!-/:-@[-`{-~' };
