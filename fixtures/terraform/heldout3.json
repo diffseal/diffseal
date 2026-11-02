@@ -238,6 +238,99 @@
      "result": "review"
     }
    }
+  },
+  {
+   "kind": "terraform",
+   "name": "a launch template whose user_data reads a YAML file that changed is not a proven no-op (source case: terraform-aws-sponsorship 3ad7d9034)",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"api_key\" {\n  type      = string\n  sensitive = true\n}\nresource \"aws_launch_template\" \"agents\" {\n  name      = \"agents\"\n  user_data = base64encode(templatefile(\"${path.module}/userdata.tpl\", {\n    api_key = var.api_key\n    acp_url = yamldecode(file(\"${path.module}/data.yaml\"))[\"ci\"][\"acp_url\"]\n  }))\n}\n",
+    "r/userdata.tpl": "#!/bin/sh\necho \"${acp_url}\" > /etc/acp\nconfigure --key \"${api_key}\"\n",
+    "r/data.yaml": "ci:\n  acp_url: http://acp/\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"api_key\" {\n  type      = string\n  sensitive = true\n}\nresource \"aws_launch_template\" \"agents\" {\n  name      = \"agents\"\n  user_data = base64encode(templatefile(\"${path.module}/userdata.tpl\", {\n    api_key = var.api_key\n    acp_url = yamldecode(file(\"${path.module}/data.yaml\"))[\"ci\"][\"acp_url\"]\n  }))\n}\n",
+    "r/userdata.tpl": "#!/bin/sh\necho \"${acp_url}\" > /etc/acp\nconfigure --key \"${api_key}\"\n",
+    "r/data.yaml": "ci:\n  acp_url: http://acp/\n  dockerhub_mirror_hostname: mirror.example\n"
+   },
+   "expect": {
+    "changedAddresses": [
+     "update aws_launch_template.agents"
+    ],
+    "changes": [
+     {
+      "address": "aws_launch_template.agents",
+      "action": "update",
+      "confidenceNot": "proven"
+     }
+    ],
+    "gate": {
+     "result": "pass"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "a template file that changed, rendered with variables not known statically, is not a proven no-op",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"settings\" {\n  type = map(string)\n}\nresource \"aws_launch_template\" \"agents\" {\n  name      = \"agents\"\n  user_data = base64encode(templatefile(\"${path.module}/userdata.tpl\", var.settings))\n}\n",
+    "r/userdata.tpl": "#!/bin/sh\necho \"${acp_url}\" > /etc/acp\nconfigure --key \"${api_key}\"\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"settings\" {\n  type = map(string)\n}\nresource \"aws_launch_template\" \"agents\" {\n  name      = \"agents\"\n  user_data = base64encode(templatefile(\"${path.module}/userdata.tpl\", var.settings))\n}\n",
+    "r/userdata.tpl": "#!/bin/sh\necho \"${acp_url}\" > /etc/acp\nconfigure --key \"${api_key}\"\necho \"mirror\" >> /etc/docker.conf\n"
+   },
+   "expect": {
+    "changedAddresses": [
+     "update aws_launch_template.agents"
+    ],
+    "changes": [
+     {
+      "address": "aws_launch_template.agents",
+      "action": "update",
+      "confidenceNot": "proven"
+     }
+    ]
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "a value that fails to evaluate at both commits, whose expression changed, is not a proven no-op",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  defs = { prod = { image = \"app:1\" } }\n}\nresource \"aws_ecs_task_definition\" \"app\" {\n  family                = \"app\"\n  container_definitions = jsonencode([{ name = \"app\", image = local.defs[terraform.workspace].image }])\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  defs = { prod = { image = \"app:1\" } }\n}\nresource \"aws_ecs_task_definition\" \"app\" {\n  family                = \"app\"\n  container_definitions = jsonencode([{ name = \"app\", image = local.defs[terraform.workspace].image, essential = true }])\n}\n"
+   },
+   "expect": {
+    "changedAddresses": [
+     "update aws_ecs_task_definition.app"
+    ],
+    "changes": [
+     {
+      "address": "aws_ecs_task_definition.app",
+      "confidenceNot": "proven"
+     }
+    ]
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "a value that fails to evaluate at both commits with the same expression is no change",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  defs = { prod = { image = \"app:1\" } }\n}\nresource \"aws_ecs_task_definition\" \"app\" {\n  family                = \"app\"\n  container_definitions = jsonencode([{ name = \"app\", image = local.defs[terraform.workspace].image }])\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  defs = { prod = { image = \"app:1\" } }\n}\nresource \"aws_ecs_task_definition\" \"app\" {\n  family                = \"app\"\n  container_definitions = jsonencode([{ name = \"app\", image = local.defs[terraform.workspace].image }])\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n}\n"
+   },
+   "expect": {
+    "changedAddresses": [
+     "create aws_sqs_queue.q"
+    ]
+   }
   }
  ]
 }

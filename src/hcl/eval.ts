@@ -115,7 +115,9 @@ export function evaluate(expr: Expr, scope: EvalScope): unknown {
   try {
     return ev(expr, scope);
   } catch (e) {
-    if (e instanceof EvalError) return new Unknown(`error: ${e.message}`);
+    // The expression is part of the identity: an error at both commits is the same value only when the
+    // expression that failed is the same.
+    if (e instanceof EvalError) return withPath(new Unknown(`error: ${e.message}`), `error:${fingerprint(expr)}`);
     throw e;
   }
 }
@@ -913,7 +915,8 @@ const STRICT: Record<string, Fn> = {
       throw new EvalError('jsondecode(): invalid JSON');
     }
   },
-  yamldecode: () => new Unknown('yamldecode is not evaluated'),
+  // Not evaluated, but the text decoded is the identity: a changed file is a changed value.
+  yamldecode: ([t]) => withPath(new Unknown('yamldecode is not evaluated', undefined, refsOf(t)), `yamldecode(${typeof t === 'string' ? keyedDigest(t) : keyOf(t)})`),
   base64encode: ([s]) => Buffer.from(toStr(s)).toString('base64'),
   base64decode: ([s]) => Buffer.from(toStr(s), 'base64').toString('utf8'),
   urlencode: ([s]) => encodeURIComponent(toStr(s)),
@@ -1407,12 +1410,19 @@ const TEMPLATE_DELIMITER = '__DIFFSEAL_TEMPLATE_END__';
 
 /** templatefile(): parse the file as an HCL template and evaluate it with only the given variables. */
 function renderTemplateFile(content: string, vars: unknown, scope: EvalScope): unknown {
-  if (isUnknown(vars)) return unknownFrom('templatefile() with unknown variables', vars);
+  // A result with unknown parts carries the template's digest: a changed template is a changed value,
+  // even where the parts it changed are not printed (a branch on an unknown condition, unknown variables).
+  const template = keyedDigest(content);
+  const withTemplate = (u: Unknown) => withPath(new Unknown(u.reason, u.pattern, u.refs), `templatefile(${template},${keyOf(u)})`);
+  if (isUnknown(vars)) return withTemplate(unknownFrom('templatefile() with unknown variables', vars));
   const bindings = vars && typeof vars === 'object' && !Array.isArray(vars) ? (vars as Record<string, unknown>) : {};
   const { body, diagnostics } = parseHcl(`t = <<${TEMPLATE_DELIMITER}\n${content.endsWith('\n') ? content : content + '\n'}${TEMPLATE_DELIMITER}\n`);
   const attr = body.attributes[0];
-  if (!attr || diagnostics.length) return new Unknown('templatefile(): template could not be parsed');
+  if (!attr || diagnostics.length) return withTemplate(new Unknown('templatefile(): template could not be parsed'));
   const v = evaluate(attr.expr, { root: (n) => bindings[n], readFile: scope.readFile });
+  if (isUnknown(v)) return withTemplate(v);
+  // Sensitive variables make the result sensitive: the digest of what it holds then carries the template.
+  if (isRedacted(v) && v.revealed && isUnknown(v.revealed.value)) return redact(withTemplate(v.revealed.value));
   return typeof v === 'string' && !content.endsWith('\n') ? v.replace(/\n$/, '') : v;
 }
 
