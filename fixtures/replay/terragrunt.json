@@ -263,7 +263,7 @@
     "env/cloud/app/terragrunt.hcl": "terraform {\n  source = \"../../../modules//app\"\n}\ninclude \"root\" {\n  path = find_in_parent_folders(\"root.hcl\")\n}\nlocals {\n  prefix = \"forms\"\n}\ninputs = {\n  name = \"${local.prefix}-app\"\n}\n"
    },
    "head": {
-    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"retention\" {\n  type    = number\n  default = 14\n}\nvariable \"subnet_ids\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name              = var.name\n  retention_in_days = var.retention\n  skip_destroy      = false\n}\n",
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"retention\" {\n  type    = number\n  default = 14\n}\nvariable \"subnet_ids\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name              = var.name\n  retention_in_days = var.retention + 1\n}\n",
     "env/root.hcl": "locals {\n  region = \"ca-central-1\"\n}\ninputs = {\n  region    = local.region\n  retention = 30\n}\n",
     "env/cloud/app/terragrunt.hcl": "terraform {\n  source = \"../../../modules//app\"\n}\ninclude \"root\" {\n  path = find_in_parent_folders(\"root.hcl\")\n}\nlocals {\n  prefix = \"forms\"\n}\ninputs = {\n  name = \"${local.prefix}-app\"\n}\n"
    },
@@ -271,6 +271,10 @@
     "replayedRoots": [
      "modules/app",
      "modules/app (terragrunt env/cloud/app/terragrunt.hcl)"
+    ],
+    "changedAddresses": [
+     "update env/cloud/app: aws_cloudwatch_log_group.g",
+     "update modules/app/(no inputs): aws_cloudwatch_log_group.g"
     ]
    }
   }

@@ -183,7 +183,7 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
      * one per other workspace name the configuration tells apart. A var-file added or deleted is a changed
      * input, reviewed. A Terragrunt configuration that runs the root adds one evaluation with its inputs.
      */
-    const environments = (root: string, baseRoot: string, rootsSet: Set<string>) => {
+    const environments = (root: string, baseRoot: string, rootsSet: Set<string>, configTouched: boolean) => {
       const out: Variant[] = [];
       const both = Boolean(loadModule(headSource, root) && loadModule(baseSource, baseRoot));
       const mapped = both ? mappedEnvironments(mappings, root) : undefined;
@@ -206,12 +206,14 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
       } else {
         out.push({ headFiles: [], baseFiles: [] });
         if (both) {
-          // Workspaces the configuration tells apart, read from both commits.
-          const reads = readsWorkspace(headSource, root) || readsWorkspace(baseSource, baseRoot);
+          // Workspaces the configuration tells apart, read from both commits. Only needed when an evaluation
+          // in a workspace can be compared: the configuration or one of the root's var-files changed.
+          const headFilesAll = varFilesOf(headSource, root, rootsSet).filter((f) => !mappedFiles.has(f));
+          const baseFilesAll = varFilesOf(baseSource, baseRoot, rootsSet).filter((f) => !mappedFiles.has(f));
+          const needed = configTouched || [...headFilesAll, ...baseFilesAll].some((f) => touchedPaths.has(f));
+          const reads = needed && (readsWorkspace(headSource, root) || readsWorkspace(baseSource, baseRoot));
           let names: string[] = [];
           if (reads) {
-            const headFilesAll = varFilesOf(headSource, root, rootsSet).filter((f) => !mappedFiles.has(f));
-            const baseFilesAll = varFilesOf(baseSource, baseRoot, rootsSet).filter((f) => !mappedFiles.has(f));
             names = [...new Set([
               ...workspaceNames(headSource, root, rootVarValues(headSource, root, headFilesAll)),
               ...workspaceNames(baseSource, baseRoot, rootVarValues(baseSource, baseRoot, baseFilesAll)),
@@ -223,10 +225,9 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
             }
           }
           const paired = new Set<string>();
-          const baseFiles = varFilesOf(baseSource, baseRoot, rootsSet).filter((f) => !mappedFiles.has(f));
-          for (const h of varFilesOf(headSource, root, rootsSet).filter((f) => !mappedFiles.has(f))) {
+          for (const h of headFilesAll) {
             const same = path.posix.join(baseRoot, path.posix.relative(root, h));
-            const b = baseFiles.includes(same) ? same : baseFiles.find((x) => renamedTo.get(x) === h);
+            const b = baseFilesAll.includes(same) ? same : baseFilesAll.find((x) => renamedTo.get(x) === h);
             if (!b) continue;
             // prod.tfvars is most likely planned in workspace prod, when the configuration has one.
             const stem = path.posix.basename(h).replace(/\.tfvars(\.json)?$/, '');
@@ -300,7 +301,8 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
         const named = unreadable.slice(0, 3).map((f) => `${f} (${headSource.linkProblem(f)})`).join('; ');
         rootItems.push({ kind: 'coverage', level: 'review', text: `Root ${root} cannot be planned at this commit: ${named}${unreadable.length > 3 ? '; ...' : ''}. Terraform stops with "Failed to read file" when a configuration file cannot be read, so what this root plans was not checked; what ${unreadable.length === 1 ? 'that file declares or calls is' : 'those files declare or call is'} not shown as deleted` });
       }
-      for (const env of environments(root, baseRoot, allRoots)) {
+      const readsData = dataChanged.length > 0 && readsFiles(closure, headSource, baseSource);
+      for (const env of environments(root, baseRoot, allRoots, touchesConfig || readsData)) {
         const { headFiles, baseFiles, workspace, tg } = env;
         // A Terragrunt configuration may run another module at the base.
         const envBaseRoot = tg ? tg.baseRoot : baseRoot;
@@ -465,7 +467,9 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   const baseTg = terragruntFiles(baseSource);
   const tgChanged = inputPaths.filter((p) => headTg.has(p) || baseTg.has(p) || /(^|\/)terragrunt\.hcl$/.test(p));
   const tgLines: string[] = [];
-  for (const f of tgChanged) {
+  // A configuration's lines are given once, under its own file when that changed too.
+  const said = new Set<string>();
+  for (const f of [...tgChanged].sort((a, b) => Number(/(^|\/)terragrunt\.hcl$/.test(b)) - Number(/(^|\/)terragrunt\.hcl$/.test(a)))) {
     const reading = (m: Map<string, TerragruntDeployment>) => [...m.values()].filter((d) => d.file === f || d.includes.includes(f));
     const keys = [...new Set([...reading(headDeployments), ...reading(baseDeployments)].map((d) => d.file))].sort();
     const why: string[] = [];
@@ -481,7 +485,8 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
       // Outside --roots-under: not replayed, as any root there.
       if (!inScope(head) && (!base || !inScope(base))) continue;
       const declared = (src: GitSource, d?: TerragruntDeployment) => new Set(d?.moduleDir ? loadModule(src, d.moduleDir)?.variables.keys() ?? [] : []);
-      const lines = unevaluatedChanges(base, head, { head: declared(headSource, head), base: declared(baseSource, base) });
+      const lines = unevaluatedChanges(base, head, { head: declared(headSource, head), base: declared(baseSource, base) }).filter((l) => !said.has(`${k}\0${l}`));
+      for (const l of lines) said.add(`${k}\0${l}`);
       why.push(...lines.map((l) => where + l));
       if (!lines.length && !roots.some((r) => r.terragrunt === k)) why.push(`${where}${head.moduleDir ?? k} was not replayed with its inputs`);
     }
@@ -807,9 +812,11 @@ export function combineRoots(roots: RootReplay[]): AnalysisResult {
   const variant = (r: RootReplay) => Boolean(r.varFiles?.length || r.workspace || r.terragrunt || r.mapped);
   const withEnvs = new Set(roots.filter(variant).map((r) => r.root));
   const withVarFiles = new Set(roots.filter((r) => r.varFiles?.length).map((r) => r.root));
+  const withWorkspaces = new Set(roots.filter((r) => r.workspace || r.mapped).map((r) => r.root));
+  const bare = (root: string) => (withVarFiles.has(root) ? '(no var-file)' : withWorkspaces.has(root) ? '(workspace default)' : '(no inputs)');
   const name = (r: RootReplay) => {
     if (r.terragrunt) return path.posix.dirname(r.terragrunt);
-    if (!variant(r)) return withEnvs.has(r.root) ? `${r.root}/${withVarFiles.has(r.root) ? '(no var-file)' : '(workspace default)'}` : r.root;
+    if (!variant(r)) return withEnvs.has(r.root) ? `${r.root}/${bare(r.root)}` : r.root;
     const parts = [...(r.varFiles?.length ? [varFileNames(r).join(' + ')] : []), ...(r.workspace ? [`workspace ${r.workspace}`] : [])];
     return `${r.root}/${parts.length ? parts.join(', ') : '(workspace default)'}`;
   };

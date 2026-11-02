@@ -24,6 +24,9 @@ interface Parsed {
   calls: Array<{ childDir?: string; args: Map<string, Expr> }>;
 }
 
+/** Modules parsed for their expressions, per snapshot: many roots share the same modules. */
+const parseCache = new WeakMap<FileSource, Map<string, Parsed>>();
+
 /** True when any module of the root's configuration reads `terraform.workspace`. */
 export function readsWorkspace(source: FileSource, root: string): boolean {
   for (const dir of moduleClosure(source, root)) {
@@ -44,7 +47,14 @@ export function readsWorkspace(source: FileSource, root: string): boolean {
 export function workspaceNames(source: FileSource, root: string, rootVarValues: (name: string) => unknown[] = () => []): string[] {
   const dirs = [...moduleClosure(source, root)];
   const parsed = new Map<string, Parsed>();
+  let perSource = parseCache.get(source);
+  if (!perSource) parseCache.set(source, (perSource = new Map()));
   for (const dir of dirs) {
+    const known = perSource.get(dir);
+    if (known) {
+      parsed.set(dir, known);
+      continue;
+    }
     const mod = loadModule(source, dir);
     if (!mod) continue;
     const p: Parsed = { dir, bodies: [], locals: new Map(), outputs: new Map(), variables: new Map(), calls: [] };
@@ -63,6 +73,7 @@ export function workspaceNames(source: FileSource, root: string, rootVarValues: 
       }
     }
     parsed.set(dir, p);
+    perSource.set(dir, p);
   }
   if (![...parsed.values()].length) return [];
   const callOf = (p: Parsed, name: string) => {
