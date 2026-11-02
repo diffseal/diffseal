@@ -134,6 +134,142 @@
           "result": "pass"
         }
       }
+    },
+    {
+      "kind": "terraform",
+      "name": "two unknown values that differ only in the data source behind them are an unknown update, not a possible replacement (source case: storage-service 5c47edf85, a backend role change)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"terraform_remote_state\" \"accounts\" {\n  backend = \"s3\"\n  config = {\n    bucket   = \"state\"\n    key      = \"accounts.tfstate\"\n    role_arn = \"arn:aws:iam::111111111111:role/old\"\n  }\n}\nresource \"aws_security_group\" \"egress\" {\n  name   = \"egress\"\n  vpc_id = data.terraform_remote_state.accounts.outputs.vpc_id\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"terraform_remote_state\" \"accounts\" {\n  backend = \"s3\"\n  config = {\n    bucket   = \"state\"\n    key      = \"accounts.tfstate\"\n    role_arn = \"arn:aws:iam::111111111111:role/new\"\n  }\n}\nresource \"aws_security_group\" \"egress\" {\n  name   = \"egress\"\n  vpc_id = data.terraform_remote_state.accounts.outputs.vpc_id\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "aws_security_group.egress",
+            "action": "update",
+            "confidence": "unknown",
+            "actionReasonContains": "vpc_id"
+          }
+        ],
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "two unknown values that differ only in the expression behind them are an unknown update (source case: cztack 50192f96a, a role name)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"prefix\" {}\nresource \"aws_iam_role\" \"r\" {\n  name               = replace(var.prefix, \"_\", \"-\")\n  assume_role_policy = \"{}\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"prefix\" {}\nvariable \"suffix\" {\n  default = \"\"\n}\nlocals {\n  base = \"${var.prefix}${var.suffix}\"\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = replace(local.base, \"_\", \"-\")\n  assume_role_policy = \"{}\"\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "aws_iam_role.r",
+            "action": "update",
+            "confidence": "unknown"
+          }
+        ],
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "two unknown values with the same known text around them that differ only in origin are an unknown update (source case: forms-terraform 5e27579a2)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_ssm_parameter\" \"env\" {\n  name = \"/env\"\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"gc-forms-api-${data.aws_ssm_parameter.env.value}-pipeline\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_ssm_parameter\" \"environment\" {\n  name = \"/config/env\"\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"gc-forms-api-${data.aws_ssm_parameter.environment.value}-pipeline\"\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "aws_s3_bucket.b",
+            "action": "update",
+            "confidence": "unknown"
+          }
+        ],
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "an unknown value that now reads a different resource is still a possible replacement",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_vpc\" \"a\" {\n  cidr_block = \"10.0.0.0/16\"\n}\nresource \"aws_vpc\" \"b\" {\n  cidr_block = \"10.1.0.0/16\"\n}\nresource \"aws_security_group\" \"s\" {\n  name   = \"s\"\n  vpc_id = aws_vpc.a.id\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_vpc\" \"a\" {\n  cidr_block = \"10.0.0.0/16\"\n}\nresource \"aws_vpc\" \"b\" {\n  cidr_block = \"10.1.0.0/16\"\n}\nresource \"aws_security_group\" \"s\" {\n  name   = \"s\"\n  vpc_id = aws_vpc.b.id\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "aws_security_group.s",
+            "action": "replace",
+            "confidence": "likely"
+          }
+        ],
+        "gate": {
+          "result": "review"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "an unknown value whose expression changed and whose resource is replaced is still a possible replacement",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_vpc\" \"a\" {\n  cidr_block = \"10.0.0.0/16\"\n}\nresource \"aws_security_group\" \"s\" {\n  name   = \"s\"\n  vpc_id = aws_vpc.a.id\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_vpc\" \"a\" {\n  cidr_block = \"10.2.0.0/16\"\n}\nresource \"aws_security_group\" \"s\" {\n  name   = \"s\"\n  vpc_id = one([aws_vpc.a.id])\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "aws_security_group.s",
+            "action": "replace",
+            "confidence": "likely"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "two unknown values whose known text differs are still a possible replacement",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"env\" {}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"gc-forms-api-${var.env}-pipeline\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"env\" {}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"gc-forms-app-${var.env}-pipeline\"\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "aws_s3_bucket.b",
+            "action": "replace",
+            "confidence": "likely"
+          }
+        ],
+        "gate": {
+          "result": "review"
+        }
+      }
     }
   ]
 }

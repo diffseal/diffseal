@@ -14,14 +14,14 @@
       },
       "expect": {
         "changedAddresses": [
-          "replace aws_instance.web"
+          "update aws_instance.web"
         ],
         "changes": [
           {
             "address": "aws_instance.web",
-            "action": "replace",
-            "confidence": "likely",
-            "actionReasonContains": "replace_because_cannot_update",
+            "action": "update",
+            "confidence": "unknown",
+            "actionReasonContains": "only the expression or data source behind it changed",
             "after": {
               "instance_type": "t3.micro"
             }
@@ -282,14 +282,14 @@
       },
       "expect": {
         "changedAddresses": [
-          "replace aws_security_group_rule.s"
+          "update aws_security_group_rule.s"
         ],
         "changes": [
           {
             "address": "aws_security_group_rule.s",
-            "action": "replace",
-            "confidence": "likely",
-            "actionReasonContains": "replace_because_cannot_update",
+            "action": "update",
+            "confidence": "unknown",
+            "actionReasonContains": "only the expression or data source behind it changed",
             "after": {
               "type": "ingress",
               "security_group_id": "sg-1",

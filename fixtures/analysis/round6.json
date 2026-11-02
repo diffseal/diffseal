@@ -60,7 +60,7 @@
     },
     {
       "kind": "terraform",
-      "name": "round 6: a ForceNew argument that is sensitive and not known is a likely replacement, not a proven one",
+      "name": "round 6: a ForceNew argument that is sensitive and not known is not a proven replacement: unknown at both commits, it is an unknown update",
       "root": "r",
       "base": {
         "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"db_user\" {\n  sensitive = true\n}\nvariable \"admin_user\" {\n  sensitive = true\n}\nresource \"aws_rds_cluster\" \"c\" {\n  cluster_identifier = \"c\"\n  master_username    = var.db_user\n}\n"
@@ -70,14 +70,14 @@
       },
       "expect": {
         "changedAddresses": [
-          "replace aws_rds_cluster.c"
+          "update aws_rds_cluster.c"
         ],
         "changes": [
           {
             "address": "aws_rds_cluster.c",
-            "action": "replace",
-            "confidence": "likely",
-            "actionReasonContains": "replace_because_cannot_update",
+            "action": "update",
+            "confidence": "unknown",
+            "actionReasonContains": "only the expression or data source behind it changed",
             "after": {
               "cluster_identifier": "c"
             }

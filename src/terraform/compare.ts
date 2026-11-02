@@ -1,4 +1,4 @@
-import { isRedacted, isUnknown, reveal, type Action, type Attrs, type ResourceChange } from '../core/model.js';
+import { UNKNOWN_PART, isRedacted, isUnknown, reveal, type Action, type Attrs, type ResourceChange } from '../core/model.js';
 import { containsUnknown, redact, stableKey } from '../hcl/eval.js';
 import type { ReplaceTrigger, RootEvaluation, StaticInstance } from './expand.js';
 import { CONDITIONAL_REPLACE, NESTED_REPLACE, REPLACE_ON_CHANGE, REPLACE_SETS } from './replaceCatalog.js';
@@ -132,6 +132,21 @@ export function compareEvaluations(base: RootEvaluation | undefined, head: RootE
     const twin = created.find((c) => c.type === b.type && c.mode === b.mode && sameBody(c.after, b.attrs));
     if (twin) change.actionReason = `looks like a rename to ${twin.address} without a moved block; add moved { from = ${addr}, to = ${twin.address} } to keep it`;
     out.push(change);
+  }
+
+  // A possible replacement whose forcing arguments are unknown at both commits and differ only in the
+  // expression or data source behind them is not likely: the value most often stays the same. It is an
+  // unknown update, unless what the value reads is a resource this change creates, replaces or deletes.
+  const touched = new Set(out.filter((c) => c.action === 'create' || c.action === 'replace' || c.action === 'delete').map((c) => configAddressOf(c.address)));
+  for (const c of out) {
+    const refs = UNKNOWN_ORIGIN.get(c);
+    if (!refs || refs.some((r) => touched.has(r))) continue;
+    const keys = (c.replacePaths ?? []).map((p) => p[0]);
+    c.action = 'update';
+    c.confidence = 'unknown';
+    c.actionReason = `${keys.join(', ')} ${keys.length === 1 ? 'is' : 'are'} not known statically at either commit, and only the expression or data source behind ${keys.length === 1 ? 'it' : 'them'} changed, so whether ${keys.length === 1 ? 'it changes' : 'they change'} is not known`;
+    delete c.replacePaths;
+    delete c.replaceOrder;
   }
 
   // A replacement gives new computed values, which can replace a dependent, which can trigger the next.
@@ -329,6 +344,41 @@ function sameBody(a: Attrs | null, b: Attrs | null): boolean {
   return stableKey(strip(a)) === stableKey(strip(b));
 }
 
+/** Possible replacements that differ only in the origin of unknown values -> the managed resources those values read. */
+const UNKNOWN_ORIGIN = new WeakMap<ResourceChange, string[]>();
+
+const configAddressOf = (a: string) => a.replace(/\[("([^"\\]|\\.)*"|[^\]]*)\]/g, '');
+const managedRefs = (u: { refs: string[] }) => [...new Set(u.refs.filter((r) => !/(^|\.)data\./.test(r)).map(configAddressOf))].sort();
+
+/**
+ * The managed resources read by two values that differ only where both are unknown, with the same
+ * known text around the unknown parts and reading the same managed resources; undefined when they
+ * differ in anything known, or when one side is known where the other is not.
+ */
+function unknownOriginOnly(before: unknown, after: unknown): string[] | undefined {
+  const b = reveal(before);
+  const a = reveal(after);
+  if (isRedacted(b) || isRedacted(a)) return undefined;
+  if (isUnknown(b) || isUnknown(a)) {
+    if (!isUnknown(b) || !isUnknown(a)) return undefined;
+    // No pattern, or `{?}` alone, says nothing about the value's text.
+    const text = (u: typeof b) => (u.pattern === undefined || u.pattern === UNKNOWN_PART ? undefined : u.pattern);
+    if (text(b) !== text(a)) return undefined;
+    const rb = managedRefs(b);
+    const ra = managedRefs(a);
+    return rb.join(',') === ra.join(',') ? ra : undefined;
+  }
+  const merge = (parts: Array<string[] | undefined>) => (parts.some((x) => x === undefined) ? undefined : [...new Set(parts.flat() as string[])]);
+  if (Array.isArray(b) && Array.isArray(a)) return b.length === a.length ? merge(b.map((x, i) => unknownOriginOnly(x, a[i]))) : undefined;
+  const obj = (x: unknown): x is Attrs => x !== null && typeof x === 'object' && !Array.isArray(x);
+  if (obj(b) && obj(a)) {
+    const kb = Object.keys(b).sort();
+    if (kb.join('\u0000') !== Object.keys(a).sort().join('\u0000')) return undefined;
+    return merge(kb.map((k) => unknownOriginOnly(b[k], a[k])));
+  }
+  return stableKey(b) === stableKey(a) ? [] : undefined;
+}
+
 function toChange(i: StaticInstance, action: Action, before: Attrs | null, after: Attrs | null): ResourceChange {
   return {
     address: i.address,
@@ -415,7 +465,7 @@ function diffInstance(b: StaticInstance, a: StaticInstance): ResourceChange {
       }
       return knownDiffer(was, now);
     });
-    return {
+    const change: ResourceChange = {
       ...base,
       action: 'replace',
       replacePaths: forcing.map((k) => [k]),
@@ -423,6 +473,12 @@ function diffInstance(b: StaticInstance, a: StaticInstance): ResourceChange {
       confidence: certain.length ? 'proven' : 'likely',
       actionReason: 'replace_because_cannot_update',
     };
+    // Every forcing argument unknown at both commits, differing only in where the unknown comes from.
+    if (!certain.length && !forcing.some((k) => possible.has(k) || NESTED_REPLACE[a.type]?.[k])) {
+      const origins = forcing.map((k) => unknownOriginOnly(masked(b.attrs[k], paths(k)), masked(a.attrs[k], paths(k))));
+      if (origins.every((o) => o !== undefined)) UNKNOWN_ORIGIN.set(change, [...new Set(origins.flat() as string[])]);
+    }
+    return change;
   }
   const conditional = changed.filter((k) => CONDITIONAL_REPLACE[a.type]?.includes(k));
   if (conditional.length) {
