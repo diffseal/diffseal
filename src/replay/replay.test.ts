@@ -7,7 +7,9 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { renderMarkdown } from '../report/markdown.js';
-import { combineRoots, replayCommit, shortRootLabels } from './replay.js';
+import { combineRoots, replayCommit, rootNames, shortRootLabels } from './replay.js';
+import { renderReplay } from './render.js';
+import { changeRecord } from '../evidence/changeRecord.js';
 
 describe('combineRoots', () => {
   const result = () => analyze(readPlan(plan([rc('module.svc.aws_sns_topic.t', 'aws_sns_topic', ['create'], { name: 't' })])));
@@ -94,6 +96,25 @@ describe('replayCommit', () => {
     expect(result.combined.findings.find((f) => f.ruleId === 'network.open-ingress')?.accepted).toBeUndefined();
     expect(result.combined.gate.result).toBe('review');
     expect(result.combined.gate.reasons.join(' ')).toContain('.diffseal.json');
+    r.done();
+  });
+
+  test('the report, the root names and the change record say which workspace a result came from', async () => {
+    const r = repo();
+    const tf = (name: string) => `terraform {\n  backend "s3" {}\n}\nresource "aws_sqs_queue" "q" {\n  count = terraform.workspace == "prod" ? 1 : 0\n  name  = "${name}"\n}\nresource "aws_s3_bucket" "b" {\n  bucket = "logs-\${terraform.workspace}"\n}\n`;
+    r.commit({ 'app/main.tf': tf('jobs'), 'other/main.tf': 'terraform {\n  backend "s3" {}\n}\nresource "aws_s3_bucket" "o" {\n  bucket = "o-${terraform.workspace}"\n}\n' }, 'base');
+    r.commit({ 'app/main.tf': tf('jobs-v2'), 'other/main.tf': 'terraform {\n  backend "s3" {}\n}\nresource "aws_s3_bucket" "o" {\n  bucket = "o-${terraform.workspace}"\n  tags   = { a = "b" }\n}\n' }, 'rename');
+    const result = await replayCommit({ repo: r.dir, head: 'HEAD' });
+    expect(rootNames(result.roots)).toEqual(['app', 'app (workspace prod)', 'other']);
+    const report = renderReplay(result);
+    expect(report).toContain('app/workspace prod: `aws_sqs_queue.q[0]`');
+    expect(report).toContain('Roots: app, app (workspace prod), other.');
+    expect(report).toContain('Root other reads terraform.workspace, but no workspace names could be found');
+    const record = changeRecord({ commit: result.commit, base: result.base, roots: rootNames(result.roots), result: result.combined, engine: { version: 'x', replaceCatalog: 'y' }, replayNotes: result.notes });
+    expect(record.roots).toContain('app (workspace prod)');
+    expect(record.resources.map((x) => x.address)).toContain('app/workspace prod: aws_sqs_queue.q[0]');
+    expect(record.notes.join(' ')).toContain('evaluated as workspace default only');
+    expect(result.roots.find((x) => x.workspace)?.workspace).toBe('prod');
     r.done();
   });
 

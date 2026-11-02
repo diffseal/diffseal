@@ -1,0 +1,278 @@
+{
+ "suite": "replay/terragrunt",
+ "description": "Terragrunt inputs, read statically: literal values and simple locals, a local terraform source and an included parent. Nothing is run; what is not evaluated is reviewed by name.",
+ "cases": [
+  {
+   "kind": "replay",
+   "name": "a Terragrunt input with a literal value is evaluated with the module it runs: a new name replaces the log group, with no coverage review",
+   "base": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"retention\" {\n  type    = number\n  default = 14\n}\nvariable \"subnet_ids\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name              = var.name\n  retention_in_days = var.retention\n}\n",
+    "env/root.hcl": "locals {\n  region = \"ca-central-1\"\n}\ninputs = {\n  region    = local.region\n  retention = 30\n}\n",
+    "env/cloud/app/terragrunt.hcl": "terraform {\n  source = \"../../../modules//app\"\n}\ninclude \"root\" {\n  path = find_in_parent_folders(\"root.hcl\")\n}\nlocals {\n  prefix = \"forms\"\n}\ninputs = {\n  name = \"${local.prefix}-app\"\n}\n"
+   },
+   "head": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"retention\" {\n  type    = number\n  default = 14\n}\nvariable \"subnet_ids\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name              = var.name\n  retention_in_days = var.retention\n}\n",
+    "env/root.hcl": "locals {\n  region = \"ca-central-1\"\n}\ninputs = {\n  region    = local.region\n  retention = 30\n}\n",
+    "env/cloud/app/terragrunt.hcl": "terraform {\n  source = \"../../../modules//app\"\n}\ninclude \"root\" {\n  path = find_in_parent_folders(\"root.hcl\")\n}\nlocals {\n  prefix = \"forms\"\n}\ninputs = {\n  name = \"${local.prefix}-app-v2\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "modules/app (terragrunt env/cloud/app/terragrunt.hcl)"
+    ],
+    "changes": [
+     {
+      "address": "aws_cloudwatch_log_group.g",
+      "action": "replace",
+      "confidence": "proven",
+      "after": {
+       "name": "forms-app-v2",
+       "retention_in_days": 30
+      }
+     }
+    ],
+    "gate": {
+     "result": "block"
+    },
+    "reasonsNotContain": [
+     "static replay does not evaluate"
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "an input of the parent found by find_in_parent_folders reaches every configuration that includes it",
+   "base": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"retention\" {\n  type    = number\n  default = 14\n}\nvariable \"subnet_ids\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name              = var.name\n  retention_in_days = var.retention\n}\n",
+    "env/root.hcl": "locals {\n  region = \"ca-central-1\"\n}\ninputs = {\n  region    = local.region\n  retention = 30\n}\n",
+    "env/cloud/app/terragrunt.hcl": "terraform {\n  source = \"../../../modules//app\"\n}\ninclude \"root\" {\n  path = find_in_parent_folders(\"root.hcl\")\n}\nlocals {\n  prefix = \"forms\"\n}\ninputs = {\n  name = \"${local.prefix}-app\"\n}\n",
+    "env/cloud/api/terragrunt.hcl": "terraform {\n  source = \"../../../modules//app\"\n}\ninclude \"root\" {\n  path = find_in_parent_folders(\"root.hcl\")\n}\nlocals {\n  prefix = \"forms\"\n}\ninputs = {\n  name = \"${local.prefix}-api\"\n}\n"
+   },
+   "head": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"retention\" {\n  type    = number\n  default = 14\n}\nvariable \"subnet_ids\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name              = var.name\n  retention_in_days = var.retention\n}\n",
+    "env/root.hcl": "locals {\n  region = \"ca-central-1\"\n}\ninputs = {\n  region    = local.region\n  retention = 90\n}\n",
+    "env/cloud/app/terragrunt.hcl": "terraform {\n  source = \"../../../modules//app\"\n}\ninclude \"root\" {\n  path = find_in_parent_folders(\"root.hcl\")\n}\nlocals {\n  prefix = \"forms\"\n}\ninputs = {\n  name = \"${local.prefix}-app\"\n}\n",
+    "env/cloud/api/terragrunt.hcl": "terraform {\n  source = \"../../../modules//app\"\n}\ninclude \"root\" {\n  path = find_in_parent_folders(\"root.hcl\")\n}\nlocals {\n  prefix = \"forms\"\n}\ninputs = {\n  name = \"${local.prefix}-api\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "modules/app (terragrunt env/cloud/api/terragrunt.hcl)",
+     "modules/app (terragrunt env/cloud/app/terragrunt.hcl)"
+    ],
+    "changedAddresses": [
+     "update api: aws_cloudwatch_log_group.g",
+     "update app: aws_cloudwatch_log_group.g"
+    ],
+    "gate": {
+     "result": "pass"
+    },
+    "reasonsNotContain": [
+     "static replay does not evaluate"
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "an input that reads dependency outputs is reviewed, naming the dependency (source case: forms-terraform f42289ea)",
+   "base": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"retention\" {\n  type    = number\n  default = 14\n}\nvariable \"subnet_ids\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name              = var.name\n  retention_in_days = var.retention\n}\n",
+    "env/root.hcl": "locals {\n  region = \"ca-central-1\"\n}\ninputs = {\n  region    = local.region\n  retention = 30\n}\n",
+    "env/cloud/app/terragrunt.hcl": "terraform {\n  source = \"../../../modules//app\"\n}\ndependency \"network\" {\n  config_path = \"../network\"\n  mock_outputs = { private_subnet_ids = [\"a\"] }\n}\ninclude \"root\" {\n  path = find_in_parent_folders(\"root.hcl\")\n}\nlocals {\n  prefix = \"forms\"\n}\ninputs = {\n  name = \"${local.prefix}-app\"\n}\n"
+   },
+   "head": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"retention\" {\n  type    = number\n  default = 14\n}\nvariable \"subnet_ids\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name              = var.name\n  retention_in_days = var.retention\n}\n",
+    "env/root.hcl": "locals {\n  region = \"ca-central-1\"\n}\ninputs = {\n  region    = local.region\n  retention = 30\n}\n",
+    "env/cloud/app/terragrunt.hcl": "terraform {\n  source = \"../../../modules//app\"\n}\ndependency \"network\" {\n  config_path = \"../network\"\n  mock_outputs = { private_subnet_ids = [\"b\"] }\n}\ninclude \"root\" {\n  path = find_in_parent_folders(\"root.hcl\")\n}\nlocals {\n  prefix = \"forms\"\n}\ninputs = {\n  name = \"${local.prefix}-app\"\n  subnet_ids = dependency.network.outputs.private_subnet_ids\n}\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "Terragrunt configuration env/cloud/app/terragrunt.hcl (input subnet_ids reads dependency.network outputs)"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "an input built from get_env is not known: its change is reviewed, naming get_env, and nothing is read from the environment",
+   "base": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"retention\" {\n  type    = number\n  default = 14\n}\nvariable \"subnet_ids\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name              = var.name\n  retention_in_days = var.retention\n}\n",
+    "env/cloud/app/terragrunt.hcl": "terraform {\n  source = \"../../../modules//app\"\n}\nlocals {\n  env = get_env(\"APP_ENV\", \"development\")\n}\ninputs = {\n  name = \"forms-${local.env}\"\n}\n"
+   },
+   "head": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"retention\" {\n  type    = number\n  default = 14\n}\nvariable \"subnet_ids\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name              = var.name\n  retention_in_days = var.retention\n}\n",
+    "env/cloud/app/terragrunt.hcl": "terraform {\n  source = \"../../../modules//app\"\n}\nlocals {\n  env = get_env(\"APP_ENV\", \"development\")\n}\ninputs = {\n  name = \"forms-${local.env}-v2\"\n}\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "input name reads get_env(\"APP_ENV\")"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a changed generate block is reviewed by name",
+   "base": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"retention\" {\n  type    = number\n  default = 14\n}\nvariable \"subnet_ids\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name              = var.name\n  retention_in_days = var.retention\n}\n",
+    "env/cloud/app/terragrunt.hcl": "terraform {\n  source = \"../../../modules//app\"\n}\ngenerate \"provider\" {\n  path      = \"provider.tf\"\n  if_exists = \"overwrite\"\n  contents  = \"provider \\\"aws\\\" { region = \\\"ca-central-1\\\" }\"\n}\ninputs = {\n  name = \"forms-app\"\n}\n"
+   },
+   "head": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"retention\" {\n  type    = number\n  default = 14\n}\nvariable \"subnet_ids\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name              = var.name\n  retention_in_days = var.retention\n}\n",
+    "env/cloud/app/terragrunt.hcl": "terraform {\n  source = \"../../../modules//app\"\n}\ngenerate \"provider\" {\n  path      = \"provider.tf\"\n  if_exists = \"overwrite\"\n  contents  = \"provider \\\"aws\\\" { region = \\\"us-east-1\\\" }\"\n}\ninputs = {\n  name = \"forms-app\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "modules/app (terragrunt env/cloud/app/terragrunt.hcl)"
+    ],
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "generate \"provider\" changes, and Diffseal does not evaluate it"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "run_cmd is never run: its input is reviewed by name",
+   "base": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"retention\" {\n  type    = number\n  default = 14\n}\nvariable \"subnet_ids\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name              = var.name\n  retention_in_days = var.retention\n}\n",
+    "env/cloud/app/terragrunt.hcl": "terraform {\n  source = \"../../../modules//app\"\n}\nlocals {\n  id = run_cmd(\"sh\", \"-c\", \"touch ran-a\")\n}\ninputs = {\n  name = \"forms-${local.id}\"\n}\n"
+   },
+   "head": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"retention\" {\n  type    = number\n  default = 14\n}\nvariable \"subnet_ids\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name              = var.name\n  retention_in_days = var.retention\n}\n",
+    "env/cloud/app/terragrunt.hcl": "terraform {\n  source = \"../../../modules//app\"\n}\nlocals {\n  id = run_cmd(\"sh\", \"-c\", \"touch ran-b\")\n}\ninputs = {\n  name = \"forms-${local.id}\"\n}\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "input name reads run_cmd(\"sh\")"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a terraform source that is not a local path is reviewed, naming it",
+   "base": {
+    "env/cloud/app/terragrunt.hcl": "terraform {\n  source = \"git::https://example.com/modules.git//app?ref=v1\"\n}\ninputs = {\n  name = \"forms-app\"\n}\n"
+   },
+   "head": {
+    "env/cloud/app/terragrunt.hcl": "terraform {\n  source = \"git::https://example.com/modules.git//app?ref=v2\"\n}\ninputs = {\n  name = \"forms-app\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [],
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "env/cloud/app/terragrunt.hcl (terraform source git::https://example.com/modules.git//app?ref=v2 is not a local path)"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "an input the module does not declare is reviewed, and a generate block is named as where it may be declared",
+   "base": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"retention\" {\n  type    = number\n  default = 14\n}\nvariable \"subnet_ids\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name              = var.name\n  retention_in_days = var.retention\n}\n",
+    "env/cloud/app/terragrunt.hcl": "terraform {\n  source = \"../../../modules//app\"\n}\ngenerate \"provider\" {\n  path      = \"provider.tf\"\n  if_exists = \"overwrite\"\n  contents  = \"provider \\\"aws\\\" { region = \\\"ca-central-1\\\" }\"\n}\ninputs = {\n  name = \"forms-app\"\n  owner = \"a\"\n}\n"
+   },
+   "head": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"retention\" {\n  type    = number\n  default = 14\n}\nvariable \"subnet_ids\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name              = var.name\n  retention_in_days = var.retention\n}\n",
+    "env/cloud/app/terragrunt.hcl": "terraform {\n  source = \"../../../modules//app\"\n}\ngenerate \"provider\" {\n  path      = \"provider.tf\"\n  if_exists = \"overwrite\"\n  contents  = \"provider \\\"aws\\\" { region = \\\"ca-central-1\\\" }\"\n}\ninputs = {\n  name = \"forms-app\"\n  owner = \"b\"\n}\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "input owner, which modules/app does not declare (a generate block may declare it)"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "terraform.tfvars in the module directory overrides a Terragrunt input, which Terraform reads as an environment variable",
+   "base": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"retention\" {\n  type    = number\n  default = 14\n}\nvariable \"subnet_ids\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name              = var.name\n  retention_in_days = var.retention\n}\n",
+    "env/root.hcl": "locals {\n  region = \"ca-central-1\"\n}\ninputs = {\n  region    = local.region\n  retention = 30\n}\n",
+    "env/cloud/app/terragrunt.hcl": "terraform {\n  source = \"../../../modules//app\"\n}\ninclude \"root\" {\n  path = find_in_parent_folders(\"root.hcl\")\n}\nlocals {\n  prefix = \"forms\"\n}\ninputs = {\n  name = \"${local.prefix}-app\"\n}\n",
+    "modules/app/terraform.tfvars": "retention = 7\n"
+   },
+   "head": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"retention\" {\n  type    = number\n  default = 14\n}\nvariable \"subnet_ids\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name              = var.name\n  retention_in_days = var.retention\n}\n",
+    "env/root.hcl": "locals {\n  region = \"ca-central-1\"\n}\ninputs = {\n  region    = local.region\n  retention = 90\n}\n",
+    "env/cloud/app/terragrunt.hcl": "terraform {\n  source = \"../../../modules//app\"\n}\ninclude \"root\" {\n  path = find_in_parent_folders(\"root.hcl\")\n}\nlocals {\n  prefix = \"forms\"\n}\ninputs = {\n  name = \"${local.prefix}-app\"\n}\n",
+    "modules/app/terraform.tfvars": "retention = 7\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "modules/app (terragrunt env/cloud/app/terragrunt.hcl)"
+    ],
+    "changedAddresses": [],
+    "gate": {
+     "result": "pass"
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a source moved to another local module compares the module it ran at the base with the one it runs now",
+   "base": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"retention\" {\n  type    = number\n  default = 14\n}\nvariable \"subnet_ids\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name              = var.name\n  retention_in_days = var.retention\n}\n",
+    "modules/app2/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"retention\" {\n  type    = number\n  default = 14\n}\nvariable \"subnet_ids\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name              = var.name\n  retention_in_days = 3\n}\n",
+    "env/cloud/app/terragrunt.hcl": "terraform {\n  source = \"../../../modules//app\"\n}\ninputs = {\n  name = \"forms-app\"\n}\n"
+   },
+   "head": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"retention\" {\n  type    = number\n  default = 14\n}\nvariable \"subnet_ids\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name              = var.name\n  retention_in_days = var.retention\n}\n",
+    "modules/app2/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"retention\" {\n  type    = number\n  default = 14\n}\nvariable \"subnet_ids\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name              = var.name\n  retention_in_days = 3\n}\n",
+    "env/cloud/app/terragrunt.hcl": "terraform {\n  source = \"../../../modules//app2\"\n}\ninputs = {\n  name = \"forms-app\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "modules/app2 (terragrunt env/cloud/app/terragrunt.hcl)"
+    ],
+    "changes": [
+     {
+      "address": "aws_cloudwatch_log_group.g",
+      "action": "update",
+      "confidence": "proven",
+      "after": {
+       "retention_in_days": 3
+      }
+     }
+    ],
+    "gate": {
+     "result": "pass"
+    },
+    "reasonsNotContain": [
+     "static replay does not evaluate"
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a change to the module a Terragrunt configuration runs is evaluated with its inputs too, besides the evaluation without them",
+   "base": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"retention\" {\n  type    = number\n  default = 14\n}\nvariable \"subnet_ids\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name              = var.name\n  retention_in_days = var.retention\n}\n",
+    "env/root.hcl": "locals {\n  region = \"ca-central-1\"\n}\ninputs = {\n  region    = local.region\n  retention = 30\n}\n",
+    "env/cloud/app/terragrunt.hcl": "terraform {\n  source = \"../../../modules//app\"\n}\ninclude \"root\" {\n  path = find_in_parent_folders(\"root.hcl\")\n}\nlocals {\n  prefix = \"forms\"\n}\ninputs = {\n  name = \"${local.prefix}-app\"\n}\n"
+   },
+   "head": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nvariable \"retention\" {\n  type    = number\n  default = 14\n}\nvariable \"subnet_ids\" {\n  type    = list(string)\n  default = []\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name              = var.name\n  retention_in_days = var.retention\n  skip_destroy      = false\n}\n",
+    "env/root.hcl": "locals {\n  region = \"ca-central-1\"\n}\ninputs = {\n  region    = local.region\n  retention = 30\n}\n",
+    "env/cloud/app/terragrunt.hcl": "terraform {\n  source = \"../../../modules//app\"\n}\ninclude \"root\" {\n  path = find_in_parent_folders(\"root.hcl\")\n}\nlocals {\n  prefix = \"forms\"\n}\ninputs = {\n  name = \"${local.prefix}-app\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "modules/app",
+     "modules/app (terragrunt env/cloud/app/terragrunt.hcl)"
+    ]
+   }
+  }
+ ]
+}

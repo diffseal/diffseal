@@ -1,0 +1,264 @@
+{
+ "suite": "replay/root-mapping",
+ "description": "The roots mapping in .diffseal.json, read from the base commit: per root, the var-files to load in order and the workspaces it is deployed in.",
+ "cases": [
+  {
+   "kind": "replay",
+   "name": "mapped var-files are layered in order and evaluated together; a shared var-file change that is fully evaluated needs no coverage review",
+   "base": {
+    "infra/app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"prefix\" {\n  type = string\n}\nvariable \"env\" {\n  type = string\n}\nvariable \"timeout\" {\n  type    = number\n  default = 30\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name                       = \"${var.prefix}-${var.env}\"\n  visibility_timeout_seconds = var.timeout\n}\n",
+    "infra/vars/common.tfvars": "prefix = \"jobs\"\ntimeout = 30\n",
+    "infra/vars/prod.tfvars": "env = \"prod\"\n",
+    "infra/vars/dev.tfvars": "env = \"dev\"\n",
+    ".diffseal.json": "{\n \"roots\": {\n  \"infra/app\": {\n   \"environments\": [\n    {\n     \"workspace\": \"prod\",\n     \"varFiles\": [\n      \"../vars/common.tfvars\",\n      \"../vars/prod.tfvars\"\n     ]\n    },\n    {\n     \"varFiles\": [\n      \"../vars/common.tfvars\",\n      \"../vars/dev.tfvars\"\n     ]\n    }\n   ]\n  }\n }\n}"
+   },
+   "head": {
+    "infra/app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"prefix\" {\n  type = string\n}\nvariable \"env\" {\n  type = string\n}\nvariable \"timeout\" {\n  type    = number\n  default = 30\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name                       = \"${var.prefix}-${var.env}\"\n  visibility_timeout_seconds = var.timeout\n}\n",
+    "infra/vars/common.tfvars": "prefix = \"jobs\"\ntimeout = 60\n",
+    "infra/vars/prod.tfvars": "env = \"prod\"\n",
+    "infra/vars/dev.tfvars": "env = \"dev\"\n",
+    ".diffseal.json": "{\n \"roots\": {\n  \"infra/app\": {\n   \"environments\": [\n    {\n     \"workspace\": \"prod\",\n     \"varFiles\": [\n      \"../vars/common.tfvars\",\n      \"../vars/prod.tfvars\"\n     ]\n    },\n    {\n     \"varFiles\": [\n      \"../vars/common.tfvars\",\n      \"../vars/dev.tfvars\"\n     ]\n    }\n   ]\n  }\n }\n}"
+   },
+   "expect": {
+    "replayedRoots": [
+     "infra/app [infra/vars/common.tfvars, infra/vars/prod.tfvars] (workspace prod)",
+     "infra/app [infra/vars/common.tfvars, infra/vars/dev.tfvars]"
+    ],
+    "changedAddresses": [
+     "update dev.tfvars: aws_sqs_queue.q",
+     "update prod.tfvars, workspace prod: aws_sqs_queue.q"
+    ],
+    "changes": [
+     {
+      "address": "prod.tfvars, workspace prod: aws_sqs_queue.q",
+      "action": "update",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "pass"
+    },
+    "reasonsNotContain": [
+     "static replay does not evaluate",
+     "evaluated only in part"
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a later mapped var-file overrides an earlier one, as repeated -var-file does: a name change there replaces the queue",
+   "base": {
+    "infra/app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"prefix\" {\n  type = string\n}\nvariable \"env\" {\n  type = string\n}\nvariable \"timeout\" {\n  type    = number\n  default = 30\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name                       = \"${var.prefix}-${var.env}\"\n  visibility_timeout_seconds = var.timeout\n}\n",
+    "infra/vars/common.tfvars": "prefix = \"jobs\"\ntimeout = 30\n",
+    "infra/vars/prod.tfvars": "env = \"prod\"\n",
+    "infra/vars/dev.tfvars": "env = \"dev\"\n",
+    ".diffseal.json": "{\n \"roots\": {\n  \"infra/app\": {\n   \"environments\": [\n    {\n     \"workspace\": \"prod\",\n     \"varFiles\": [\n      \"../vars/common.tfvars\",\n      \"../vars/prod.tfvars\"\n     ]\n    },\n    {\n     \"varFiles\": [\n      \"../vars/common.tfvars\",\n      \"../vars/dev.tfvars\"\n     ]\n    }\n   ]\n  }\n }\n}"
+   },
+   "head": {
+    "infra/app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"prefix\" {\n  type = string\n}\nvariable \"env\" {\n  type = string\n}\nvariable \"timeout\" {\n  type    = number\n  default = 30\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name                       = \"${var.prefix}-${var.env}\"\n  visibility_timeout_seconds = var.timeout\n}\n",
+    "infra/vars/common.tfvars": "prefix = \"jobs\"\ntimeout = 30\n",
+    "infra/vars/prod.tfvars": "env = \"production\"\n",
+    "infra/vars/dev.tfvars": "env = \"dev\"\n",
+    ".diffseal.json": "{\n \"roots\": {\n  \"infra/app\": {\n   \"environments\": [\n    {\n     \"workspace\": \"prod\",\n     \"varFiles\": [\n      \"../vars/common.tfvars\",\n      \"../vars/prod.tfvars\"\n     ]\n    },\n    {\n     \"varFiles\": [\n      \"../vars/common.tfvars\",\n      \"../vars/dev.tfvars\"\n     ]\n    }\n   ]\n  }\n }\n}"
+   },
+   "expect": {
+    "replayedRoots": [
+     "infra/app [infra/vars/common.tfvars, infra/vars/prod.tfvars] (workspace prod)"
+    ],
+    "changes": [
+     {
+      "address": "aws_sqs_queue.q",
+      "action": "replace",
+      "confidence": "proven",
+      "after": {
+       "name": "jobs-production"
+      }
+     }
+    ],
+    "gate": {
+     "result": "block"
+    },
+    "reasonsNotContain": [
+     "static replay does not evaluate",
+     "evaluated only in part"
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "the mapping is read from the base: a mapping added by the change itself is not used to review it",
+   "base": {
+    "infra/app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"prefix\" {\n  type = string\n}\nvariable \"env\" {\n  type = string\n}\nvariable \"timeout\" {\n  type    = number\n  default = 30\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name                       = \"${var.prefix}-${var.env}\"\n  visibility_timeout_seconds = var.timeout\n}\n",
+    "infra/vars/common.tfvars": "prefix = \"jobs\"\ntimeout = 30\n",
+    "infra/vars/prod.tfvars": "env = \"prod\"\n",
+    "infra/vars/dev.tfvars": "env = \"dev\"\n"
+   },
+   "head": {
+    "infra/app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"prefix\" {\n  type = string\n}\nvariable \"env\" {\n  type = string\n}\nvariable \"timeout\" {\n  type    = number\n  default = 30\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name                       = \"${var.prefix}-${var.env}\"\n  visibility_timeout_seconds = var.timeout\n}\n",
+    "infra/vars/common.tfvars": "prefix = \"jobs\"\ntimeout = 60\n",
+    "infra/vars/prod.tfvars": "env = \"prod\"\n",
+    "infra/vars/dev.tfvars": "env = \"dev\"\n",
+    ".diffseal.json": "{\n \"roots\": {\n  \"infra/app\": {\n   \"environments\": [\n    {\n     \"workspace\": \"prod\",\n     \"varFiles\": [\n      \"../vars/common.tfvars\",\n      \"../vars/prod.tfvars\"\n     ]\n    },\n    {\n     \"varFiles\": [\n      \"../vars/common.tfvars\",\n      \"../vars/dev.tfvars\"\n     ]\n    }\n   ]\n  }\n }\n}"
+   },
+   "expect": {
+    "replayedRoots": [],
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "infra/vars/common.tfvars (sets timeout)",
+      ".diffseal.json changed"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a mapped var-file that sets a variable no root it is mapped to declares is reviewed",
+   "base": {
+    "infra/app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"prefix\" {\n  type = string\n}\nvariable \"env\" {\n  type = string\n}\nvariable \"timeout\" {\n  type    = number\n  default = 30\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name                       = \"${var.prefix}-${var.env}\"\n  visibility_timeout_seconds = var.timeout\n}\n",
+    "infra/vars/common.tfvars": "prefix = \"jobs\"\ntimeout = 30\n",
+    "infra/vars/prod.tfvars": "env = \"prod\"\n",
+    "infra/vars/dev.tfvars": "env = \"dev\"\n",
+    ".diffseal.json": "{\n \"roots\": {\n  \"infra/app\": {\n   \"environments\": [\n    {\n     \"workspace\": \"prod\",\n     \"varFiles\": [\n      \"../vars/common.tfvars\",\n      \"../vars/prod.tfvars\"\n     ]\n    },\n    {\n     \"varFiles\": [\n      \"../vars/common.tfvars\",\n      \"../vars/dev.tfvars\"\n     ]\n    }\n   ]\n  }\n }\n}"
+   },
+   "head": {
+    "infra/app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"prefix\" {\n  type = string\n}\nvariable \"env\" {\n  type = string\n}\nvariable \"timeout\" {\n  type    = number\n  default = 30\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name                       = \"${var.prefix}-${var.env}\"\n  visibility_timeout_seconds = var.timeout\n}\n",
+    "infra/vars/common.tfvars": "prefix = \"jobs\"\ntimeout = 30\nretention = 7\n",
+    "infra/vars/prod.tfvars": "env = \"prod\"\n",
+    "infra/vars/dev.tfvars": "env = \"dev\"\n",
+    ".diffseal.json": "{\n \"roots\": {\n  \"infra/app\": {\n   \"environments\": [\n    {\n     \"workspace\": \"prod\",\n     \"varFiles\": [\n      \"../vars/common.tfvars\",\n      \"../vars/prod.tfvars\"\n     ]\n    },\n    {\n     \"varFiles\": [\n      \"../vars/common.tfvars\",\n      \"../vars/dev.tfvars\"\n     ]\n    }\n   ]\n  }\n }\n}"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "infra/vars/common.tfvars sets retention, which infra/app does not declare"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a pattern key maps workspaces for every root it matches, and only those environments are evaluated",
+   "base": {
+    ".diffseal.json": "{\"roots\": {\"svc/*\": {\"workspaces\": [\"test\", \"prod\"]}}}",
+    "svc/a/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  count = terraform.workspace == \"prod\" ? 1 : 0\n  name  = \"a\"\n}\n"
+   },
+   "head": {
+    ".diffseal.json": "{\"roots\": {\"svc/*\": {\"workspaces\": [\"test\", \"prod\"]}}}",
+    "svc/a/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  count = terraform.workspace == \"prod\" ? 1 : 0\n  name  = \"a2\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "svc/a (workspace test)",
+     "svc/a (workspace prod)"
+    ],
+    "changedAddresses": [
+     "replace workspace prod: aws_sqs_queue.q[0]"
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a mapping entry that is not valid is ignored with a note",
+   "base": {
+    ".diffseal.json": "{\"roots\": {\"svc/a\": {\"workspaces\": \"prod\"}, \"svc/b\": {\"environments\": [{\"varFiles\": [\"/etc/x.tfvars\"]}]}}}",
+    "svc/a/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  count = terraform.workspace == \"prod\" ? 1 : 0\n  name  = \"a\"\n}\n"
+   },
+   "head": {
+    ".diffseal.json": "{\"roots\": {\"svc/a\": {\"workspaces\": \"prod\"}, \"svc/b\": {\"environments\": [{\"varFiles\": [\"/etc/x.tfvars\"]}]}}}",
+    "svc/a/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  count = terraform.workspace == \"prod\" ? 1 : 0\n  name  = \"a2\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "svc/a",
+     "svc/a (workspace prod)"
+    ],
+    "notesContain": [
+     ".diffseal.json roots.\"svc/a\": workspaces must be a list of names; that part of the roots mapping is ignored",
+     "roots.\"svc/b\": varFiles must be a list of paths relative to the root directory"
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a mapped var-file that exists at neither commit leaves that environment out, with a note",
+   "base": {
+    "infra/app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"prefix\" {\n  type = string\n}\nvariable \"env\" {\n  type = string\n}\nvariable \"timeout\" {\n  type    = number\n  default = 30\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name                       = \"${var.prefix}-${var.env}\"\n  visibility_timeout_seconds = var.timeout\n}\n",
+    "infra/vars/common.tfvars": "prefix = \"jobs\"\ntimeout = 30\n",
+    "infra/vars/prod.tfvars": "env = \"prod\"\n",
+    "infra/vars/dev.tfvars": "env = \"dev\"\n",
+    ".diffseal.json": "{\"roots\": {\"infra/app\": {\"environments\": [{\"varFiles\": [\"../vars/common.tfvars\", \"../vars/staging.tfvars\"]}, {\"varFiles\": [\"../vars/common.tfvars\", \"../vars/dev.tfvars\"]}]}}}"
+   },
+   "head": {
+    "infra/app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"prefix\" {\n  type = string\n}\nvariable \"env\" {\n  type = string\n}\nvariable \"timeout\" {\n  type    = number\n  default = 30\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name                       = \"${var.prefix}-${var.env}\"\n  visibility_timeout_seconds = var.timeout\n  delay_seconds              = 5\n}\n",
+    "infra/vars/common.tfvars": "prefix = \"jobs\"\ntimeout = 30\n",
+    "infra/vars/prod.tfvars": "env = \"prod\"\n",
+    "infra/vars/dev.tfvars": "env = \"dev\"\n",
+    ".diffseal.json": "{\"roots\": {\"infra/app\": {\"environments\": [{\"varFiles\": [\"../vars/common.tfvars\", \"../vars/staging.tfvars\"]}, {\"varFiles\": [\"../vars/common.tfvars\", \"../vars/dev.tfvars\"]}]}}}"
+   },
+   "expect": {
+    "replayedRoots": [
+     "infra/app [infra/vars/common.tfvars, infra/vars/dev.tfvars]"
+    ],
+    "notesContain": [
+     ".diffseal.json maps infra/vars/staging.tfvars for infra/app, which exists at neither commit"
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a mapped var-file added by the change is a new environment: reviewed by name, not compared",
+   "base": {
+    "infra/app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"prefix\" {\n  type = string\n}\nvariable \"env\" {\n  type = string\n}\nvariable \"timeout\" {\n  type    = number\n  default = 30\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name                       = \"${var.prefix}-${var.env}\"\n  visibility_timeout_seconds = var.timeout\n}\n",
+    "infra/vars/common.tfvars": "prefix = \"jobs\"\ntimeout = 30\n",
+    "infra/vars/prod.tfvars": "env = \"prod\"\n",
+    "infra/vars/dev.tfvars": "env = \"dev\"\n",
+    ".diffseal.json": "{\"roots\": {\"infra/app\": {\"environments\": [{\"varFiles\": [\"../vars/common.tfvars\", \"../vars/dev.tfvars\"]}, {\"varFiles\": [\"../vars/common.tfvars\", \"../vars/test.tfvars\"]}]}}}"
+   },
+   "head": {
+    "infra/app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"prefix\" {\n  type = string\n}\nvariable \"env\" {\n  type = string\n}\nvariable \"timeout\" {\n  type    = number\n  default = 30\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name                       = \"${var.prefix}-${var.env}\"\n  visibility_timeout_seconds = var.timeout\n}\n",
+    "infra/vars/common.tfvars": "prefix = \"jobs\"\ntimeout = 30\n",
+    "infra/vars/prod.tfvars": "env = \"prod\"\n",
+    "infra/vars/dev.tfvars": "env = \"dev\"\n",
+    ".diffseal.json": "{\"roots\": {\"infra/app\": {\"environments\": [{\"varFiles\": [\"../vars/common.tfvars\", \"../vars/dev.tfvars\"]}, {\"varFiles\": [\"../vars/common.tfvars\", \"../vars/test.tfvars\"]}]}}}",
+    "infra/vars/test.tfvars": "env = \"test\"\n"
+   },
+   "expect": {
+    "replayedRoots": [],
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "infra/vars/test.tfvars (new file)"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "with a mapping, a var-file below the root is evaluated only as mapped, and needs no partial-evaluation review",
+   "base": {
+    ".diffseal.json": "{\"roots\": {\"app\": {\"environments\": [{\"varFiles\": [\"envs/prod.tfvars\"]}]}}}",
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"prefix\" {\n  type = string\n}\nvariable \"env\" {\n  type = string\n}\nvariable \"timeout\" {\n  type    = number\n  default = 30\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name                       = \"${var.prefix}-${var.env}\"\n  visibility_timeout_seconds = var.timeout\n}\n",
+    "app/envs/prod.tfvars": "prefix = \"jobs\"\nenv = \"prod\"\ntimeout = 30\n"
+   },
+   "head": {
+    ".diffseal.json": "{\"roots\": {\"app\": {\"environments\": [{\"varFiles\": [\"envs/prod.tfvars\"]}]}}}",
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"prefix\" {\n  type = string\n}\nvariable \"env\" {\n  type = string\n}\nvariable \"timeout\" {\n  type    = number\n  default = 30\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name                       = \"${var.prefix}-${var.env}\"\n  visibility_timeout_seconds = var.timeout\n}\n",
+    "app/envs/prod.tfvars": "prefix = \"jobs\"\nenv = \"prod\"\ntimeout = 45\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "app [app/envs/prod.tfvars]"
+    ],
+    "gate": {
+     "result": "pass"
+    },
+    "reasonsNotContain": [
+     "evaluated only in part",
+     "static replay does not evaluate"
+    ]
+   }
+  }
+ ]
+}

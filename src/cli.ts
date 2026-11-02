@@ -159,6 +159,7 @@ async function runReplay(args: Args): Promise<number> {
       approvals: approvals.get(r.commit.sha) ?? approvals.get(name),
       engine: { version: VERSION, replaceCatalog: REPLACE_CATALOG_SOURCE },
       diagnostics: [...new Set(r.roots.flatMap((x) => x.diagnostics))],
+      replayNotes: r.notes,
     });
     emit(`records/${r.commit.sha}.json`, json(record));
     rows.push(csvRow(r));
@@ -208,7 +209,7 @@ function serializable(r: ReplayResult) {
   const { headSource, baseSource, ...rest } = r;
   void headSource;
   void baseSource;
-  return { version: VERSION, ...rest, roots: rest.roots.map(({ root, result, diagnostics, varFile, baseVarFile, movedFrom, deleted }) => ({ root, ...(varFile ? { varFile } : {}), ...(baseVarFile ? { baseVarFile } : {}), ...(movedFrom ? { movedFrom } : {}), ...(deleted ? { deleted } : {}), result, diagnostics })) };
+  return { version: VERSION, ...rest, roots: rest.roots.map(({ root, result, diagnostics, varFiles, baseVarFiles, workspace, mapped, terragrunt, terragruntBaseRoot, movedFrom, deleted }) => ({ root, ...(varFiles ? { varFiles } : {}), ...(baseVarFiles ? { baseVarFiles } : {}), ...(workspace ? { workspace } : {}), ...(mapped ? { mapped } : {}), ...(terragrunt ? { terragrunt } : {}), ...(terragruntBaseRoot ? { terragruntBaseRoot } : {}), ...(movedFrom ? { movedFrom } : {}), ...(deleted ? { deleted } : {}), result, diagnostics })) };
 }
 
 /** Printed when a removed command is used, so an old script fails with one clear line. */

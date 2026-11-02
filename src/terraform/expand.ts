@@ -74,11 +74,20 @@ const RESOURCE_META = new Set(['count', 'for_each', 'depends_on', 'provider', 'l
 const MODULE_META = new Set(['source', 'version', 'count', 'for_each', 'providers', 'depends_on']);
 const MAX_DEPTH = 25;
 
+/** What a root is evaluated with besides its files: the selected workspace, and variables from the environment. */
+export interface RootInputs {
+  /** `terraform.workspace`; `default` when omitted. */
+  workspace?: string;
+  /** Values set as `TF_VAR_` environment variables (Terragrunt inputs): below every tfvars file. */
+  envVars?: Record<string, unknown>;
+}
+
 /**
  * Evaluate a root module. `varFiles` are repository paths passed as `-var-file`, in order; they take
- * precedence over terraform.tfvars and *.auto.tfvars, and `rootVars` over all of them.
+ * precedence over terraform.tfvars and *.auto.tfvars, and `rootVars` over all of them. `inputs.envVars`
+ * come below terraform.tfvars, as `TF_VAR_` variables do.
  */
-export function evaluateRoot(source: FileSource, rootDir: string, rootVars: Record<string, unknown> = {}, varFiles: string[] = []): RootEvaluation {
+export function evaluateRoot(source: FileSource, rootDir: string, rootVars: Record<string, unknown> = {}, varFiles: string[] = [], inputs: RootInputs = {}): RootEvaluation {
   const root = normalize(rootDir);
   const cfg = loadModule(source, root);
   const result: RootEvaluation = { root, instances: [], moved: [], removed: [], imports: [], diagnostics: [], accounts: [], readFiles: new Set(), preventDestroy: new Set() };
@@ -86,14 +95,15 @@ export function evaluateRoot(source: FileSource, rootDir: string, rootVars: Reco
   result.accounts = [...new Set(cfg.providerAccounts)];
 
   const fromFiles = (evidence: boolean) => Object.assign({}, ...varFiles.map((f) => readVarFile(source, f, evidence, evidence ? undefined : result.diagnostics))) as Record<string, unknown>;
-  const vars = { ...readTfvars(source, root, false, result.diagnostics), ...fromFiles(false), ...rootVars };
-  const inputs = new Map<string, () => unknown>(Object.entries(vars).map(([k, v]) => [k, () => v]));
-  const top = new ModuleInstance(source, cfg, '', '', inputs, new Map(), root, 0, result.readFiles);
+  const workspace = inputs.workspace ?? 'default';
+  const vars = { ...inputs.envVars, ...readTfvars(source, root, false, result.diagnostics), ...fromFiles(false), ...rootVars };
+  const varInputs = new Map<string, () => unknown>(Object.entries(vars).map(([k, v]) => [k, () => v]));
+  const top = new ModuleInstance(source, cfg, '', '', varInputs, new Map(), root, 0, result.readFiles, undefined, false, workspace);
   top.collect(result);
   const evidence: RootEvaluation = { ...result, instances: [], diagnostics: [], moved: [], removed: [], imports: [], preventDestroy: new Set() };
-  const evidenceVars = { ...readTfvars(source, root, true), ...fromFiles(true), ...rootVars };
+  const evidenceVars = { ...inputs.envVars, ...readTfvars(source, root, true), ...fromFiles(true), ...rootVars };
   const evidenceInputs = new Map<string, () => unknown>(Object.entries(evidenceVars).map(([k, v]) => [k, () => v]));
-  new ModuleInstance(source, cfg, '', '', evidenceInputs, new Map(), root, 0, result.readFiles, undefined, true).collect(evidence);
+  new ModuleInstance(source, cfg, '', '', evidenceInputs, new Map(), root, 0, result.readFiles, undefined, true, workspace).collect(evidence);
   const byAddress = new Map(evidence.instances.map((i) => [i.address, i.attrs]));
   for (const instance of result.instances) instance.configuredAttrs = byAddress.get(instance.address) ?? {};
   return result;
@@ -223,7 +233,9 @@ class ModuleInstance {
     private readonly depth: number,
     reads?: Set<string>,
     private readonly inheritedProviders?: Map<string,ProviderBinding>,
-    private readonly configurationEvidence = false
+    private readonly configurationEvidence = false,
+    /** terraform.workspace, the same in every module of a root. */
+    private readonly workspace = 'default'
   ) {
     const self = this;
     this.reads = reads;
@@ -318,7 +330,7 @@ class ModuleInstance {
         v = { module: path.posix.relative(this.rootDir, this.cfg.dir) || '.', root: '.', cwd: '.' };
         break;
       case 'terraform':
-        v = { workspace: 'default' };
+        v = { workspace: this.workspace };
         break;
       case 'module':
         v = new LazyMap(new Map([...this.cfg.moduleCalls.keys()].map((k) => [k, () => this.moduleValue(k)])));
@@ -421,7 +433,8 @@ class ModuleInstance {
           this.depth + 1,
           this.reads,
           this.childProviders(call),
-          this.configurationEvidence
+          this.configurationEvidence,
+          this.workspace
         );
         return { key: exp.key, mod };
       };

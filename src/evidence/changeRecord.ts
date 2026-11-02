@@ -60,6 +60,8 @@ export function changeRecord(input: {
   engine: { version: string; replaceCatalog: string };
   /** HCL parse diagnostics at the change, as `file:line: message`. */
   diagnostics?: string[];
+  /** What the replay could not cover that does not change the gate (workspaces not found, a mapping problem). */
+  replayNotes?: string[];
 }): ChangeRecord {
   const { commit, result } = input;
   const notes: string[] = [];
@@ -68,6 +70,7 @@ export function changeRecord(input: {
   if (!input.approvals) notes.push('No approvals were supplied for this change (pass --approvals with a GitHub export).');
   const likely = result.changes.filter((c) => c.confidence !== 'proven').length;
   if (likely) notes.push(`${likely} change(s) depend on values known only after apply; their action is likely, not proven.`);
+  for (const n of input.replayNotes ?? []) notes.push(`${n}.`);
   return {
     schema: 'diffseal.change-record/v1',
     change: { commit: commit.sha, base: input.base, subject: commit.subject, author: commit.author, date: commit.date },

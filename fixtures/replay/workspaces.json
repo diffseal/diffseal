@@ -1,0 +1,232 @@
+{
+ "suite": "replay/workspaces",
+ "description": "Terraform workspaces: a root whose configuration tells workspaces apart is evaluated once per workspace name found, besides default, and every result names its workspace.",
+ "cases": [
+  {
+   "kind": "replay",
+   "name": "a table renamed without moved, limited to prod by workspace, is destroyed in test and prod although workspace default has no instance on either side (source case: beneficiary-fhir-data 1828a22ba)",
+   "base": {
+    "ops/services/bene-prefs/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"terraservice\" {\n  source = \"../../modules/terraservice\"\n}\nlocals {\n  env = module.terraservice.env\n}\nresource \"aws_dynamodb_table\" \"bene_preferences_tracker\" {\n  count        = contains([\"test\", \"prod\"], local.env) ? 1 : 0\n  name         = \"bfd-${local.env}-bene-preferences\"\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n",
+    "ops/modules/terraservice/main.tf": "locals {\n  established_envs = [\"test\", \"sandbox\", \"prod\"]\n  parent_env       = try(one([for x in local.established_envs : x if endswith(terraform.workspace, x)]), null)\n  env              = terraform.workspace\n}\noutput \"env\" {\n  value = local.env\n}\n"
+   },
+   "head": {
+    "ops/services/bene-prefs/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"terraservice\" {\n  source = \"../../modules/terraservice\"\n}\nlocals {\n  env = module.terraservice.env\n}\nresource \"aws_dynamodb_table\" \"this\" {\n  count        = local.env == \"prod\" ? 1 : 0\n  name         = \"bfd-${local.env}-bene-preferences\"\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n",
+    "ops/modules/terraservice/main.tf": "locals {\n  established_envs = [\"test\", \"sandbox\", \"prod\"]\n  parent_env       = try(one([for x in local.established_envs : x if endswith(terraform.workspace, x)]), null)\n  env              = terraform.workspace\n}\noutput \"env\" {\n  value = local.env\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "ops/services/bene-prefs",
+     "ops/services/bene-prefs (workspace prod)",
+     "ops/services/bene-prefs (workspace sandbox)",
+     "ops/services/bene-prefs (workspace test)"
+    ],
+    "changedAddresses": [
+     "create workspace prod: aws_dynamodb_table.this[0]",
+     "delete workspace prod: aws_dynamodb_table.bene_preferences_tracker[0]",
+     "delete workspace test: aws_dynamodb_table.bene_preferences_tracker[0]"
+    ],
+    "changes": [
+     {
+      "address": "workspace prod: aws_dynamodb_table.bene_preferences_tracker[0]",
+      "action": "delete",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block",
+     "reasonsContain": [
+      "workspace prod: CRITICAL: aws_dynamodb_table.bene_preferences_tracker[0]: Deletes",
+      "workspace test: CRITICAL: aws_dynamodb_table.bene_preferences_tracker[0]: Deletes"
+     ]
+    },
+    "notes": []
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "count added on a table keeps it at [0] in the workspaces that still have it and destroys it in the others, each named (source case: beneficiary-fhir-data 2b826e234)",
+   "base": {
+    "ops/services/bene-prefs/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"terraservice\" {\n  source = \"../../modules/terraservice\"\n}\nlocals {\n  env = module.terraservice.env\n}\nresource \"aws_dynamodb_table\" \"tracker\" {\n  name         = \"bfd-${local.env}-bene-preferences\"\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n",
+    "ops/modules/terraservice/main.tf": "locals {\n  established_envs = [\"test\", \"sandbox\", \"prod\"]\n  parent_env       = try(one([for x in local.established_envs : x if endswith(terraform.workspace, x)]), null)\n  env              = terraform.workspace\n}\noutput \"env\" {\n  value = local.env\n}\n"
+   },
+   "head": {
+    "ops/services/bene-prefs/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"terraservice\" {\n  source = \"../../modules/terraservice\"\n}\nlocals {\n  env = module.terraservice.env\n}\nresource \"aws_dynamodb_table\" \"tracker\" {\n  count        = contains([\"test\", \"prod\"], local.env) ? 1 : 0\n  name         = \"bfd-${local.env}-bene-preferences\"\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n",
+    "ops/modules/terraservice/main.tf": "locals {\n  established_envs = [\"test\", \"sandbox\", \"prod\"]\n  parent_env       = try(one([for x in local.established_envs : x if endswith(terraform.workspace, x)]), null)\n  env              = terraform.workspace\n}\noutput \"env\" {\n  value = local.env\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "ops/services/bene-prefs",
+     "ops/services/bene-prefs (workspace prod)",
+     "ops/services/bene-prefs (workspace sandbox)",
+     "ops/services/bene-prefs (workspace test)"
+    ],
+    "gate": {
+     "result": "block",
+     "reasonsContain": [
+      "(workspace default), workspace sandbox: CRITICAL: aws_dynamodb_table.tracker: Deletes"
+     ]
+    },
+    "reasonsNotContain": [
+     "workspace prod",
+     "workspace test"
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a root that reads terraform.workspace without naming any workspace is evaluated as default only, with a note",
+   "base": {
+    "images/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  bucket = \"logs-${terraform.workspace}\"\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = local.bucket\n  tags   = { v = \"1\" }\n}\n"
+   },
+   "head": {
+    "images/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  bucket = \"logs-${terraform.workspace}\"\n}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = local.bucket\n  tags   = { v = \"2\" }\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "images"
+    ],
+    "gate": {
+     "result": "pass"
+    },
+    "notesContain": [
+     "Root images reads terraform.workspace, but no workspace names could be found in its configuration, so it was evaluated as workspace default only"
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "keys of a map from terraform.tfvars.json looked up by the workspace are workspaces (source case: opg-use-an-lpa terraform/account)",
+   "base": {
+    "terraform/account/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"account_mapping\" {\n  type = map(string)\n}\nlocals {\n  account_name = lookup(var.account_mapping, terraform.workspace, \"development\")\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"jobs-${local.account_name}\"\n  \n}\n",
+    "terraform/account/terraform.tfvars.json": "{\"account_mapping\": {\"production\": \"production\", \"preproduction\": \"preproduction\", \"development\": \"development\"}}"
+   },
+   "head": {
+    "terraform/account/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"account_mapping\" {\n  type = map(string)\n}\nlocals {\n  account_name = lookup(var.account_mapping, terraform.workspace, \"development\")\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"jobs-${local.account_name}\"\n  fifo_queue = local.account_name == \"production\"\n}\n",
+    "terraform/account/terraform.tfvars.json": "{\"account_mapping\": {\"production\": \"production\", \"preproduction\": \"preproduction\", \"development\": \"development\"}}"
+   },
+   "expect": {
+    "replayedRoots": [
+     "terraform/account",
+     "terraform/account (workspace development)",
+     "terraform/account (workspace preproduction)",
+     "terraform/account (workspace production)"
+    ],
+    "changedAddresses": [
+     "replace workspace production: aws_sqs_queue.q"
+    ],
+    "gate": {
+     "result": "block",
+     "reasonsContain": [
+      "workspace production: CRITICAL: aws_sqs_queue.q"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a workspace transformed by lower and replace and used to index a map from tfvars names its keys (source case: opg-use-an-lpa terraform/environment)",
+   "base": {
+    "terraform/environment/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"environments\" {\n  type = any\n}\nlocals {\n  environment_name = lower(replace(terraform.workspace, \"_\", \"-\"))\n  environment      = contains(keys(var.environments), local.environment_name) ? var.environments[local.environment_name] : var.environments[\"default\"]\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  count        = local.environment.tables ? 1 : 0\n  name         = \"codes-${local.environment_name}\"\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n",
+    "terraform/environment/terraform.tfvars.json": "{\"environments\": {\"default\": {\"tables\": false}, \"production\": {\"tables\": true}, \"demo\": {\"tables\": false}}}"
+   },
+   "head": {
+    "terraform/environment/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"environments\" {\n  type = any\n}\nlocals {\n  environment_name = lower(replace(terraform.workspace, \"_\", \"-\"))\n  environment      = contains(keys(var.environments), local.environment_name) ? var.environments[local.environment_name] : var.environments[\"default\"]\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  count        = local.environment.tables ? 1 : 0\n  name         = \"codes-${local.environment_name}\"\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"code\"\n  attribute {\n    name = \"code\"\n    type = \"S\"\n  }\n}\n",
+    "terraform/environment/terraform.tfvars.json": "{\"environments\": {\"default\": {\"tables\": false}, \"production\": {\"tables\": true}, \"demo\": {\"tables\": false}}}"
+   },
+   "expect": {
+    "replayedRoots": [
+     "terraform/environment",
+     "terraform/environment (workspace demo)",
+     "terraform/environment (workspace production)"
+    ],
+    "changedAddresses": [
+     "replace workspace production: aws_dynamodb_table.t[0]"
+    ],
+    "gate": {
+     "result": "block",
+     "reasonsContain": [
+      "workspace production: CRITICAL: aws_dynamodb_table.t[0]: Replaces"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a workspace passed into a module and compared there is found",
+   "base": {
+    "live/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"app\" {\n  source = \"../modules/app\"\n  env    = terraform.workspace\n}\n",
+    "modules/app/main.tf": "variable \"env\" {\n  type = string\n}\nresource \"aws_sqs_queue\" \"q\" {\n  count = var.env == \"prod\" ? 1 : 0\n  name  = \"orders\"\n}\n"
+   },
+   "head": {
+    "live/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"app\" {\n  source = \"../modules/app\"\n  env    = terraform.workspace\n}\n",
+    "modules/app/main.tf": "variable \"env\" {\n  type = string\n}\nresource \"aws_sqs_queue\" \"q\" {\n  count = var.env == \"prod\" ? 1 : 0\n  name  = \"orders-v2\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "live",
+     "live (workspace prod)"
+    ],
+    "changedAddresses": [
+     "replace workspace prod: module.app.aws_sqs_queue.q[0]"
+    ],
+    "gate": {
+     "result": "block",
+     "reasonsContain": [
+      "workspace prod: CRITICAL: module.app.aws_sqs_queue.q[0]"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "at most 8 workspaces besides default are evaluated, and the note names the ones left out",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  count = contains([\"e00\", \"e01\", \"e02\", \"e03\", \"e04\", \"e05\", \"e06\", \"e07\", \"e08\", \"e09\"], terraform.workspace) ? 1 : 0\n  name  = \"q-${terraform.workspace}\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  count = contains([\"e00\", \"e01\", \"e02\", \"e03\", \"e04\", \"e05\", \"e06\", \"e07\", \"e08\", \"e09\"], terraform.workspace) ? 1 : 0\n  name  = \"q-${terraform.workspace}-v2\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "r",
+     "r (workspace e00)",
+     "r (workspace e01)",
+     "r (workspace e02)",
+     "r (workspace e03)",
+     "r (workspace e04)",
+     "r (workspace e05)",
+     "r (workspace e06)",
+     "r (workspace e07)"
+    ],
+    "notesContain": [
+     "Root r tells 10 workspaces apart; 8 were evaluated besides default",
+     "not e08, e09"
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "a var-file named like a workspace the configuration tells apart is evaluated in that workspace",
+   "base": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"size\" {\n  type = number\n}\nresource \"aws_sqs_queue\" \"q\" {\n  count                      = terraform.workspace == \"prod\" ? 1 : 0\n  name                       = \"jobs\"\n  visibility_timeout_seconds = var.size\n}\n",
+    "app/envs/prod.tfvars": "size = 30\n"
+   },
+   "head": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"size\" {\n  type = number\n}\nresource \"aws_sqs_queue\" \"q\" {\n  count                      = terraform.workspace == \"prod\" ? 1 : 0\n  name                       = \"jobs\"\n  visibility_timeout_seconds = var.size\n}\n",
+    "app/envs/prod.tfvars": "size = 60\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "app [app/envs/prod.tfvars] (workspace prod)"
+    ],
+    "changes": [
+     {
+      "address": "aws_sqs_queue.q[0]",
+      "action": "update",
+      "confidence": "proven"
+     }
+    ]
+   }
+  }
+ ]
+}

@@ -6,7 +6,10 @@ import { compareEvaluations } from '../terraform/compare.js';
 import { discoverRoots, isConfigFile, loadModule, moduleClosure } from '../terraform/config.js';
 import { parseHcl } from '../hcl/parser.js';
 import { stableKey } from '../hcl/eval.js';
-import { evaluateRoot, readVarFile } from '../terraform/expand.js';
+import { evaluateRoot, readVarFile, type RootEvaluation } from '../terraform/expand.js';
+import { MAX_WORKSPACES, readsWorkspace, workspaceNames } from '../terraform/workspaces.js';
+import { inputValues, terragruntDeployments, terragruntFiles, unevaluatedChanges, type TerragruntDeployment } from '../terraform/terragrunt.js';
+import { MAX_MAPPED_ENVIRONMENTS, insideRepository, mappedEnvironments, readRootMappings } from './rootInputs.js';
 import { GitSource, changedPaths, commitInfo, type ChangedPath, type CommitInfo } from '../terraform/source.js';
 import { CONFIG_FILE, LEGACY_CONFIG_FILE, readConfigFile } from '../configFile.js';
 
@@ -38,10 +41,18 @@ export interface RootReplay {
   movedFrom?: string;
   /** True when the change deleted the root's directory. */
   deleted?: boolean;
-  /** The var-file (environment) this replay of the root was evaluated with. */
-  varFile?: string;
-  /** The base's var-file for this environment, when git renamed it. */
-  baseVarFile?: string;
+  /** The var-files this replay of the root was evaluated with, in order, as repeated `-var-file`. */
+  varFiles?: string[];
+  /** The base's var-files for this environment, when they differ (git renamed one, or the root moved). */
+  baseVarFiles?: string[];
+  /** The Terraform workspace this replay selected, when it is not `default`. */
+  workspace?: string;
+  /** True when the var-files and workspace come from the `roots` mapping in `.diffseal.json`. */
+  mapped?: boolean;
+  /** The Terragrunt configuration this replay ran the root for, with its inputs. */
+  terragrunt?: string;
+  /** The module directory that Terragrunt configuration ran at the base, when it was another one. */
+  terragruntBaseRoot?: string;
   /** The directory this root is a directory link to. */
   aliasOf?: string;
 }
@@ -58,8 +69,24 @@ export interface ReplayResult {
   terraformFiles: string[];
   roots: RootReplay[];
   combined: AnalysisResult;
+  /** Facts about what was evaluated that do not change the gate: workspaces not found or capped, mapping problems. */
+  notes: string[];
   headSource: GitSource;
   baseSource: GitSource;
+}
+
+/** One evaluation of a root: var-files at each commit, workspace, Terragrunt configuration. */
+interface Variant {
+  headFiles: string[];
+  baseFiles: string[];
+  workspace?: string;
+  mapped?: boolean;
+  tg?: { file: string; head: TerragruntDeployment; base?: TerragruntDeployment; baseRoot: string };
+}
+
+/** The evaluation of a root that does not exist yet. */
+function emptyEvaluation(root: string): RootEvaluation {
+  return { root, instances: [], moved: [], removed: [], imports: [], diagnostics: [], accounts: [], readFiles: new Set(), preventDestroy: new Set() };
 }
 
 const TF_FILE = /\.(tf|tofu|tfvars|tf\.json|tfvars\.json)$|(^|\/)\.terraform\.lock\.hcl$|(^|\/)terragrunt\.hcl$/;
@@ -106,6 +133,17 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   }
   const roots: RootReplay[] = [];
   const rootItems: GateItem[] = [];
+  const notes: string[] = [];
+  /** Notes about one root, kept only when that root is replayed. */
+  const rootNotes = new Map<string, string[]>();
+  const noteFor = (root: string, text: string) => rootNotes.set(root, [...(rootNotes.get(root) ?? []), text]);
+  // Which inputs each root is deployed with, from the base: a change must not choose how it is reviewed.
+  const mappings = readRootMappings(baseSource);
+  for (const p of mappings.problems) notes.push(`.diffseal.json ${p}; that part of the roots mapping is ignored`);
+  const headDeployments = terragruntDeployments(headSource);
+  const baseDeployments = terragruntDeployments(baseSource);
+  const under = opts.rootsUnder && path.posix.normalize(opts.rootsUnder) !== '.' ? path.posix.normalize(opts.rootsUnder).replace(/\/$/, '') + '/' : undefined;
+  const inScope = (d: TerragruntDeployment) => !under || (d.dir + '/').startsWith(under) || (d.moduleDir !== undefined && (d.moduleDir + '/').startsWith(under));
   /** Configuration files read at the base that a root cannot read at the head (reported per root). */
   const unreadableConfig = new Set<string>();
   const touchedPaths = new Set(changed.flatMap((c) => [c.path, c.oldPath]).filter((p): p is string => Boolean(p)).flatMap(aliases));
@@ -114,8 +152,13 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     const baseRoots = discoverRoots(baseSource, opts.rootsUnder);
     const moves = movedRoots(baseSource, headSource, baseRoots, headRoots, changed);
     const movedFrom = new Map([...moves].map(([from, m]) => [m.to, { ...m, from }]));
-    const candidates = new Set([...headRoots, ...baseRoots]);
+    // The module a Terragrunt configuration runs is replayed as a root, even where another root calls it.
+    const tgRoots = [...headDeployments.values()].filter((d) => d.moduleDir !== undefined && inScope(d)).map((d) => d.moduleDir!);
+    const candidates = new Set([...headRoots, ...baseRoots, ...tgRoots]);
     const allRoots = new Set([...headRoots, ...baseRoots]);
+    // Var-files the mapping assigns: they belong to the roots it names, not to whichever root they sit under.
+    const mappedFiles = new Set<string>();
+    for (const r of candidates) for (const e of mappedEnvironments(mappings, r) ?? []) for (const f of e.varFiles) mappedFiles.add(f);
     // A directory link to a root, unless it points at different roots at the two commits.
     const aliasTarget = (root: string) => {
       const h = headSource.linkedDir(root);
@@ -125,20 +168,80 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
       return b !== undefined && !loadModule(headSource, root) ? b : undefined;
     };
     const renamedTo = new Map(changed.filter((c) => c.status === 'R' && c.oldPath).map((c) => [c.oldPath!, c.path]));
+    /** Values tfvars files give a root variable: terraform.tfvars, *.auto.tfvars and the root's var-files. */
+    const rootVarValues = (src: GitSource, root: string, files: string[]) => {
+      const all = [...src.listFiles(root).filter((f) => AUTO_LOADED.test(f)).map((f) => path.posix.join(root, f)), ...files];
+      const values = all.map((f) => readVarFile(src, f));
+      return (name: string) => values.filter((v) => name in v).map((v) => v[name]);
+    };
     /**
-     * The evaluations of a root: always one without a var-file, as before var-files were read, so nothing
-     * the configuration itself changes can hide behind them; and one per var-file that exists at both
-     * commits (same path, or renamed by git). A var-file added or deleted is a changed input, reviewed.
+     * The evaluations of a root. With a `roots` mapping in `.diffseal.json`, exactly the environments it
+     * lists, each with its var-files layered in order and its workspace. Without one: always one without
+     * a var-file in workspace `default`, as before inputs were read, so nothing the configuration itself
+     * changes can hide behind them; one per var-file that exists at both commits (same path, or renamed
+     * by git), in the workspace of the same name when the configuration tells that workspace apart; and
+     * one per other workspace name the configuration tells apart. A var-file added or deleted is a changed
+     * input, reviewed. A Terragrunt configuration that runs the root adds one evaluation with its inputs.
      */
     const environments = (root: string, baseRoot: string, rootsSet: Set<string>) => {
-      type Env = { headFile?: string; baseFile?: string };
-      const out: Env[] = [{}];
-      if (!loadModule(headSource, root) || !loadModule(baseSource, baseRoot)) return out;
-      const baseFiles = varFilesOf(baseSource, baseRoot, rootsSet);
-      for (const h of varFilesOf(headSource, root, rootsSet)) {
-        const same = path.posix.join(baseRoot, path.posix.relative(root, h));
-        const b = baseFiles.includes(same) ? same : baseFiles.find((x) => renamedTo.get(x) === h);
-        if (b) out.push({ headFile: h, baseFile: b });
+      const out: Variant[] = [];
+      const both = Boolean(loadModule(headSource, root) && loadModule(baseSource, baseRoot));
+      const mapped = both ? mappedEnvironments(mappings, root) : undefined;
+      if (mapped) {
+        if (mapped.length > MAX_MAPPED_ENVIRONMENTS) noteFor(root, `Root ${root} maps ${mapped.length} environments in .diffseal.json; the first ${MAX_MAPPED_ENVIRONMENTS} were evaluated`);
+        for (const env of mapped.slice(0, MAX_MAPPED_ENVIRONMENTS)) {
+          const headFiles = env.varFiles;
+          const baseFiles = env.varFiles.map((f) => (f === root || f.startsWith(root + '/') ? path.posix.join(baseRoot, path.posix.relative(root, f)) : f));
+          const outside = headFiles.filter((f) => !insideRepository(f));
+          if (outside.length) {
+            noteFor(root, `.diffseal.json maps ${outside.join(', ')} for ${root}, which is outside the repository; that environment is not evaluated`);
+            continue;
+          }
+          const missing = headFiles.filter((f, i) => headSource.blobId(f) === undefined && baseSource.blobId(baseFiles[i]) === undefined && !headSource.linkProblem(f));
+          if (missing.length) noteFor(root, `.diffseal.json maps ${missing.join(', ')} for ${root}, which exists at neither commit`);
+          // A var-file added or deleted is a new or removed environment: reviewed by name, not compared.
+          if (headFiles.some((f, i) => (headSource.blobId(f) === undefined && !headSource.linkProblem(f)) || (baseSource.blobId(baseFiles[i]) === undefined && !baseSource.linkProblem(baseFiles[i])))) continue;
+          out.push({ headFiles, baseFiles, ...(env.workspace ? { workspace: env.workspace } : {}), mapped: true });
+        }
+      } else {
+        out.push({ headFiles: [], baseFiles: [] });
+        if (both) {
+          // Workspaces the configuration tells apart, read from both commits.
+          const reads = readsWorkspace(headSource, root) || readsWorkspace(baseSource, baseRoot);
+          let names: string[] = [];
+          if (reads) {
+            const headFilesAll = varFilesOf(headSource, root, rootsSet).filter((f) => !mappedFiles.has(f));
+            const baseFilesAll = varFilesOf(baseSource, baseRoot, rootsSet).filter((f) => !mappedFiles.has(f));
+            names = [...new Set([
+              ...workspaceNames(headSource, root, rootVarValues(headSource, root, headFilesAll)),
+              ...workspaceNames(baseSource, baseRoot, rootVarValues(baseSource, baseRoot, baseFilesAll)),
+            ])].sort();
+            if (!names.length) noteFor(root, `Root ${root} reads terraform.workspace, but no workspace names could be found in its configuration, so it was evaluated as workspace default only; list its workspaces under roots in .diffseal.json`);
+            else if (names.length > MAX_WORKSPACES) {
+              noteFor(root, `Root ${root} tells ${names.length} workspaces apart; ${MAX_WORKSPACES} were evaluated besides default (${names.slice(0, MAX_WORKSPACES).join(', ')}), not ${names.slice(MAX_WORKSPACES).join(', ')}`);
+              names = names.slice(0, MAX_WORKSPACES);
+            }
+          }
+          const paired = new Set<string>();
+          const baseFiles = varFilesOf(baseSource, baseRoot, rootsSet).filter((f) => !mappedFiles.has(f));
+          for (const h of varFilesOf(headSource, root, rootsSet).filter((f) => !mappedFiles.has(f))) {
+            const same = path.posix.join(baseRoot, path.posix.relative(root, h));
+            const b = baseFiles.includes(same) ? same : baseFiles.find((x) => renamedTo.get(x) === h);
+            if (!b) continue;
+            // prod.tfvars is most likely planned in workspace prod, when the configuration has one.
+            const stem = path.posix.basename(h).replace(/\.tfvars(\.json)?$/, '');
+            const ws = names.includes(stem) ? stem : undefined;
+            if (ws) paired.add(ws);
+            out.push({ headFiles: [h], baseFiles: [b], ...(ws ? { workspace: ws } : {}) });
+          }
+          for (const n of names) if (!paired.has(n)) out.push({ headFiles: [], baseFiles: [], workspace: n });
+        }
+      }
+      // Terragrunt configurations that run this root at the head, paired with the same file at the base.
+      for (const [file, head] of headDeployments) {
+        if (head.moduleDir !== root || !inScope(head)) continue;
+        const base = baseDeployments.get(file);
+        out.push({ headFiles: [], baseFiles: [], tg: { file, head, base, baseRoot: base?.moduleDir ?? baseRoot } });
       }
       return out;
     };
@@ -198,12 +301,19 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
         rootItems.push({ kind: 'coverage', level: 'review', text: `Root ${root} cannot be planned at this commit: ${named}${unreadable.length > 3 ? '; ...' : ''}. Terraform stops with "Failed to read file" when a configuration file cannot be read, so what this root plans was not checked; what ${unreadable.length === 1 ? 'that file declares or calls is' : 'those files declare or call is'} not shown as deleted` });
       }
       for (const env of environments(root, baseRoot, allRoots)) {
-        const { headFile, baseFile } = env;
-        const touchesEnv = touchesConfig || [headFile, baseFile].some((f) => f !== undefined && touchedPaths.has(f));
-        if (!touchesEnv && !(dataChanged.length && readsFiles(closure, headSource, baseSource))) continue;
-        // A var-file new at the head with nothing to pair it with is a new environment: nothing of it exists yet.
-        const baseEval = evaluateRoot(baseSource, baseRoot, {}, baseFile ? [baseFile] : []);
-        const headEval = evaluateRoot(headSource, root, {}, headFile ? [headFile] : []);
+        const { headFiles, baseFiles, workspace, tg } = env;
+        // A Terragrunt configuration may run another module at the base.
+        const envBaseRoot = tg ? tg.baseRoot : baseRoot;
+        const envClosure = tg && envBaseRoot !== baseRoot ? new Set([...closure, ...moduleClosure(baseSource, envBaseRoot)]) : closure;
+        const tgFiles = tg ? [tg.file, ...tg.head.includes, ...(tg.base?.includes ?? [])] : [];
+        const touchesEnv =
+          (tg && envBaseRoot !== baseRoot ? [...changedDirs].some((d) => envClosure.has(d)) || moduleLockChanged : touchesConfig) ||
+          [...headFiles, ...baseFiles, ...tgFiles].some((f) => touchedPaths.has(f));
+        if (!touchesEnv && !(dataChanged.length && readsFiles(envClosure, headSource, baseSource))) continue;
+        const inputs = (side: 'head' | 'base') => ({ ...(workspace ? { workspace } : {}), ...(tg ? { envVars: inputValues(side === 'head' ? tg.head : tg.base) } : {}) });
+        // A Terragrunt configuration new at the head is a new deployment: nothing of it exists yet.
+        const baseEval = tg && !tg.base ? emptyEvaluation(envBaseRoot) : evaluateRoot(baseSource, envBaseRoot, {}, baseFiles, inputs('base'));
+        const headEval = evaluateRoot(headSource, root, {}, headFiles, inputs('head'));
         if (!touchesEnv && !dataChanged.some((p) => headEval.readFiles.has(p) || baseEval.readFiles.has(p))) continue;
         // An evaluation with no instances still carries removed, moved and prevent_destroy blocks.
         let changes = compareEvaluations(baseEval, headEval);
@@ -221,14 +331,15 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
         // Compared by path inside the root, so a root that moves with its encrypted file is not a change.
         const brokenAt = (e: { diagnostics: string[] }, dir: string) => new Set(e.diagnostics.map((d) => d.slice(0, d.indexOf(':'))).filter((f) => /\.tfvars(\.json)?$/.test(f)).map((f) => path.posix.relative(dir, f)));
         const brokenHead = brokenAt(headEval, root);
-        const brokenBase = brokenAt(baseEval, baseRoot);
+        const brokenBase = brokenAt(baseEval, envBaseRoot);
         // Broken at both but edited: what was recovered from each says nothing certain either.
-        // Only for the var-file this evaluation was made with: an edited auto-loaded file is reviewed by name.
-        const envFile = headFile ? path.posix.relative(root, headFile) : undefined;
-        const editedBroken = envFile !== undefined && brokenHead.has(envFile) && brokenBase.has(envFile) && headSource.blobId(headFile!) !== baseSource.blobId(baseFile ?? headFile!) ? envFile : undefined;
+        // Only for the var-files this evaluation was made with: an edited auto-loaded file is reviewed by name.
+        const editedBroken = headFiles
+          .map((h, i) => ({ rel: path.posix.relative(root, h), h, b: baseFiles[i] ?? h }))
+          .find(({ rel, h, b }) => brokenHead.has(rel) && brokenBase.has(rel) && headSource.blobId(h) !== baseSource.blobId(b))?.rel;
         // Readable at one commit and not the other: the file must exist at both (an encrypted file added,
         // deleted or renamed is unreadable wherever it is, and reviewed by name).
-        const atBase = (f: string) => baseSource.blobId(path.posix.join(baseRoot, f)) !== undefined;
+        const atBase = (f: string) => baseSource.blobId(path.posix.join(envBaseRoot, f)) !== undefined;
         const atHead = (f: string) => headSource.blobId(path.posix.join(root, f)) !== undefined;
         const brokenVarFile = [...brokenHead].find((f) => !brokenBase.has(f) && atBase(f)) ?? [...brokenBase].find((f) => !brokenHead.has(f) && atHead(f)) ?? editedBroken;
         if (brokenVarFile) {
@@ -256,8 +367,11 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
           diagnostics: headEval.diagnostics,
           ...(move ? { movedFrom: move.from } : {}),
           ...(rootDeleted ? { deleted: true } : {}),
-          ...(headFile ? { varFile: headFile } : {}),
-          ...(baseFile && baseFile !== headFile ? { baseVarFile: baseFile } : {}),
+          ...(headFiles.length ? { varFiles: headFiles } : {}),
+          ...(baseFiles.length && baseFiles.some((f, i) => f !== headFiles[i]) ? { baseVarFiles: baseFiles } : {}),
+          ...(workspace ? { workspace } : {}),
+          ...(env.mapped ? { mapped: true } : {}),
+          ...(tg ? { terragrunt: tg.file, ...(tg.baseRoot !== root ? { terragruntBaseRoot: tg.baseRoot } : {}) } : {}),
           // A link pointing at the same root at both commits; a retargeted link is a deployment of its own.
           ...(aliasTarget(root) !== undefined ? { aliasOf: aliasTarget(root) } : {}),
         });
@@ -272,11 +386,12 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     }
   }
 
+  for (const r of new Set(roots.map((x) => x.root))) notes.push(...(rootNotes.get(r) ?? []));
   // Terraform that changed but that no evaluated root covers is reviewed, never silently passed.
   const covered = new Set<string>();
   for (const r of roots) {
     for (const d of moduleClosure(headSource, r.root)) covered.add(d);
-    for (const d of moduleClosure(baseSource, r.movedFrom ?? r.root)) covered.add(d);
+    for (const d of moduleClosure(baseSource, r.terragruntBaseRoot ?? r.movedFrom ?? r.root)) covered.add(d);
   }
   // A file is configuration under every name Terraform reads it by: a `.tf` link to a target without a
   // `.tf` name (`r/table.tf -> ../shared/config`) is Terraform, named by the link.
@@ -295,13 +410,12 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   // Inputs static replay does not evaluate: Terragrunt inputs, and tfvars no root is known to load.
   const evaluatedInputs = new Set<string>();
   for (const r of roots) {
-    if (r.varFile) evaluatedInputs.add(r.varFile);
+    for (const f of [...(r.varFiles ?? []), ...(r.baseVarFiles ?? [])]) evaluatedInputs.add(f);
     for (const [src, dir] of [[headSource, r.root], [baseSource, r.movedFrom ?? r.root]] as const) {
       // A linked tfvars file may be shared with other roots, so only a plain one counts as evaluated.
       for (const f of src.listFiles(dir)) if (AUTO_LOADED.test(f) && !src.linkTarget(path.posix.join(dir, f))) evaluatedInputs.add(path.posix.join(dir, f));
     }
-    if (r.varFile && r.movedFrom) evaluatedInputs.add(path.posix.join(r.movedFrom, path.posix.relative(r.root, r.varFile)));
-    if (r.baseVarFile) evaluatedInputs.add(r.baseVarFile);
+    if (r.movedFrom) for (const f of r.varFiles ?? []) evaluatedInputs.add(path.posix.join(r.movedFrom, path.posix.relative(r.root, f)));
   }
   // A tfvars file that cannot be read (an encrypted one) at either commit was not evaluated.
   for (const f of [...evaluatedInputs]) {
@@ -314,21 +428,64 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   }
   // Every name a changed file has, so a terragrunt.hcl or tfvars link to a changed target counts.
   const inputPaths = [...new Set(changed.flatMap((c) => [c.path, c.oldPath]).filter((p): p is string => Boolean(p)).flatMap(aliases))];
-  const terragrunt = inputPaths.filter((p) => /(^|\/)terragrunt\.hcl$/.test(p));
   const unattributed = inputPaths.filter((p) => /\.tfvars(\.json)?$/.test(p) && !aliases(p).some((a) => evaluatedInputs.has(a)));
+  const touchedFiles = (r: RootReplay) => [...(r.varFiles ?? []), ...(r.baseVarFiles ?? [])].filter((f) => touchedPaths.has(f));
   // A changed var-file found below a root is evaluated with that root, on its own. Which roots load it,
   // and with which other var-files, is set outside the configuration, so the change stays reviewed.
-  const partly = [...new Set(roots.filter((r) => r.varFile && [r.varFile, r.baseVarFile].some((f) => f && touchedPaths.has(f))).map((r) => `${r.varFile} (${describeVarChanges(baseSource, headSource, r.varFile!, r.baseVarFile)}) with ${r.root}`))];
+  // A var-file the roots mapping assigns is evaluated as the team deploys it, and needs no such review.
+  const partly = [...new Set(roots.filter((r) => !r.mapped && touchedFiles(r).length).map((r) => `${r.varFiles![0]} (${describeVarChanges(baseSource, headSource, r.varFiles![0], r.baseVarFiles?.[0])}) with ${r.root}`))];
   // A var-file evaluated with a root that does not declare a variable it changes: that value goes elsewhere.
+  // For a mapped var-file, only a value no root it is mapped to declares.
   const undeclared: string[] = [];
+  const declaredBy = (r: RootReplay) => new Set([...(loadModule(headSource, r.root)?.variables.keys() ?? []), ...(loadModule(baseSource, r.movedFrom ?? r.root)?.variables.keys() ?? [])]);
+  const mappedDeclared = new Map<string, { roots: Set<string>; names: Set<string> }>();
   for (const r of roots) {
-    if (!r.varFile || !touchedPaths.has(r.varFile)) continue;
-    const change = varChanges(baseSource, headSource, r.varFile, r.baseVarFile);
-    const names = change === 'new' ? [...readVarNames(headSource, r.varFile)] : change;
-    if (!Array.isArray(names)) continue;
-    const declared = new Set([...(loadModule(headSource, r.root)?.variables.keys() ?? []), ...(loadModule(baseSource, r.movedFrom ?? r.root)?.variables.keys() ?? [])]);
-    const missing = names.filter((n) => !declared.has(n));
-    if (missing.length) undeclared.push(`${r.varFile} sets ${missing.slice(0, 8).join(', ')}, which ${r.root} does not declare`);
+    if (!r.mapped) continue;
+    for (const f of r.varFiles ?? []) {
+      const e = mappedDeclared.get(f) ?? { roots: new Set(), names: new Set() };
+      e.roots.add(r.root);
+      for (const n of declaredBy(r)) e.names.add(n);
+      mappedDeclared.set(f, e);
+    }
+  }
+  for (const r of roots) {
+    r.varFiles?.forEach((file, i) => {
+      if (!touchedPaths.has(file) && !(r.baseVarFiles?.[i] && touchedPaths.has(r.baseVarFiles[i]))) return;
+      const change = varChanges(baseSource, headSource, file, r.baseVarFiles?.[i]);
+      const names = change === 'new' ? [...readVarNames(headSource, file)] : change;
+      if (!Array.isArray(names)) return;
+      const declared = r.mapped ? mappedDeclared.get(file)!.names : declaredBy(r);
+      const missing = names.filter((n) => !declared.has(n));
+      const who = r.mapped ? [...mappedDeclared.get(file)!.roots].sort().join(', ') : r.root;
+      if (missing.length) undeclared.push(`${file} sets ${missing.slice(0, 8).join(', ')}, which ${who} ${r.mapped && mappedDeclared.get(file)!.roots.size > 1 ? 'do' : 'does'} not declare`);
+    });
+  }
+  // Terragrunt: a changed configuration is reviewed for what static replay does not evaluate in it.
+  const headTg = terragruntFiles(headSource);
+  const baseTg = terragruntFiles(baseSource);
+  const tgChanged = inputPaths.filter((p) => headTg.has(p) || baseTg.has(p) || /(^|\/)terragrunt\.hcl$/.test(p));
+  const tgLines: string[] = [];
+  for (const f of tgChanged) {
+    const reading = (m: Map<string, TerragruntDeployment>) => [...m.values()].filter((d) => d.file === f || d.includes.includes(f));
+    const keys = [...new Set([...reading(headDeployments), ...reading(baseDeployments)].map((d) => d.file))].sort();
+    const why: string[] = [];
+    if (!keys.length) why.push('no Terragrunt configuration that runs a local Terraform module reads it');
+    for (const k of keys) {
+      const head = headDeployments.get(k);
+      const base = baseDeployments.get(k);
+      const where = k === f ? '' : `${k}: `;
+      if (!head) {
+        why.push(`${where}${k} no longer runs a module here; what it deployed is destroyed only if someone runs terragrunt destroy against its state`);
+        continue;
+      }
+      // Outside --roots-under: not replayed, as any root there.
+      if (!inScope(head) && (!base || !inScope(base))) continue;
+      const declared = (src: GitSource, d?: TerragruntDeployment) => new Set(d?.moduleDir ? loadModule(src, d.moduleDir)?.variables.keys() ?? [] : []);
+      const lines = unevaluatedChanges(base, head, { head: declared(headSource, head), base: declared(baseSource, base) });
+      why.push(...lines.map((l) => where + l));
+      if (!lines.length && !roots.some((r) => r.terragrunt === k)) why.push(`${where}${head.moduleDir ?? k} was not replayed with its inputs`);
+    }
+    if (why.length) tgLines.push(`${f} (${[...new Set(why)].slice(0, 4).join('; ')}${why.length > 4 ? '; ...' : ''})`);
   }
   const combined = combineRoots(roots);
   // An external module Diffseal cannot read offline: a new source or version can replace or delete
@@ -354,9 +511,9 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     if (combined.gate.result === 'pass') combined.gate.result = 'review';
     addGateItem(combined.gate, { kind: 'coverage', level: 'review', text: `Inputs changed that static replay does not evaluate: ${[...new Set(undeclared)].slice(0, 5).join('; ')}, so the root that uses ${undeclared.length === 1 ? 'that value' : 'those values'} is not known; review by hand or with a plan` });
   }
-  if (terragrunt.length) {
+  if (tgLines.length) {
     if (combined.gate.result === 'pass') combined.gate.result = 'review';
-    addGateItem(combined.gate, { kind: 'coverage', level: 'review', text: `Inputs changed that static replay does not evaluate: Terragrunt configuration ${terragrunt.slice(0, 5).join(', ')}${terragrunt.length > 5 ? ` and ${terragrunt.length - 5} more` : ''}. Diffseal does not read Terragrunt, so its inputs were not evaluated; review by hand or with a plan` });
+    addGateItem(combined.gate, { kind: 'coverage', level: 'review', text: `Inputs changed that static replay does not evaluate: Terragrunt configuration ${tgLines.slice(0, 5).join('; ')}${tgLines.length > 5 ? `; and ${tgLines.length - 5} more` : ''}. Diffseal reads Terragrunt inputs with literal values and locals, a local terraform source and an included parent, and runs nothing; review the rest by hand or with a plan` });
   }
   if (uncovered.length) {
     if (combined.gate.result === 'pass') combined.gate.result = 'review';
@@ -382,14 +539,23 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     terraformFiles: tfChanged.map((c) => c.path),
     roots,
     combined,
+    notes: [...new Set(notes)],
     headSource,
     baseSource,
   };
 }
 
-/** How each replayed root is named in reports and change records: its var-file and a move show. */
+/** The var-files of a replay, relative to its root, in order. */
+const varFileNames = (r: RootReplay) => (r.varFiles ?? []).map((f) => path.posix.relative(r.root, f));
+
+/**
+ * How each replayed root is named in reports and change records: its var-files, workspace, Terragrunt
+ * configuration and a move show.
+ */
 export function rootNames(roots: RootReplay[]): string[] {
-  return roots.map((r) => `${r.root}${r.varFile ? ` [${path.posix.relative(r.root, r.varFile)}]` : ''}${r.movedFrom ? ` (moved from ${r.movedFrom})` : ''}${r.deleted ? ' (deleted)' : ''}`);
+  return roots.map((r) =>
+    `${r.root}${r.varFiles?.length ? ` [${varFileNames(r).join(', ')}]` : ''}${r.workspace ? ` (workspace ${r.workspace})` : ''}${r.terragrunt ? ` (terragrunt ${r.terragrunt})` : ''}${r.movedFrom ? ` (moved from ${r.movedFrom})` : ''}${r.deleted ? ' (deleted)' : ''}`
+  );
 }
 
 const AUTO_LOADED = /^(terraform\.tfvars|[^/]*\.auto\.tfvars)(\.json)?$/;
@@ -636,9 +802,17 @@ export function shortRootLabels(roots: string[]): Record<string, string> {
  * findings and blast rows that are identical across roots collapse into one row naming every root.
  */
 export function combineRoots(roots: RootReplay[]): AnalysisResult {
-  // A root replayed per environment is labelled by its var-file's name too.
-  const withEnvs = new Set(roots.filter((r) => r.varFile).map((r) => r.root));
-  const name = (r: RootReplay) => (r.varFile ? `${r.root}/${path.posix.relative(r.root, r.varFile)}` : withEnvs.has(r.root) ? `${r.root}/(no var-file)` : r.root);
+  // A root replayed per environment is labelled by its var-files and workspace too; a Terragrunt
+  // configuration by its directory.
+  const variant = (r: RootReplay) => Boolean(r.varFiles?.length || r.workspace || r.terragrunt || r.mapped);
+  const withEnvs = new Set(roots.filter(variant).map((r) => r.root));
+  const withVarFiles = new Set(roots.filter((r) => r.varFiles?.length).map((r) => r.root));
+  const name = (r: RootReplay) => {
+    if (r.terragrunt) return path.posix.dirname(r.terragrunt);
+    if (!variant(r)) return withEnvs.has(r.root) ? `${r.root}/${withVarFiles.has(r.root) ? '(no var-file)' : '(workspace default)'}` : r.root;
+    const parts = [...(r.varFiles?.length ? [varFileNames(r).join(' + ')] : []), ...(r.workspace ? [`workspace ${r.workspace}`] : [])];
+    return `${r.root}/${parts.length ? parts.join(', ') : '(workspace default)'}`;
+  };
   const labels = shortRootLabels(roots.map(name));
   const label = (root: string, r: string) => (labels[root] ? `${labels[root]}: ${r}` : r);
   const gate: Gate = { result: 'pass', reasons: [], items: [] };
@@ -672,7 +846,7 @@ export function combineRoots(roots: RootReplay[]): AnalysisResult {
     // A root with var-files is deployed with them: its evaluation without one is a check, not a deployment.
     // A directory link to a root replayed too is the same deployment, counted once.
     const alias = replayed.aliasOf !== undefined && roots.some((r) => r.root === replayed.aliasOf);
-    if (!(withEnvs.has(replayed.root) && !replayed.varFile) && !alias) {
+    if (!(withEnvs.has(replayed.root) && !variant(replayed)) && !alias) {
       out.cost.items.push(...result.cost.items.map((i) => ({ ...i, resource: label(root, i.resource) })));
       out.cost.fixedMonthlyDeltaUsd = Math.round((out.cost.fixedMonthlyDeltaUsd + result.cost.fixedMonthlyDeltaUsd) * 100) / 100;
     }

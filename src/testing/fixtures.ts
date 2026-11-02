@@ -117,6 +117,10 @@ export interface ReplayFixtureCase {
     rootDiagnostics?: string[];
     /** Substrings no gate reason may contain. */
     reasonsNotContain?: string[];
+    /** Substrings the replay notes (facts that do not change the gate) must contain. */
+    notesContain?: string[];
+    /** Every replay note, exactly. */
+    notes?: string[];
   };
 }
 
@@ -309,7 +313,10 @@ export async function runFixtureCase(tc: FixtureCase): Promise<void> {
       snapshot(tc.base, tc.baseLinks, 'base');
       snapshot(tc.head, tc.headLinks, 'head');
       const r = await replayCommit({ repo: dir, head: 'HEAD', moduleCache: path.join(dir, '.no-module-cache'), ...(tc.rootsUnder ? { rootsUnder: tc.rootsUnder } : {}) });
-      if (tc.expect.replayedRoots !== undefined) expect(r.roots.map((x) => (x.varFile ? `${x.root} [${x.varFile}]` : x.root))).toEqual(tc.expect.replayedRoots);
+      const rootName = (x: (typeof r.roots)[number]) => `${x.root}${x.varFiles?.length ? ` [${x.varFiles.join(', ')}]` : ''}${x.workspace ? ` (workspace ${x.workspace})` : ''}${x.terragrunt ? ` (terragrunt ${x.terragrunt})` : ''}`;
+      if (tc.expect.replayedRoots !== undefined) expect(r.roots.map(rootName)).toEqual(tc.expect.replayedRoots);
+      if (tc.expect.notesContain) for (const n of tc.expect.notesContain) expect(r.notes.join(' ')).toContain(n);
+      if (tc.expect.notes !== undefined) expect(r.notes).toEqual(tc.expect.notes);
       if (tc.expect.rootDiagnostics !== undefined) expect(r.roots.flatMap((x) => x.diagnostics)).toEqual(tc.expect.rootDiagnostics);
       if (tc.expect.reasonsNotContain) {
         const joined = r.combined.gate.reasons.join(' ');

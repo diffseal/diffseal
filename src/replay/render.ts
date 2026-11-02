@@ -13,6 +13,7 @@ export function renderReplay(r: ReplayResult, opts: { commit?: boolean } = {}): 
   if (r.roots.length > 1 || r.roots.some((x) => x.movedFrom || x.deleted)) notes.push(`Roots: ${rootNames(r.roots).join(', ')}.`);
   const diagnostics = [...new Set(r.roots.flatMap((x) => x.diagnostics))];
   if (diagnostics.length) notes.push(`HCL diagnostics: ${diagnostics.slice(0, 3).join('; ')}${diagnostics.length > 3 ? ' ...' : ''}`);
+  for (const n of r.notes ?? []) notes.push(`${n}.`);
   const c = r.commit;
   return renderMarkdown(r.combined, {
     title: opts.commit === false ? undefined : `Commit \`${c.sha.slice(0, 9)}\` ${cell(c.subject)}, by ${cell(c.author)} on ${c.date.slice(0, 10)}.`,
