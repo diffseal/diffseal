@@ -28,7 +28,7 @@ function policyUpdate(c: ResourceChange, changed: string[], note: string): Blast
 }
 
 /** Deleting or replacing these loses data that Terraform cannot recreate. */
-const STATEFUL: Record<string, string> = {
+export const STATEFUL: Record<string, string> = {
   aws_s3_bucket: 'the objects in the bucket',
   aws_dynamodb_table: 'the items in the table',
   aws_dynamodb_global_table: 'the items in the table',

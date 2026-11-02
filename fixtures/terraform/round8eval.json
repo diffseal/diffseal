@@ -39,14 +39,14 @@
       },
       "expect": {
         "changedAddresses": [
-          "update aws_db_instance.d"
+          "replace aws_db_instance.d"
         ],
         "changes": [
           {
             "address": "aws_db_instance.d",
-            "action": "update",
-            "confidence": "unknown",
-            "actionReasonContains": "only the expression or data source behind it changed",
+            "action": "replace",
+            "confidence": "likely",
+            "actionReasonContains": "replace_because_cannot_update",
             "after": {
               "identifier": "d"
             }
@@ -66,14 +66,14 @@
       },
       "expect": {
         "changedAddresses": [
-          "update aws_sqs_queue.q"
+          "replace aws_sqs_queue.q"
         ],
         "changes": [
           {
             "address": "aws_sqs_queue.q",
-            "action": "update",
-            "confidence": "unknown",
-            "actionReasonContains": "only the expression or data source behind it changed"
+            "action": "replace",
+            "confidence": "likely",
+            "actionReasonContains": "replace_because_cannot_update"
           }
         ]
       }

@@ -3,6 +3,7 @@ import { containsUnknown, redact, stableKey } from '../hcl/eval.js';
 import type { ReplaceTrigger, RootEvaluation, StaticInstance } from './expand.js';
 import { CONDITIONAL_REPLACE, NESTED_REPLACE, REPLACE_ON_CHANGE, REPLACE_SETS } from './replaceCatalog.js';
 import { argumentFacts, retainedOnDestroy } from './schemaCatalog.js';
+import { STATEFUL } from '../analysis/blastRadius.js';
 
 /**
  * Turn two static evaluations of the same root into ResourceChanges, the way `terraform plan` would
@@ -513,7 +514,9 @@ function diffInstance(b: StaticInstance, a: StaticInstance): ResourceChange {
       actionReason: 'replace_because_cannot_update',
     };
     // Every forcing argument unknown at both commits, differing only in where the unknown comes from.
-    if (!certain.length && !forcing.some((k) => possible.has(k) || NESTED_REPLACE[a.type]?.[k])) {
+    // Not for a stateful type: a changed index or literal inside the expression is not seen here, and
+    // replacing a database or bucket loses data, so its possible replacement stays reviewed.
+    if (!certain.length && !STATEFUL[a.type] && !forcing.some((k) => possible.has(k) || NESTED_REPLACE[a.type]?.[k])) {
       const origins = forcing.map((k) => unknownOriginOnly(masked(b.attrs[k], paths(k)), masked(a.attrs[k], paths(k))));
       if (origins.every((o) => o !== undefined)) UNKNOWN_ORIGIN.set(change, [...new Set(origins.flat() as string[])]);
     }

@@ -141,6 +141,25 @@
           ]
         }
       }
+    },
+    {
+      "kind": "replay",
+      "name": "a deleted root that holds only skip_destroy resources is still reviewed (review round 2)",
+      "base": {
+        "keep/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n}\n",
+        "logs/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_cloudwatch_log_group\" \"l\" {\n  name         = \"l\"\n  skip_destroy = true\n}\n"
+      },
+      "head": {
+        "keep/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n}\n"
+      },
+      "expect": {
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "Root logs is deleted with 1 resource"
+          ]
+        }
+      }
     }
   ]
 }

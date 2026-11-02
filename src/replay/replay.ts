@@ -242,7 +242,9 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
         // only if someone runs destroy against it. Possible deletions, reviewed.
         if (rootDeleted) {
           for (const c of changes) {
-            if (c.action !== 'delete') continue;
+            // A resource with skip_destroy is reported as removed from state; with its root deleted even that
+            // does not happen, and the deleted root is still reviewed.
+            if (c.action !== 'delete' && !(c.action === 'forget' && c.actionReason?.startsWith('skip_destroy'))) continue;
             c.confidence = 'likely';
             c.actionReason = DELETED_ROOT_REASON;
             if (c.mode === 'managed') deletedResources++;
