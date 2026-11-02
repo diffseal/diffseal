@@ -327,6 +327,84 @@
           "tok-SECRET-2"
         ]
       }
+    },
+    {
+      "kind": "terraform",
+      "name": "deleting an API Gateway stage is reviewed: the API stops serving that stage, and the unchanged deployment does not recreate it (source case: storage-service 130cdbfd9)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_api_gateway_rest_api\" \"api\" {\n  name = \"api\"\n}\nresource \"aws_api_gateway_deployment\" \"d\" {\n  rest_api_id = aws_api_gateway_rest_api.api.id\n}\nresource \"aws_api_gateway_stage\" \"v1\" {\n  rest_api_id   = aws_api_gateway_rest_api.api.id\n  deployment_id = aws_api_gateway_deployment.d.id\n  stage_name    = \"v1\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_api_gateway_rest_api\" \"api\" {\n  name = \"api\"\n}\nresource \"aws_api_gateway_deployment\" \"d\" {\n  rest_api_id = aws_api_gateway_rest_api.api.id\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete aws_api_gateway_stage.v1"
+        ],
+        "blast": [
+          {
+            "resource": "aws_api_gateway_stage.v1",
+            "severity": "HIGH",
+            "dataLoss": false,
+            "reasonContains": "stops serving"
+          }
+        ],
+        "gate": {
+          "result": "review"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "deleting a load balancer listener is reviewed: the load balancer stops accepting connections on its port",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_lb\" \"lb\" {\n  name = \"lb\"\n}\nresource \"aws_lb_target_group\" \"tg\" {\n  name = \"tg\"\n}\nresource \"aws_lb_listener\" \"https\" {\n  load_balancer_arn = aws_lb.lb.arn\n  port              = 443\n  default_action {\n    type             = \"forward\"\n    target_group_arn = aws_lb_target_group.tg.arn\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_lb\" \"lb\" {\n  name = \"lb\"\n}\nresource \"aws_lb_target_group\" \"tg\" {\n  name = \"tg\"\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete aws_lb_listener.https"
+        ],
+        "blast": [
+          {
+            "resource": "aws_lb_listener.https",
+            "severity": "HIGH",
+            "dataLoss": false
+          }
+        ],
+        "gate": {
+          "result": "review"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "deleting a CloudFront distribution is reviewed",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_cloudfront_distribution\" \"cdn\" {\n  enabled = true\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete aws_cloudfront_distribution.cdn"
+        ],
+        "blast": [
+          {
+            "resource": "aws_cloudfront_distribution.cdn",
+            "severity": "HIGH"
+          }
+        ],
+        "gate": {
+          "result": "review"
+        }
+      }
     }
   ]
 }

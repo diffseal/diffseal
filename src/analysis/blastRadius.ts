@@ -80,6 +80,17 @@ const IDENTITY_OR_ENDPOINT: Record<string, string> = {
   aws_iot_topic_rule: 'IoT messages during the swap',
 };
 
+/**
+ * Deleting these takes an entry point out of service with nothing to replace it: no data is lost, but
+ * requests fail until it is created again. Replacing them is a brief swap, rated below.
+ */
+const SERVES_TRAFFIC: Record<string, string> = {
+  aws_api_gateway_stage: 'the API stops serving requests on this stage; redeploying the API does not recreate it',
+  aws_apigatewayv2_stage: 'the API stops serving requests on this stage',
+  aws_lb_listener: 'the load balancer stops accepting connections on this port',
+  aws_alb_listener: 'the load balancer stops accepting connections on this port',
+};
+
 /** Guard attributes that make the provider or AWS refuse a destroy. */
 function destroyGuard(type: string, before: Attrs, preventDestroy?: boolean): string | undefined {
   if (preventDestroy) return 'lifecycle.prevent_destroy = true, so Terraform will refuse to plan this';
@@ -200,6 +211,9 @@ export function analyzeBlastRadius(changes: ResourceChange[]): BlastFinding[] {
         const possibly = c.confidence !== 'proven' ? 'Possibly ' : '';
         const text = `${verb} ${c.type}${forcedBy}${what}${order}${note}`;
         out.push({ severity: 'HIGH', resource: c.address, type: c.type, action: c.action, reason: possibly ? possibly + text[0].toLowerCase() + text.slice(1) : text, dataLoss: false, downtime: c.replaceOrder === 'create-first' ? 'possible' : 'yes' });
+      } else if (c.action === 'delete' && SERVES_TRAFFIC[c.type]) {
+        const text = `Deletes ${c.type}: ${SERVES_TRAFFIC[c.type]}${note}`;
+        out.push({ severity: 'HIGH', resource: c.address, type: c.type, action: c.action, reason: c.confidence !== 'proven' ? `Possibly ${text[0].toLowerCase()}${text.slice(1)}` : text, dataLoss: false, downtime: 'yes' });
       } else if (c.action === 'replace' && ROUTINE_REPLACE.has(c.type)) {
         const env = envChange(c);
         out.push({ severity: 'INFO', resource: c.address, type: c.type, action: c.action, reason: `Recreates ${c.type}${forcedBy}${order}${env ? `; ${env}` : ''}${note}`, dataLoss: false, downtime: 'no' });
