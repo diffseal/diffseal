@@ -133,6 +133,8 @@ export async function evidencePack(opts: EvidenceOptions): Promise<EvidenceResul
         engine: { version: VERSION, replaceCatalog: REPLACE_CATALOG_SOURCE },
         diagnostics: [...new Set(replay.roots.flatMap((r) => r.diagnostics))],
         replayNotes: replay.notes,
+        // The pack is the full evidence and is never uploaded, so nothing is left out to fit the upload limit.
+        maxBytes: Infinity,
       });
       emit(`records/${sha}.json`, json(record));
       records++;

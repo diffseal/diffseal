@@ -62,6 +62,8 @@ export function changeRecord(input: {
   diagnostics?: string[];
   /** What the replay could not cover that does not change the gate (workspaces not found, a mapping problem). */
   replayNotes?: string[];
+  /** Serialized size the record is trimmed to; MAX_RECORD_BYTES unless a test says otherwise. */
+  maxBytes?: number;
 }): ChangeRecord {
   const { commit, result } = input;
   const notes: string[] = [];
@@ -71,7 +73,7 @@ export function changeRecord(input: {
   const likely = result.changes.filter((c) => c.confidence !== 'proven').length;
   if (likely) notes.push(`${likely} change(s) depend on values known only after apply; their action is likely, not proven.`);
   for (const n of input.replayNotes ?? []) notes.push(`${n}.`);
-  return {
+  return fitRecord({
     schema: 'diffseal.change-record/v1',
     change: { commit: commit.sha, base: input.base, subject: commit.subject, author: commit.author, date: commit.date },
     approvals: input.approvals ?? null,
@@ -102,7 +104,73 @@ export function changeRecord(input: {
     }),
     access: [],
     notes,
+  }, input.maxBytes ?? MAX_RECORD_BYTES);
+}
+
+/**
+ * The evidence service rejects an upload over 1 MiB, and the upload wraps the record. A record over this
+ * size leaves out resources until it fits.
+ */
+export const MAX_RECORD_BYTES = 900 * 1024;
+
+const SEVERITY_RANK: Record<string, number> = { INFO: 0, LOW: 1, MEDIUM: 2, HIGH: 3, CRITICAL: 4 };
+const STATUS_RANK: Record<string, number> = { INFO: 0, PASS: 0, UNKNOWN: 1, WARN: 2, FAIL: 3 };
+const UNCHANGED = new Set(['no-op', 'read', 'move', 'forget']);
+
+/**
+ * Leave out resources, with their risks and findings, until the serialized record fits in `maxBytes`:
+ * the lowest risk first, and among those the unchanged ones and those whose action is unknown. A resource
+ * a gate item names is always kept, so every risk and finding that raises the gate stays, and the gate,
+ * its reasons and items, and the roots are never touched. A note says how many were left out.
+ */
+function fitRecord(record: ChangeRecord, maxBytes: number): ChangeRecord {
+  const size = (r: ChangeRecord) => Buffer.byteLength(JSON.stringify(r));
+  if (size(record) <= maxBytes) return record;
+  const protectedResources = new Set(record.gate.items.flatMap((i) => (i.resource ? [i.resource] : [])));
+  // Rank each resource by its worst risk or finding (a FAIL weighs as a HIGH risk), then by how sure its change is.
+  const rank = new Map<string, [number, number]>();
+  const at = (address: string) => rank.get(address) ?? rank.set(address, [-1, 2]).get(address)!;
+  for (const r of record.resources) {
+    const k = at(r.address);
+    k[1] = Math.min(k[1], UNCHANGED.has(r.action) || r.confidence === 'unknown' ? 0 : r.confidence === 'proven' ? 2 : 1);
+  }
+  for (const r of record.risks) { const k = at(r.resource); k[0] = Math.max(k[0], SEVERITY_RANK[r.severity] ?? 4); }
+  for (const c of record.controls) { const k = at(c.resource); k[0] = Math.max(k[0], STATUS_RANK[c.status] ?? 3); }
+  const order = [...rank.entries()]
+    .filter(([address]) => !protectedResources.has(address))
+    .sort(([, a], [, b]) => a[0] - b[0] || a[1] - b[1])
+    .map(([address]) => address);
+  // Bytes each resource takes, a comma included, to estimate how many must go before measuring again.
+  const bytes = new Map<string, number>();
+  const add = (address: string, row: unknown) => bytes.set(address, (bytes.get(address) ?? 0) + Buffer.byteLength(JSON.stringify(row)) + 1);
+  for (const r of record.resources) add(r.address, r);
+  for (const r of record.risks) add(r.resource, r);
+  for (const c of record.controls) add(c.resource, c);
+  const total = record.resources.length;
+  const build = (left: Set<string>): ChangeRecord => {
+    const resources = record.resources.filter((r) => !left.has(r.address));
+    const dropped = total - resources.length;
+    return {
+      ...record,
+      resources,
+      risks: record.risks.filter((r) => !left.has(r.resource)),
+      controls: record.controls.filter((c) => !left.has(c.resource)),
+      notes: [
+        ...record.notes,
+        `${dropped} of ${total} resource entries were left out, with their risks and findings, to keep this record under the evidence service's upload limit: the lowest risk first, and unchanged ones or ones whose action is unknown before the others. None of them raises the gate. The full list is in the replay report for this commit (the JSON that diffseal replay writes).`,
+      ],
+    };
   };
+  const left = new Set<string>();
+  let excess = size(record) - maxBytes + 1024;
+  let i = 0;
+  for (;;) {
+    while (excess > 0 && i < order.length) { excess -= bytes.get(order[i])!; left.add(order[i++]); }
+    const trimmed = build(left);
+    const over = size(trimmed) - maxBytes;
+    if (over <= 0 || i >= order.length) return trimmed;
+    excess = over;
+  }
 }
 
 /** `sha256  file` lines, sorted by file name, as `sha256sum -c` reads them. */

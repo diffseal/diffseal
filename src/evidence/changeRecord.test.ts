@@ -2,7 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import { analyze } from '../analysis/analyze.js';
 import { readPlan } from '../plan/readPlan.js';
 import { plan, rc } from '../testing/planFixtures.js';
-import { changeRecord, manifest } from './changeRecord.js';
+import { addGateItem, type AnalysisResult, type Gate, type ResourceChange } from '../core/model.js';
+import { changeRecord, manifest, MAX_RECORD_BYTES } from './changeRecord.js';
 
 describe('changeRecord', () => {
   const result = analyze(
@@ -82,6 +83,90 @@ describe('changeRecord', () => {
   test('notes Terraform that did not parse, by file and line (round 3)', () => {
     const r = changeRecord({ commit, base: 'b'.repeat(40), roots: [], result, diagnostics: ['main.tf:7: expected "}"'], engine: { version: 't', replaceCatalog: 'x' } });
     expect(r.notes.join(' ')).toContain('main.tf:7');
+  });
+
+  describe('a record over the upload limit', () => {
+    // A large monorepo: thousands of resources, a few with risks, two that raise the gate.
+    const change = (address: string, action: ResourceChange['action'], confidence: ResourceChange['confidence'] = 'proven'): ResourceChange =>
+      ({ address, type: 'aws_sns_topic', name: 'x', mode: 'managed', action, before: null, after: {}, references: {}, confidence });
+    const pad = 'x'.repeat(120);
+    const changes: ResourceChange[] = [
+      change('aws_db_instance.orders', 'delete'),
+      change('aws_iam_role_policy.ci', 'update'),
+      change('aws_sqs_queue.medium', 'update'),
+      change('aws_sqs_queue.preexisting', 'update'),
+      ...Array.from({ length: 2500 }, (_, i) => change(`module.unknown_${pad}.aws_sns_topic.t[${i}]`, 'update', 'unknown')),
+      ...Array.from({ length: 2500 }, (_, i) => change(`module.low_${pad}.aws_sns_topic.t[${i}]`, 'create')),
+      ...Array.from({ length: 2500 }, (_, i) => change(`module.plain_${pad}.aws_sns_topic.t[${i}]`, 'create')),
+    ];
+    const blast: AnalysisResult['blast'] = [
+      { severity: 'CRITICAL', resource: 'aws_db_instance.orders', type: 'aws_db_instance', action: 'delete', reason: 'deletes the database', dataLoss: true, downtime: 'yes' },
+      { severity: 'MEDIUM', resource: 'aws_sqs_queue.medium', type: 'aws_sqs_queue', action: 'update', reason: 'changes delivery', dataLoss: false, downtime: 'possible' },
+      ...Array.from({ length: 2500 }, (_, i) => ({ severity: 'LOW' as const, resource: `module.low_${pad}.aws_sns_topic.t[${i}]`, type: 'aws_sns_topic', action: 'create' as const, reason: 'new topic', dataLoss: false, downtime: 'no' as const })),
+    ];
+    const finding = (resource: string, status: 'FAIL' | 'PASS', preExisting?: boolean): AnalysisResult['findings'][number] =>
+      ({ ruleId: 'iam.least-privilege', title: 'Least privilege', status, resource, controls: ['ISO27001:A.8.2'], detail: `${status} detail`, ...(preExisting ? { preExisting } : {}) });
+    const findings = [finding('aws_iam_role_policy.ci', 'FAIL'), finding('aws_sqs_queue.preexisting', 'FAIL', true)];
+    const gate: Gate = { result: 'pass', reasons: [], items: [] };
+    addGateItem(gate, { kind: 'risk', level: 'block', rule: 'blast-radius', resource: 'aws_db_instance.orders', text: 'CRITICAL: aws_db_instance.orders: deletes the database' });
+    addGateItem(gate, { kind: 'control', level: 'review', rule: 'iam.least-privilege', resource: 'aws_iam_role_policy.ci', text: 'FAIL iam.least-privilege: aws_iam_role_policy.ci: FAIL detail' });
+    addGateItem(gate, { kind: 'coverage', level: 'review', text: 'Terraform changed outside every analyzed root (x.tf); it was not checked' });
+    gate.result = 'block';
+    const big: AnalysisResult = { changes, findings, blast, gate, cost: { items: [], fixedMonthlyDeltaUsd: 0, basis: '' } };
+    const roots = Array.from({ length: 40 }, (_, i) => `services/svc-${i}`);
+    const record = changeRecord({ commit, base: 'b'.repeat(40), roots, result: big, engine: { version: 't', replaceCatalog: 'x' } });
+    const kept = new Set(record.resources.map((r) => r.address));
+
+    test('the untrimmed record is over the limit, so the test means something', () => {
+      const full = changeRecord({ commit, base: 'b'.repeat(40), roots, result: big, engine: { version: 't', replaceCatalog: 'x' }, maxBytes: Infinity });
+      expect(full.resources.length).toBe(changes.length);
+      expect(Buffer.byteLength(JSON.stringify(full))).toBeGreaterThan(MAX_RECORD_BYTES);
+    });
+
+    test('fits under 900 KiB', () => {
+      expect(MAX_RECORD_BYTES).toBe(900 * 1024);
+      expect(Buffer.byteLength(JSON.stringify(record))).toBeLessThanOrEqual(MAX_RECORD_BYTES);
+    });
+
+    test('keeps the gate, its reasons and items, the roots, and what raises the gate', () => {
+      expect(record.gate).toEqual(gate);
+      expect(record.roots).toEqual(roots);
+      // The service checks these: items repeat the reasons, and block is exactly an item at block.
+      expect(record.gate.items.map((i) => i.text)).toEqual(record.gate.reasons);
+      expect(record.gate.result === 'block').toBe(record.gate.items.some((i) => i.level === 'block'));
+      for (const address of ['aws_db_instance.orders', 'aws_iam_role_policy.ci']) expect(kept.has(address)).toBe(true);
+      expect(record.risks.some((r) => r.resource === 'aws_db_instance.orders' && r.severity === 'CRITICAL')).toBe(true);
+      expect(record.controls.some((c) => c.resource === 'aws_iam_role_policy.ci' && c.status === 'FAIL')).toBe(true);
+    });
+
+    test('leaves out the lowest risk first: unknown and unchanged, then no risk, then LOW', () => {
+      expect([...kept].some((a) => a.startsWith('module.unknown_'))).toBe(false);
+      expect(kept.has('aws_sqs_queue.medium')).toBe(true);
+      expect(record.risks.some((r) => r.resource === 'aws_sqs_queue.medium')).toBe(true);
+      const plain = [...kept].filter((a) => a.startsWith('module.plain_')).length;
+      const low = [...kept].filter((a) => a.startsWith('module.low_')).length;
+      expect(low).toBeGreaterThan(0);
+      if (plain) expect(low).toBe(2500);
+      // A FAIL that does not raise the gate weighs as a HIGH risk, so it goes after LOW and MEDIUM.
+      expect(kept.has('aws_sqs_queue.preexisting')).toBe(true);
+      // Risks and findings of a resource left out go with it.
+      expect(record.risks.every((r) => kept.has(r.resource))).toBe(true);
+      expect(record.controls.every((c) => kept.has(c.resource))).toBe(true);
+    });
+
+    test('a note says how many entries were left out and where the full list is', () => {
+      const left = changes.length - record.resources.length;
+      expect(left).toBeGreaterThan(0);
+      const note = record.notes.find((n) => n.includes('left out'));
+      expect(note).toContain(`${left} of ${changes.length} resource entries`);
+      expect(note).toContain('full list');
+    });
+
+    test('a record under the limit is not changed', () => {
+      const small = changeRecord({ commit, base: 'b'.repeat(40), roots: [], result, engine: { version: 't', replaceCatalog: 'x' } });
+      expect(small.resources.length).toBe(result.changes.length);
+      expect(small.notes.some((n) => n.includes('left out'))).toBe(false);
+    });
   });
 
   test('the manifest lists a sha256 per file, sorted', () => {
