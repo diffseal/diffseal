@@ -1,0 +1,146 @@
+{
+  "suite": "replay/heldout",
+  "description": "Held-out accuracy measurement of 750 public commits (November 2026): replay cases",
+  "cases": [
+    {
+      "kind": "replay",
+      "name": "a git submodule bump that a root calls modules from is reviewed, naming the submodule, both commits, the root and the module (source case: tdr-terraform-environments cafa746b8, a shared KMS key policy rewritten in a submodule)",
+      "base": {
+        ".gitmodules": "[submodule \"shared-modules\"]\n\tpath = shared-modules\n\turl = https://example.com/shared-modules.git\n",
+        "main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"kms\" {\n  source = \"./shared-modules/kms\"\n  name   = \"app\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { team = \"a\" }\n}\n"
+      },
+      "head": {
+        ".gitmodules": "[submodule \"shared-modules\"]\n\tpath = shared-modules\n\turl = https://example.com/shared-modules.git\n",
+        "main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"kms\" {\n  source = \"./shared-modules/kms\"\n  name   = \"app\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { team = \"a\" }\n}\n"
+      },
+      "baseSubmodules": {
+        "shared-modules": "1111111111111111111111111111111111111111"
+      },
+      "headSubmodules": {
+        "shared-modules": "2222222222222222222222222222222222222222"
+      },
+      "expect": {
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "Git submodule shared-modules",
+            "111111111",
+            "222222222",
+            "module.kms",
+            "in ."
+          ]
+        }
+      }
+    },
+    {
+      "kind": "replay",
+      "name": "a git submodule bump next to an unrelated edit is still reviewed (source case: tdr-terraform-environments 7423dc9b9, NAT instance logic changed in the VPC module of a submodule)",
+      "base": {
+        ".gitmodules": "[submodule \"shared-modules\"]\n\tpath = shared-modules\n\turl = https://example.com/shared-modules.git\n",
+        "main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"kms\" {\n  source = \"./shared-modules/kms\"\n  name   = \"app\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { team = \"a\" }\n}\n"
+      },
+      "head": {
+        ".gitmodules": "[submodule \"shared-modules\"]\n\tpath = shared-modules\n\turl = https://example.com/shared-modules.git\n",
+        "main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"kms\" {\n  source = \"./shared-modules/kms\"\n  name   = \"app\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { team = \"b\" }\n}\n"
+      },
+      "baseSubmodules": {
+        "shared-modules": "1111111111111111111111111111111111111111"
+      },
+      "headSubmodules": {
+        "shared-modules": "2222222222222222222222222222222222222222"
+      },
+      "expect": {
+        "replayedRoots": [
+          "."
+        ],
+        "changedAddresses": [
+          "update aws_sqs_queue.q"
+        ],
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "Git submodule shared-modules",
+            "111111111",
+            "222222222",
+            "module.kms"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "replay",
+      "name": "a git submodule bump reached through a local module is reviewed with the module's full address",
+      "base": {
+        ".gitmodules": "[submodule \"shared-modules\"]\n\tpath = shared-modules\n\turl = https://example.com/shared-modules.git\n",
+        "envs/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"app\" {\n  source = \"../../modules/app\"\n}\n",
+        "modules/app/main.tf": "module \"vpc\" {\n  source = \"../../shared-modules/vpc\"\n}\n"
+      },
+      "head": {
+        ".gitmodules": "[submodule \"shared-modules\"]\n\tpath = shared-modules\n\turl = https://example.com/shared-modules.git\n",
+        "envs/prod/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"app\" {\n  source = \"../../modules/app\"\n}\n",
+        "modules/app/main.tf": "module \"vpc\" {\n  source = \"../../shared-modules/vpc\"\n}\n"
+      },
+      "baseSubmodules": {
+        "shared-modules": "1111111111111111111111111111111111111111"
+      },
+      "headSubmodules": {
+        "shared-modules": "2222222222222222222222222222222222222222"
+      },
+      "expect": {
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "Git submodule shared-modules",
+            "module.app.module.vpc",
+            "envs/prod"
+          ]
+        }
+      }
+    },
+    {
+      "kind": "replay",
+      "name": "a git submodule bump that no Terraform root uses passes",
+      "base": {
+        ".gitmodules": "[submodule \"docs-theme\"]\n\tpath = docs-theme\n\turl = https://example.com/theme.git\n",
+        "main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"kms\" {\n  source = \"./shared-modules/kms\"\n  name   = \"app\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { team = \"a\" }\n}\n"
+      },
+      "head": {
+        ".gitmodules": "[submodule \"docs-theme\"]\n\tpath = docs-theme\n\turl = https://example.com/theme.git\n",
+        "main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"kms\" {\n  source = \"./shared-modules/kms\"\n  name   = \"app\"\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name = \"q\"\n  tags = { team = \"a\" }\n}\n"
+      },
+      "baseSubmodules": {
+        "docs-theme": "1111111111111111111111111111111111111111"
+      },
+      "headSubmodules": {
+        "docs-theme": "2222222222222222222222222222222222222222"
+      },
+      "expect": {
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "replay",
+      "name": "a git submodule added with a new call into it is reviewed as a new submodule",
+      "base": {
+        "main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+      },
+      "head": {
+        ".gitmodules": "[submodule \"shared-modules\"]\n\tpath = shared-modules\n\turl = https://example.com/shared-modules.git\n",
+        "main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"kms\" {\n  source = \"./shared-modules/kms\"\n}\n"
+      },
+      "headSubmodules": {
+        "shared-modules": "2222222222222222222222222222222222222222"
+      },
+      "expect": {
+        "gate": {
+          "result": "review",
+          "reasonsContain": [
+            "Git submodule shared-modules is added at 222222222"
+          ]
+        }
+      }
+    }
+  ]
+}

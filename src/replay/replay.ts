@@ -333,7 +333,9 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   const combined = combineRoots(roots);
   // An external module Diffseal cannot read offline: a new source or version can replace or delete
   // anything inside it, so the change is reviewed, never passed.
-  for (const item of [...rootItems, ...externalModuleItems(roots)]) {
+  // A submodule bump changes the modules read from it, whether or not a .tf file changed with it.
+  const submodules = submoduleItems(baseSource, headSource, opts.rootsUnder);
+  for (const item of [...rootItems, ...externalModuleItems(roots), ...submodules]) {
     if (combined.gate.result === 'pass') combined.gate.result = 'review';
     addGateItem(combined.gate, item);
   }
@@ -528,6 +530,58 @@ export function externalModuleItems(roots: RootReplay[]): GateItem[] {
     }
   }
   return [...groups.values()].map((g) => ({ kind: 'coverage', level: 'review', text: g.text(listRoots(g.roots)) }));
+}
+
+const short = (sha: string | undefined) => (sha ? sha.slice(0, 9) : '(none)');
+
+/**
+ * Gate items for git submodules whose recorded commit changes (or that are added or removed) and that a
+ * root calls modules from, directly or through local modules. Diffseal does not read a submodule's
+ * content, so, like an external module version change, a bump is reviewed: one item per submodule,
+ * naming both commits, the module calls that read it and the roots that make them.
+ */
+export function submoduleItems(base: GitSource, head: GitSource, rootsUnder?: string): GateItem[] {
+  const was = base.submodules();
+  const now = head.submodules();
+  const bumped = [...new Set([...was.keys(), ...now.keys()])].filter((p) => was.get(p) !== now.get(p)).sort();
+  if (!bumped.length) return [];
+  const roots = [...new Set([...discoverRoots(head, rootsUnder), ...discoverRoots(base, rootsUnder)])].sort();
+  const items: GateItem[] = [];
+  for (const sub of bumped) {
+    const inside = (dir: string) => dir === sub || dir.startsWith(sub + '/');
+    const users: string[] = [];
+    const calls = new Set<string>();
+    for (const root of roots) {
+      let uses = false;
+      for (const src of [head, base]) {
+        const walk = (dir: string, prefix: string, depth: number) => {
+          if (depth > 16) return;
+          for (const call of loadModule(src, dir)?.moduleCalls.values() ?? []) {
+            if (!call.localDir) continue;
+            const at = `${prefix}module.${call.name}`;
+            if (inside(call.localDir)) {
+              uses = true;
+              calls.add(at);
+            } else walk(call.localDir, at + '.', depth + 1);
+          }
+        };
+        walk(root, '', 0);
+      }
+      if (uses) users.push(root);
+    }
+    if (!users.length) continue;
+    const from = was.get(sub);
+    const to = now.get(sub);
+    const what = !from ? `is added at ${short(to)}` : !to ? `is removed (it was at ${short(from)})` : `changes from ${short(from)} to ${short(to)}`;
+    const list = [...calls].sort();
+    const named = `${list.slice(0, 5).join(', ')}${list.length > 5 ? ` and ${list.length - 5} more` : ''}`;
+    items.push({
+      kind: 'coverage',
+      level: 'review',
+      text: `Git submodule ${sub} ${what}, and ${named} in ${listRoots(users)} ${list.length === 1 ? 'calls a module' : 'call modules'} from it. Diffseal does not read a submodule's content, so what the new commit replaces or deletes is not known; review the submodule's changes between the two commits, or a plan`,
+    });
+  }
+  return items;
 }
 
 /**
