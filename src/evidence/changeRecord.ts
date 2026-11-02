@@ -118,6 +118,18 @@ const STATUS_RANK: Record<string, number> = { INFO: 0, PASS: 0, UNKNOWN: 1, WARN
 const UNCHANGED = new Set(['no-op', 'read', 'move', 'forget']);
 
 /**
+ * A resource address without the root labels a replay of several roots puts before it (`a, b: x` is `x`):
+ * what follows the first `: ` that starts an address. An instance key is quoted, so a `: ` after a quote is
+ * part of the address.
+ */
+function bareAddress(address: string): string {
+  for (let i = address.indexOf(': '); i >= 0 && !address.slice(0, i).includes('"'); i = address.indexOf(': ', i + 1)) {
+    if (/^[a-z][a-z0-9_]*\.[A-Za-z_]/.test(address.slice(i + 2))) return address.slice(i + 2);
+  }
+  return address;
+}
+
+/**
  * Leave out resources, with their risks and findings, until the serialized record fits in `maxBytes`:
  * the lowest risk first, and among those the unchanged ones and those whose action is unknown. A resource
  * a gate item names is always kept, so every risk and finding that raises the gate stays, and the gate,
@@ -126,10 +138,14 @@ const UNCHANGED = new Set(['no-op', 'read', 'move', 'forget']);
 function fitRecord(record: ChangeRecord, maxBytes: number): ChangeRecord {
   const size = (r: ChangeRecord) => Buffer.byteLength(JSON.stringify(r));
   if (size(record) <= maxBytes) return record;
+  // With several roots, rows carry root labels (`a: x`, or `a, b: x` for a row the same in both) and gate
+  // items name the bare address; a resource is kept or left out in every root together.
   const protectedResources = new Set(record.gate.items.flatMap((i) => (i.resource ? [i.resource] : [])));
+  // A row a gate item names is kept whatever its labels look like.
+  const gated = (address: string) => protectedResources.has(bareAddress(address)) || [...protectedResources].some((r) => address === r || address.endsWith(`: ${r}`));
   // Rank each resource by its worst risk or finding (a FAIL weighs as a HIGH risk), then by how sure its change is.
   const rank = new Map<string, [number, number]>();
-  const at = (address: string) => rank.get(address) ?? rank.set(address, [-1, 2]).get(address)!;
+  const at = (address: string) => rank.get(bareAddress(address)) ?? rank.set(bareAddress(address), [-1, 2]).get(bareAddress(address))!;
   for (const r of record.resources) {
     const k = at(r.address);
     k[1] = Math.min(k[1], UNCHANGED.has(r.action) || r.confidence === 'unknown' ? 0 : r.confidence === 'proven' ? 2 : 1);
@@ -142,19 +158,20 @@ function fitRecord(record: ChangeRecord, maxBytes: number): ChangeRecord {
     .map(([address]) => address);
   // Bytes each resource takes, a comma included, to estimate how many must go before measuring again.
   const bytes = new Map<string, number>();
-  const add = (address: string, row: unknown) => bytes.set(address, (bytes.get(address) ?? 0) + Buffer.byteLength(JSON.stringify(row)) + 1);
+  const add = (address: string, row: unknown) => bytes.set(bareAddress(address), (bytes.get(bareAddress(address)) ?? 0) + Buffer.byteLength(JSON.stringify(row)) + 1);
   for (const r of record.resources) add(r.address, r);
   for (const r of record.risks) add(r.resource, r);
   for (const c of record.controls) add(c.resource, c);
   const total = record.resources.length;
   const build = (left: Set<string>): ChangeRecord => {
-    const resources = record.resources.filter((r) => !left.has(r.address));
+    const kept = (address: string) => !left.has(bareAddress(address)) || gated(address);
+    const resources = record.resources.filter((r) => kept(r.address));
     const dropped = total - resources.length;
     return {
       ...record,
       resources,
-      risks: record.risks.filter((r) => !left.has(r.resource)),
-      controls: record.controls.filter((c) => !left.has(c.resource)),
+      risks: record.risks.filter((r) => kept(r.resource)),
+      controls: record.controls.filter((c) => kept(c.resource)),
       notes: [
         ...record.notes,
         `${dropped} of ${total} resource entries were left out, with their risks and findings, to keep this record under the evidence service's upload limit: the lowest risk first, and unchanged ones or ones whose action is unknown before the others. None of them raises the gate. The full list is in the replay report for this commit (the JSON that diffseal replay writes).`,

@@ -254,8 +254,8 @@ function sameOwner(type: string, before: Attrs, after: Attrs, all: ResourceChang
   const nowName = principalName(now);
   if (stableKey(was) !== stableKey(now) && (wasName === undefined || wasName !== nowName)) {
     // A referenced principal renamed in place, from the old owner name to the new one, is the same principal.
-    const renamed = wasName !== undefined && referenced.some((c) =>
-      principalName(c.before?.name) === wasName && (isUnknown(now) || principalName(c.after?.name) === nowName));
+    const renamed = wasName !== undefined && nowName !== undefined && wasName !== nowName && referenced.some((c) =>
+      principalName(c.before?.name) === wasName && principalName(c.after?.name) === nowName);
     if (!renamed) return false;
   }
   if (nowName === undefined) return true;

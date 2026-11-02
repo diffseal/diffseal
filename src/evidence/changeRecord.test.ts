@@ -162,6 +162,52 @@ describe('changeRecord', () => {
       expect(note).toContain('full list');
     });
 
+    test('with several roots, a resource is matched to the gate by its address without the root labels', () => {
+      // combineRoots labels changes per root (`a: x`) and collapses identical rows (`a, b: x`); gate items keep the bare address.
+      const labelled: AnalysisResult = {
+        ...big,
+        changes: changes.flatMap((c) => ['svc/a', 'svc/b'].map((l) => ({ ...c, address: `${l}: ${c.address}` }))),
+        blast: blast.map((b) => ({ ...b, resource: `svc/a, svc/b: ${b.resource}` })),
+        // Many FAILs that do not raise the gate rank as high as the one that does.
+        findings: [...findings, ...Array.from({ length: 2000 }, (_, i) => finding(`module.pre_${pad}.aws_iam_role_policy.p[${i}]`, 'FAIL', true))]
+          .map((f) => ({ ...f, resource: `svc/a, svc/b: ${f.resource}` })),
+        gate: { ...gate, items: gate.items.map((i) => ({ ...i, text: `svc/a, svc/b: ${i.text}` })), reasons: gate.reasons.map((r) => `svc/a, svc/b: ${r}`) },
+      };
+      const r = changeRecord({ commit, base: 'b'.repeat(40), roots, result: labelled, engine: { version: 't', replaceCatalog: 'x' } });
+      expect(Buffer.byteLength(JSON.stringify(r))).toBeLessThanOrEqual(MAX_RECORD_BYTES);
+      expect(r.gate).toEqual(labelled.gate);
+      const addresses = new Set(r.resources.map((x) => x.address));
+      for (const a of ['aws_db_instance.orders', 'aws_iam_role_policy.ci']) {
+        expect(addresses.has(`svc/a: ${a}`)).toBe(true);
+        expect(addresses.has(`svc/b: ${a}`)).toBe(true);
+      }
+      expect(r.risks.some((x) => x.resource === 'svc/a, svc/b: aws_db_instance.orders')).toBe(true);
+      expect(r.controls.some((x) => x.resource === 'svc/a, svc/b: aws_iam_role_policy.ci' && x.status === 'FAIL')).toBe(true);
+      // A resource's rows in every root go together, and take the rank of its collapsed risk or finding.
+      for (const a of addresses) expect(addresses.has(a.startsWith('svc/a: ') ? a.replace('svc/a: ', 'svc/b: ') : a.replace('svc/b: ', 'svc/a: '))).toBe(true);
+      expect([...addresses].some((a) => a.includes('module.unknown_'))).toBe(false);
+      const pre = r.controls.filter((x) => x.resource.includes('module.pre_')).length;
+      expect(pre).toBeGreaterThan(0);
+      // The FAILs that do not raise the gate rank as HIGH, so every LOW and MEDIUM resource went before them.
+      expect(r.risks.map((x) => x.resource)).toEqual(['svc/a, svc/b: aws_db_instance.orders']);
+      expect(addresses.has('svc/a: aws_sqs_queue.medium')).toBe(false);
+    });
+
+    test('root labels holding brackets do not hide what raises the gate', () => {
+      const labelled: AnalysisResult = {
+        ...big,
+        changes: changes.flatMap((c) => ['services/[prod]', 'services/[dev]'].map((l) => ({ ...c, address: `${l}: ${c.address}` }))),
+        blast: blast.map((b) => ({ ...b, resource: `services/[prod], services/[dev]: ${b.resource}` })),
+        findings: findings.map((f) => ({ ...f, resource: `services/[prod], services/[dev]: ${f.resource}` })),
+      };
+      const r = changeRecord({ commit, base: 'b'.repeat(40), roots, result: labelled, engine: { version: 't', replaceCatalog: 'x' } });
+      expect(Buffer.byteLength(JSON.stringify(r))).toBeLessThanOrEqual(MAX_RECORD_BYTES);
+      const addresses = new Set(r.resources.map((x) => x.address));
+      for (const l of ['services/[prod]', 'services/[dev]']) expect(addresses.has(`${l}: aws_db_instance.orders`)).toBe(true);
+      expect(r.risks.some((x) => x.resource.endsWith(': aws_db_instance.orders'))).toBe(true);
+      expect([...addresses].some((a) => a.includes('module.unknown_'))).toBe(false);
+    });
+
     test('a record under the limit is not changed', () => {
       const small = changeRecord({ commit, base: 'b'.repeat(40), roots: [], result, engine: { version: 't', replaceCatalog: 'x' } });
       expect(small.resources.length).toBe(result.changes.length);

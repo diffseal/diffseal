@@ -685,6 +685,29 @@
      "resultNot": "pass"
     }
    }
+  },
+  {
+   "kind": "terraform",
+   "name": "principal identity guard: an owner that becomes unknown between two users this change keeps is not taken for a rename",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"pick\" {\n  type = bool\n}\nresource \"aws_iam_user\" \"a\" {\n  name = \"a\"\n}\nresource \"aws_iam_user\" \"b\" {\n  name = \"b\"\n}\nresource \"aws_iam_user_policy\" \"p\" {\n  name   = \"p\"\n  user   = aws_iam_user.a.name\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"All\", Effect = \"Allow\", Action = \"s3:*\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"pick\" {\n  type = bool\n}\nresource \"aws_iam_user\" \"a\" {\n  name = \"a\"\n}\nresource \"aws_iam_user\" \"b\" {\n  name = \"b\"\n}\nresource \"aws_iam_user_policy\" \"p\" {\n  name   = \"p\"\n  user   = var.pick ? aws_iam_user.a.name : aws_iam_user.b.name\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"Get\", Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "expect": {
+    "findings": [
+     {
+      "ruleId": "iam.least-privilege",
+      "resource": "aws_iam_user_policy.p",
+      "preExisting": null
+     }
+    ],
+    "gate": {
+     "resultNot": "pass"
+    }
+   }
   }
  ]
 }
