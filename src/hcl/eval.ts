@@ -1,3 +1,4 @@
+import { isNode, parseAllDocuments, visit } from 'yaml';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { isIP } from 'node:net';
 import { Redacted, UNKNOWN_PART, Unknown, hasRedacted, isRedacted, isUnknown, reveal } from '../core/model.js';
@@ -915,8 +916,12 @@ const STRICT: Record<string, Fn> = {
       throw new EvalError('jsondecode(): invalid JSON');
     }
   },
-  // Not evaluated, but the text decoded is the identity: a changed file is a changed value.
-  yamldecode: ([t]) => withPath(new Unknown('yamldecode is not evaluated', undefined, refsOf(t)), `yamldecode(${typeof t === 'string' ? keyedDigest(t) : keyOf(t)})`),
+  yamldecode: ([t]) => {
+    const v = typeof t === 'string' ? decodeYaml(t) : undefined;
+    if (v !== undefined) return v;
+    // Not decoded, but the text is the identity: a changed file is a changed value.
+    return withPath(new Unknown('yamldecode is not evaluated', undefined, refsOf(t)), `yamldecode(${typeof t === 'string' ? keyedDigest(t) : keyOf(t)})`);
+  },
   base64encode: ([s]) => Buffer.from(toStr(s)).toString('base64'),
   base64decode: ([s]) => Buffer.from(toStr(s), 'base64').toString('utf8'),
   urlencode: ([s]) => encodeURIComponent(toStr(s)),
@@ -1146,6 +1151,31 @@ function flattenUnknowns(v: unknown): Unknown[] {
   if (Array.isArray(v)) return v.flatMap(flattenUnknowns);
   if (v && typeof v === 'object' && !(v instanceof Traversable) && !(v instanceof Redacted)) return Object.values(v).flatMap(flattenUnknowns);
   return [];
+}
+
+/**
+ * One YAML document decoded with the YAML 1.2 core schema, as Terraform's yamldecode does, or undefined
+ * when the text is not one plain document (several documents, custom tags, errors): left unknown then.
+ */
+function decodeYaml(text: string): unknown {
+  try {
+    const docs = parseAllDocuments(text, { schema: 'core', merge: false, uniqueKeys: true });
+    if (!Array.isArray(docs) || docs.length > 1) return undefined;
+    if (docs.length === 0) return null;
+    const doc = docs[0];
+    if (doc.errors.length || doc.warnings.length) return undefined;
+    let plain = true;
+    visit(doc, {
+      Node(_, node) {
+        if (isNode(node) && node.tag && !/^tag:yaml\.org,2002:(str|int|float|bool|null|map|seq)$/.test(node.tag)) plain = false;
+      },
+    });
+    if (!plain) return undefined;
+    const v = doc.toJS({ maxAliasCount: 100 });
+    return v === undefined ? null : v;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Terraform regexes are RE2: translate named groups and leading inline flags; anything else invalid is an EvalError. */

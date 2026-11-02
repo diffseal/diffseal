@@ -241,7 +241,7 @@
   },
   {
    "kind": "terraform",
-   "name": "a launch template whose user_data reads a YAML file that changed is not a proven no-op (source case: terraform-aws-sponsorship 3ad7d9034)",
+   "name": "a launch template whose user_data reads a value from a YAML file that changed is not a proven no-op (source case: terraform-aws-sponsorship 3ad7d9034)",
    "root": "r",
    "base": {
     "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"api_key\" {\n  type      = string\n  sensitive = true\n}\nresource \"aws_launch_template\" \"agents\" {\n  name      = \"agents\"\n  user_data = base64encode(templatefile(\"${path.module}/userdata.tpl\", {\n    api_key = var.api_key\n    acp_url = yamldecode(file(\"${path.module}/data.yaml\"))[\"ci\"][\"acp_url\"]\n  }))\n}\n",
@@ -251,7 +251,7 @@
    "head": {
     "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"api_key\" {\n  type      = string\n  sensitive = true\n}\nresource \"aws_launch_template\" \"agents\" {\n  name      = \"agents\"\n  user_data = base64encode(templatefile(\"${path.module}/userdata.tpl\", {\n    api_key = var.api_key\n    acp_url = yamldecode(file(\"${path.module}/data.yaml\"))[\"ci\"][\"acp_url\"]\n  }))\n}\n",
     "r/userdata.tpl": "#!/bin/sh\necho \"${acp_url}\" > /etc/acp\nconfigure --key \"${api_key}\"\n",
-    "r/data.yaml": "ci:\n  acp_url: http://acp/\n  dockerhub_mirror_hostname: mirror.example\n"
+    "r/data.yaml": "ci:\n  acp_url: http://acp-2/\n  dockerhub_mirror_hostname: mirror.example\n"
    },
    "expect": {
     "changedAddresses": [
@@ -260,8 +260,7 @@
     "changes": [
      {
       "address": "aws_launch_template.agents",
-      "action": "update",
-      "confidenceNot": "proven"
+      "action": "update"
      }
     ],
     "gate": {
@@ -329,6 +328,58 @@
    "expect": {
     "changedAddresses": [
      "create aws_sqs_queue.q"
+    ]
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "a YAML file whose other values change leaves a value read from it unchanged",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  data = yamldecode(file(\"${path.module}/data.yaml\"))\n}\nresource \"aws_sqs_queue\" \"q\" {\n  for_each = local.data.queues\n  name     = each.key\n  delay_seconds = each.value.delay\n}\n",
+    "r/data.yaml": "queues:\n  jobs:\n    delay: 5\n  mail:\n    delay: 0\nowner: team-a\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  data = yamldecode(file(\"${path.module}/data.yaml\"))\n}\nresource \"aws_sqs_queue\" \"q\" {\n  for_each = local.data.queues\n  name     = each.key\n  delay_seconds = each.value.delay\n}\n",
+    "r/data.yaml": "queues:\n  jobs:\n    delay: 5\n  mail:\n    delay: 10\nowner: team-b\n"
+   },
+   "expect": {
+    "changedAddresses": [
+     "update aws_sqs_queue.q[\"mail\"]"
+    ],
+    "changes": [
+     {
+      "address": "aws_sqs_queue.q[\"mail\"]",
+      "action": "update",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "pass"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "a YAML document with a custom tag is not decoded, and a change to it is not a proven no-op",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_ssm_parameter\" \"p\" {\n  name  = \"p\"\n  type  = \"String\"\n  value = yamldecode(file(\"${path.module}/d.yaml\")).v\n}\n",
+    "r/d.yaml": "v: !ref one\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_ssm_parameter\" \"p\" {\n  name  = \"p\"\n  type  = \"String\"\n  value = yamldecode(file(\"${path.module}/d.yaml\")).v\n}\n",
+    "r/d.yaml": "v: !ref two\n"
+   },
+   "expect": {
+    "changedAddresses": [
+     "update aws_ssm_parameter.p"
+    ],
+    "changes": [
+     {
+      "address": "aws_ssm_parameter.p",
+      "confidenceNot": "proven"
+     }
     ]
    }
   }
