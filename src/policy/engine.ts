@@ -1,6 +1,7 @@
 import {
   configAddress,
   instancesCompatible,
+  isRedacted,
   isUnknown,
   reveal,
   scrub,
@@ -195,8 +196,11 @@ export function evaluatePolicies(all: ResourceChange[], policy: PolicyConfig = {
           const priorMessages = new Set(prior.issues.map((i) => i.message));
           const introduced = result.issues.filter((i) => !priorMessages.has(i.message));
           const kept = result.issues.filter((i) => i.level !== 'UNKNOWN' && priorMessages.has(i.message)).length;
-          // A policy update that grants nothing new introduces nothing, whatever its statement ids say.
-          if (!introduced.length || (rule.id === 'iam.least-privilege' && res.type !== 'aws_iam_role' && sameOwner(res.type, before!, after, recreated, res.references) && grantsWithin(resolvePolicyValue(before!.policy, res, 'policy', ctxBefore), resolvePolicyValue(after.policy, res, 'policy', ctx)))) {
+          // A policy update that grants nothing new introduces nothing, whatever its statement ids say; but an
+          // inline policy whose known owner changed or is recreated grants all it holds to a new principal.
+          const ownerKept = rule.id === 'iam.least-privilege' && sameOwner(res.type, before!, after, recreated, res.references);
+          const newPrincipal = rule.id === 'iam.least-privilege' && OWNERS[res.type] !== undefined && before![OWNERS[res.type].attr] != null && !ownerKept;
+          if (!newPrincipal && (!introduced.length || (ownerKept && res.type !== 'aws_iam_role' && grantsWithin(resolvePolicyValue(before!.policy, res, 'policy', ctxBefore), resolvePolicyValue(after.policy, res, 'policy', ctx))))) {
             preExisting = true;
           } else if (kept) {
             status = (['FAIL', 'WARN', 'UNKNOWN'] as const).find((l) => introduced.some((i) => i.level === l))!;
@@ -241,7 +245,7 @@ function sameOwner(type: string, before: Attrs, after: Attrs, recreated: Resourc
   // that name is created, replaced or deleted in the same change, or one whose name is not known statically.
   if (typeof now !== 'string') return true;
   const name = now.startsWith('arn:') ? now.slice(now.lastIndexOf('/') + 1) : now;
-  return !recreated.some((c) => c.type === owner.type && [c.before?.name, c.after?.name].some((n) => n === name || isUnknown(n)));
+  return !recreated.some((c) => c.type === owner.type && [c.before?.name, c.after?.name].map((n) => reveal(n)).some((n) => n === name || isUnknown(n) || isRedacted(n)));
 }
 
 export const capitalize = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);

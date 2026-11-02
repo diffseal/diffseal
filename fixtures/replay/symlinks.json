@@ -1235,6 +1235,99 @@
      ]
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review 21: a root moved to another depth whose relative .tf link no longer resolves is not evaluable, not a deletion",
+   "base": {
+    "prod/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"prod\"\n  }\n}\n",
+    "shared/table": "resource \"aws_dynamodb_table\" \"t\" {\n  name     = \"orders\"\n  hash_key = \"id\"\n}\n"
+   },
+   "head": {
+    "envs/prod/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"prod\"\n  }\n}\n",
+    "shared/table": "resource \"aws_dynamodb_table\" \"t\" {\n  name     = \"orders\"\n  hash_key = \"id\"\n}\n"
+   },
+   "baseLinks": {
+    "prod/table.tf": "../shared/table"
+   },
+   "headLinks": {
+    "envs/prod/table.tf": "../shared/table"
+   },
+   "expect": {
+    "changedAddresses": [],
+    "noProvenDelete": true,
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "Root envs/prod cannot be planned",
+      "envs/prod/table.tf"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review 21: resources of a module called from a .tf link that cannot be read are not deletions",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "shared/calls": "module \"m\" {\n  source = \"./m\"\n}\n",
+    "r/m/main.tf": "resource \"aws_dynamodb_table\" \"t\" {\n  name     = \"orders\"\n  hash_key = \"id\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "r/m/main.tf": "resource \"aws_dynamodb_table\" \"t\" {\n  name     = \"orders\"\n  hash_key = \"id\"\n}\n"
+   },
+   "baseLinks": {
+    "r/calls.tf": "../shared/calls"
+   },
+   "headLinks": {
+    "r/calls.tf": "../shared/calls"
+   },
+   "expect": {
+    "changedAddresses": [],
+    "noProvenDelete": true,
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "Root r cannot be planned",
+      "r/calls.tf"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review 21: a .tf link that a .tofu file of the same name shadows is not read, so its broken target does not hide a proven replacement",
+   "base": {
+    "env/main.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "env/table.tofu": "resource \"aws_dynamodb_table\" \"t\" {\n  name     = \"orders\"\n  hash_key = \"id\"\n}\n",
+    "shared/table.tf": "variable \"x\" {\n  default = 1\n}\n"
+   },
+   "head": {
+    "env/main.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "env/table.tofu": "resource \"aws_dynamodb_table\" \"t\" {\n  name     = \"orders-v2\"\n  hash_key = \"id\"\n}\n"
+   },
+   "baseLinks": {
+    "env/table.tf": "../shared/table.tf"
+   },
+   "headLinks": {
+    "env/table.tf": "../shared/table.tf"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_dynamodb_table.t",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    },
+    "reasonsNotContain": [
+     "cannot be planned"
+    ]
+   }
   }
  ]
 }

@@ -169,14 +169,33 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
       // A configuration file Terraform cannot read stops its plan with "Failed to read file": a .tf link
       // whose target is deleted, missing or outside the repository. Read at the base, it is not deleted
       // code: the root is not evaluable at the head, and nothing in that file is a deletion.
+      // Its path at the base: a root moved in this change had its files under its old directory.
+      const atBase = (f: string) => (f === root || f.startsWith(root + '/') ? path.posix.join(baseRoot, path.posix.relative(root, f)) : f);
       const unreadable = [...moduleClosure(headSource, root)]
-        .flatMap((d) => (loadModule(headSource, d)?.files ?? []).map((f) => path.posix.join(d, f)))
-        .filter((f) => headSource.linkProblem(f) !== undefined && baseSource.blobId(f) !== undefined)
+        // Only the files Terraform reads: OpenTofu's x.tofu shadows x.tf.
+        .flatMap((d) => (loadModule(headSource, d)?.files ?? []).filter((f, _, all) => !(f.endsWith('.tf') && all.includes(f.slice(0, -3) + '.tofu'))).map((f) => path.posix.join(d, f)))
+        .filter((f) => headSource.linkProblem(f) !== undefined && baseSource.blobId(atBase(f)) !== undefined)
         .sort();
+      // What the base read from those files: resources declared in them, and everything in the modules
+      // they call (`module.m.` and below, as configuration addresses).
+      const lost = new Set(unreadable.map(atBase));
+      const lostModules: string[] = [];
+      if (lost.size) {
+        const walk = (dir: string, prefix: string, depth: number) => {
+          if (depth > 16) return;
+          for (const call of loadModule(baseSource, dir)?.moduleCalls.values() ?? []) {
+            const at = `${prefix}module.${call.name}`;
+            if (lost.has(call.file)) lostModules.push(at + '.');
+            else if (call.localDir) walk(call.localDir, at + '.', depth + 1);
+          }
+        };
+        walk(baseRoot, '', 0);
+      }
+      const configAddress = (a: string) => a.replace(/\[("([^"\\]|\\.)*"|[^\]]*)\]/g, '');
       if (unreadable.length) {
         for (const f of unreadable) unreadableConfig.add(f);
         const named = unreadable.slice(0, 3).map((f) => `${f} (${headSource.linkProblem(f)})`).join('; ');
-        rootItems.push({ kind: 'coverage', level: 'review', text: `Root ${root} cannot be planned at this commit: ${named}${unreadable.length > 3 ? '; ...' : ''}. Terraform stops with "Failed to read file" when a configuration file cannot be read, so what this root plans was not checked; its resources in ${unreadable.length === 1 ? 'that file are' : 'those files are'} not shown as deletions` });
+        rootItems.push({ kind: 'coverage', level: 'review', text: `Root ${root} cannot be planned at this commit: ${named}${unreadable.length > 3 ? '; ...' : ''}. Terraform stops with "Failed to read file" when a configuration file cannot be read, so what this root plans was not checked; what ${unreadable.length === 1 ? 'that file declares or calls is' : 'those files declare or call is'} not shown as deleted` });
       }
       for (const env of environments(root, baseRoot, allRoots)) {
         const { headFile, baseFile } = env;
@@ -189,8 +208,7 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
         // An evaluation with no instances still carries removed, moved and prevent_destroy blocks.
         let changes = compareEvaluations(baseEval, headEval);
         if (unreadable.length) {
-          const lost = new Set(unreadable);
-          changes = changes.filter((c) => !(c.action === 'delete' && c.source && lost.has(c.source.file)));
+          changes = changes.filter((c) => !(c.action === 'delete' && ((c.source && lost.has(c.source.file)) || lostModules.some((m) => configAddress(c.address).startsWith(m)))));
           for (const c of changes) {
             if (c.action === 'no-op' || c.confidence !== 'proven') continue;
             c.confidence = 'likely';

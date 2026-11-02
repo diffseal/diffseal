@@ -385,6 +385,46 @@
      }
     ]
    }
+  },
+  {
+   "kind": "terraform",
+   "name": "review 21: a narrowed inline policy whose remaining issues read the same is new when its user is deleted and created in the same change",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_user\" \"old\" {\n  name = \"deploy\"\n}\nresource \"aws_iam_user_policy\" \"p\" {\n  name   = \"p\"\n  user   = \"deploy\"\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"S3\", Effect = \"Allow\", Action = \"s3:*\", Resource = \"*\" }, { Sid = \"Iam\", Effect = \"Allow\", Action = \"iam:*\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_user\" \"new\" {\n  name = \"deploy\"\n}\nresource \"aws_iam_user_policy\" \"p\" {\n  name   = \"p\"\n  user   = \"deploy\"\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"S3\", Effect = \"Allow\", Action = \"s3:*\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "expect": {
+    "findings": [
+     {
+      "ruleId": "iam.least-privilege",
+      "resource": "aws_iam_user_policy.p",
+      "preExisting": null
+     }
+    ]
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "review 21: a principal whose name is sensitive is matched by the name it holds",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_user\" \"old\" {\n  name = sensitive(\"deploy\")\n}\nresource \"aws_iam_user_policy\" \"p\" {\n  name   = \"p\"\n  user   = \"deploy\"\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"S3\", Effect = \"Allow\", Action = \"s3:*\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_user\" \"new\" {\n  name = sensitive(\"deploy\")\n}\nresource \"aws_iam_user_policy\" \"p\" {\n  name   = \"p\"\n  user   = \"deploy\"\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"Get\", Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "expect": {
+    "findings": [
+     {
+      "ruleId": "iam.least-privilege",
+      "resource": "aws_iam_user_policy.p",
+      "preExisting": null
+     }
+    ]
+   }
   }
  ]
 }
