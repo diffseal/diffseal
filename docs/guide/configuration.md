@@ -7,6 +7,7 @@ Diffseal reads repository configuration from `.diffseal.json` at the root of the
 A `.diffseal.json` file can hold these groups of settings:
 
 - `replay`: Analysis paths for the trusted upload workflow.
+- `roots`: The var-files and workspaces each Terraform root is deployed with.
 - `policy`: Thresholds and blocking severities for infrastructure policy checks and blast radius.
 - `exceptions`: Time-limited acceptances for specific policy findings or destructive changes.
 
@@ -31,6 +32,49 @@ The `infra`, `roles` and `env` link settings belonged to the removed application
   ]
 }
 ```
+
+## Root inputs: var-files and workspaces
+
+Replay evaluates each root the way you deploy it only when it knows the inputs. Without help it finds them like this:
+
+- **Workspaces.** A root whose configuration compares `terraform.workspace` with a string (`terraform.workspace == "prod"`), looks it up in a literal list (`contains(["test", "prod"], terraform.workspace)`), or indexes a map with it (`lookup(var.accounts, terraform.workspace)`, `local.sizes[terraform.workspace]`) is evaluated once per name found, besides `default`. This also works through a local, a module output or a module input that holds the workspace, and the map may come from `terraform.tfvars`. At most 8 names besides `default` are evaluated; the report says when more were found. A root that reads `terraform.workspace` without such a comparison is evaluated as `default` only, and the report says so.
+- **Var-files.** A `.tfvars` file in the root directory, or in a directory below it that holds no Terraform, is evaluated with that root on its own. When its name matches a workspace the configuration tells apart (`prod.tfvars` and `"prod"`), it is evaluated in that workspace. A changed var-file found this way is still reviewed, because which roots load it, and with which other var-files, is set outside the configuration.
+
+Every result names its environment: `app/workspace prod: aws_sqs_queue.q`, and the roots line of the report, the JSON output (`workspace`, `varFiles`) and the change record list `app (workspace prod)`.
+
+To say exactly how a root is deployed, list it under `roots`:
+
+```json
+{
+  "roots": {
+    "infra/app": {
+      "environments": [
+        { "workspace": "prod", "varFiles": ["../vars/common.tfvars", "../vars/prod.tfvars"] },
+        { "workspace": "staging", "varFiles": ["../vars/common.tfvars", "../vars/staging.tfvars"] }
+      ]
+    },
+    "ops/services/*": { "workspaces": ["test", "sandbox", "prod"] }
+  }
+}
+```
+
+- A key is a root directory, relative to the repository root. `*` matches any characters inside one path segment. An exact key wins over a pattern; among patterns, the first in the file wins.
+- `environments` lists one entry per deployment. `workspace` is the Terraform workspace (`default` when left out). `varFiles` are loaded in order, each overriding the ones before it, as repeated `-var-file` options do. Paths are relative to the root directory, the way Terraform reads `-var-file` when it runs there.
+- `workspaces` is a short form: one environment per name, without var-files.
+- With an entry, exactly the listed environments are evaluated, at most 16. A root the change adds or moves uses the entry for its new directory, or else the one for its old directory. The evaluation without inputs and the workspace and var-file discovery above are not used for that root. List `default` if it is a real deployment.
+- A changed var-file that is evaluated through the mapping no longer needs a coverage review. It is still reviewed when it sets a variable that no root it is mapped to declares, or when it does not parse. Diffseal takes the mapping as the complete list of roots that load a mapped var-file.
+- A mapped var-file that is added or deleted by the change is a new or removed environment. It is reviewed by name, not compared. One that exists at neither commit, an entry that is not valid, and a path outside the repository are ignored, and the report says so.
+
+Diffseal reads `roots` from the base commit, never from the head. A pull request cannot change how it is reviewed: a mapping it adds or edits applies from the next change, and changing `.diffseal.json` raises the gate to REVIEW (see [Base-commit protection](#base-commit-protection)).
+
+### Terragrunt
+
+A `terragrunt.hcl` whose `terraform { source = ... }` is a local path, or that sits next to Terraform files, is evaluated with the module it runs:
+
+- `inputs` with literal values and with `locals` built from literals and pure functions are read, merged with the `inputs` of a parent it includes with `include { path = find_in_parent_folders(...) }` or a path. `merge_strategy` `shallow` (the default), `deep` (maps merged, lists appended) and `no_merge` are followed; with several includes, the last one's `terraform` source wins. The path functions `get_terragrunt_dir()`, `get_parent_terragrunt_dir()`, `get_repo_root()`, `path_relative_to_include()` and `find_in_parent_folders()` are evaluated.
+- A file an input reads with `file()` is read from the repository, and an edit to it, or to a file read with `read_terragrunt_config()`, replays the configuration.
+- Inputs reach Terraform as `TF_VAR_` variables, so `terraform.tfvars` and `*.auto.tfvars` in the module override them, as they do in a real run.
+- Diffseal never runs Terragrunt, a hook or `run_cmd`, and reads no environment variables. An input that needs `dependency` outputs, `get_env`, `run_cmd`, `read_terragrunt_config`, `sops_decrypt_file` or an exposed `include` stays unknown. When the change touches such an input, a `generate` block, a hook, `extra_arguments`, `remote_state` or another setting Diffseal does not evaluate, the change is reviewed and the line names it. An input the module does not declare is reviewed too, and the line says when a `generate` block may declare it.
 
 ## Policy settings
 
@@ -123,7 +167,7 @@ An exception accepts a policy finding or a blast-radius item on matching resourc
 
 Diffseal prevents a change from relaxing the rules that judge it:
 
-- In `diffseal replay` and the GitHub Action `pr` mode, Diffseal reads `.diffseal.json` and any repository `policy` file from the base commit, not the head commit.
+- In `diffseal replay` and the GitHub Action `pr` mode, Diffseal reads `.diffseal.json` and any repository `policy` file from the base commit, not the head commit. This covers the `roots` mapping of var-files and workspaces.
 - In the GitHub Action, a `policy` file path must sit inside the repository without `..` path traversal, so Diffseal can read its base-commit version.
 - Whenever `.diffseal.json` or the `policy` file differs between the base commit and the head commit, Diffseal raises the gate to at least `review` and notes that the updated configuration applies starting from the next change after this one is reviewed and merged.
 

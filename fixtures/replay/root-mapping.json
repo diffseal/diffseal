@@ -302,6 +302,36 @@
      "replace aws_sqs_queue.q[0]"
     ]
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review round 2: a mapped root none of whose environments can be evaluated is evaluated without inputs and reviewed",
+   "base": {
+    ".diffseal.json": "{\"roots\": {\"infra/app\": {\"environments\": [{\"workspace\": \"prod\", \"varFiles\": [\"prod.tfvars\", \"secrets.tfvars\"]}]}}}",
+    "infra/app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = file(\"${path.module}/policy.json\")\n}\n",
+    "infra/app/prod.tfvars": "",
+    "infra/app/policy.json": "{\"Statement\": [{\"Effect\": \"Allow\", \"Action\": \"s3:GetObject\", \"Resource\": \"arn:aws:s3:::b/*\"}]}"
+   },
+   "head": {
+    ".diffseal.json": "{\"roots\": {\"infra/app\": {\"environments\": [{\"workspace\": \"prod\", \"varFiles\": [\"prod.tfvars\", \"secrets.tfvars\"]}]}}}",
+    "infra/app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_policy\" \"p\" {\n  name   = \"p\"\n  policy = file(\"${path.module}/policy.json\")\n}\n",
+    "infra/app/prod.tfvars": "",
+    "infra/app/policy.json": "{\"Statement\": [{\"Effect\": \"Allow\", \"Action\": \"*\", \"Resource\": \"*\"}]}"
+   },
+   "expect": {
+    "replayedRoots": [
+     "infra/app"
+    ],
+    "changedAddresses": [
+     "update aws_iam_policy.p"
+    ],
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "Root infra/app maps environments in .diffseal.json, but none could be evaluated (infra/app/secrets.tfvars exists at neither commit), so it was evaluated without inputs"
+     ]
+    }
+   }
   }
  ]
 }

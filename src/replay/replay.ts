@@ -137,6 +137,9 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
   /** Notes about one root, kept only when that root is replayed. */
   const rootNotes = new Map<string, string[]>();
   const noteFor = (root: string, text: string) => rootNotes.set(root, [...(rootNotes.get(root) ?? []), text]);
+  /** Coverage reviews about one root, raised only when that root is replayed. */
+  const rootReviews = new Map<string, string[]>();
+  const reviewFor = (root: string, text: string) => rootReviews.set(root, [...(rootReviews.get(root) ?? []), text]);
   // Which inputs each root is deployed with, from the base: a change must not choose how it is reviewed.
   const mappings = readRootMappings(baseSource);
   for (const p of mappings.problems) notes.push(`.diffseal.json ${p}; that part of the roots mapping is ignored`);
@@ -185,48 +188,60 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
      */
     const environments = (root: string, baseRoot: string, rootsSet: Set<string>, configTouched: boolean) => {
       const out: Variant[] = [];
-      // A root new in this change is evaluated in its environments too, against nothing; a deleted one only as it was.
+      // A root new in this change is evaluated in its environments too, against nothing; a deleted one in the
+      // environments it had, against nothing at the head.
       const atHead = Boolean(loadModule(headSource, root));
       const atBase = Boolean(loadModule(baseSource, baseRoot));
       const both = atHead && atBase;
       // A root moved in this change keeps the mapping of its old directory.
       const fromBase = baseRoot !== root ? mappedEnvironments(mappings, baseRoot) : undefined;
-      const mapped = !atHead
+      const mapped = !atHead && !atBase
         ? undefined
         : (mappedEnvironments(mappings, root) ??
           fromBase?.map((e) => ({ ...e, varFiles: e.varFiles.map((f) => (f === baseRoot || f.startsWith(baseRoot + '/') ? path.posix.join(root, path.posix.relative(baseRoot, f)) : f)) })));
       if (mapped) {
         if (mapped.length > MAX_MAPPED_ENVIRONMENTS) noteFor(root, `Root ${root} maps ${mapped.length} environments in .diffseal.json; the first ${MAX_MAPPED_ENVIRONMENTS} were evaluated`);
+        const skipped: string[] = [];
         for (const env of mapped.slice(0, MAX_MAPPED_ENVIRONMENTS)) {
           const headFiles = env.varFiles;
           const baseFiles = env.varFiles.map((f) => (f === root || f.startsWith(root + '/') ? path.posix.join(baseRoot, path.posix.relative(root, f)) : f));
           const outside = headFiles.filter((f) => !insideRepository(f));
           if (outside.length) {
             noteFor(root, `.diffseal.json maps ${outside.join(', ')} for ${root}, which is outside the repository; that environment is not evaluated`);
+            skipped.push(`${outside.join(', ')} is outside the repository`);
             continue;
           }
           const missing = headFiles.filter((f, i) => headSource.blobId(f) === undefined && baseSource.blobId(baseFiles[i]) === undefined && !headSource.linkProblem(f));
           if (missing.length) noteFor(root, `.diffseal.json maps ${missing.join(', ')} for ${root}, which exists at neither commit`);
           // A var-file added or deleted is a new or removed environment: reviewed by name, not compared.
-          // A new root has no base to compare with: its environments are all new.
-          if (headFiles.some((f, i) => (headSource.blobId(f) === undefined && !headSource.linkProblem(f)) || (atBase && baseSource.blobId(baseFiles[i]) === undefined && !baseSource.linkProblem(baseFiles[i])))) continue;
+          // A new root has no base to compare with, and a deleted one no head: those sides are not required.
+          const gone = headFiles.filter((f, i) => (atHead && headSource.blobId(f) === undefined && !headSource.linkProblem(f)) || (atBase && baseSource.blobId(baseFiles[i]) === undefined && !baseSource.linkProblem(baseFiles[i])));
+          if (gone.length) {
+            skipped.push(missing.length ? `${missing.join(', ')} ${missing.length === 1 ? 'exists' : 'exist'} at neither commit` : `${gone.join(', ')} is added or deleted by this change`);
+            continue;
+          }
           out.push({ headFiles, baseFiles, ...(env.workspace ? { workspace: env.workspace } : {}), mapped: true });
+        }
+        // Nothing mapped can be evaluated: the root is still checked, without inputs, and reviewed.
+        if (!out.length) {
+          out.push({ headFiles: [], baseFiles: [] });
+          reviewFor(root, `Root ${root} maps environments in .diffseal.json, but none could be evaluated (${[...new Set(skipped)].join('; ')}), so it was evaluated without inputs; fix the mapping or review by hand`);
         }
       } else {
         out.push({ headFiles: [], baseFiles: [] });
-        if (atHead) {
+        if (atHead || atBase) {
           // Workspaces the configuration tells apart, read from both commits. Only needed when an evaluation
           // in a workspace can be compared: the configuration or one of the root's var-files changed.
           // Var-files pair only across both commits; a new root's var-files are new inputs, reviewed.
           const headFilesAll = both ? varFilesOf(headSource, root, rootsSet).filter((f) => !mappedFiles.has(f)) : [];
           const baseFilesAll = both ? varFilesOf(baseSource, baseRoot, rootsSet).filter((f) => !mappedFiles.has(f)) : [];
           const needed = configTouched || [...headFilesAll, ...baseFilesAll].some((f) => touchedPaths.has(f));
-          const reads = needed && (readsWorkspace(headSource, root) || (atBase && readsWorkspace(baseSource, baseRoot)));
+          const reads = needed && ((atHead && readsWorkspace(headSource, root)) || (atBase && readsWorkspace(baseSource, baseRoot)));
           let names: string[] = [];
           if (reads) {
             // Names the base tells apart come first, so a change cannot push them past the cap.
             const baseNames = atBase ? workspaceNames(baseSource, baseRoot, rootVarValues(baseSource, baseRoot, baseFilesAll)) : [];
-            const headNames = workspaceNames(headSource, root, rootVarValues(headSource, root, headFilesAll)).filter((n) => !baseNames.includes(n));
+            const headNames = atHead ? workspaceNames(headSource, root, rootVarValues(headSource, root, headFilesAll)).filter((n) => !baseNames.includes(n)) : [];
             names = [...baseNames, ...headNames];
             if (!names.length) noteFor(root, `Root ${root} reads terraform.workspace, but no workspace names could be found in its configuration, so it was evaluated as workspace default only; list its workspaces under roots in .diffseal.json`);
             else if (names.length > MAX_WORKSPACES) {
@@ -398,7 +413,10 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
     }
   }
 
-  for (const r of new Set(roots.map((x) => x.root))) notes.push(...(rootNotes.get(r) ?? []));
+  for (const r of new Set(roots.map((x) => x.root))) {
+    notes.push(...(rootNotes.get(r) ?? []));
+    for (const text of rootReviews.get(r) ?? []) rootItems.push({ kind: 'coverage', level: 'review', text });
+  }
   // Terraform that changed but that no evaluated root covers is reviewed, never silently passed.
   const covered = new Set<string>();
   for (const r of roots) {

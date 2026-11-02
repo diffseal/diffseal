@@ -25,6 +25,9 @@ export interface TerragruntInput {
   fingerprint: string;
   /** What the value needs that is not evaluated: `dependency.network outputs`, `get_env("APP_ENV")`. */
   constructs: string[];
+  /** Locals of its file it reads, and repository files it reads. */
+  locals: string[];
+  reads: string[];
 }
 
 export interface TerragruntDeployment {
@@ -77,6 +80,31 @@ function parseFile(source: FileSource, file: string): ParsedFile | undefined {
 }
 
 const sliceOf = (f: ParsedFile, r: { start: { offset: number }; end: { offset: number } }) => f.text.slice(r.start.offset, r.end.offset).replace(/\s+/g, ' ');
+/**
+ * The text of a range with whitespace outside quoted strings collapsed, so realigning `=` signs is not an
+ * edit while a space inside a string is. Text with a heredoc is kept exactly.
+ */
+function canonical(f: ParsedFile, r: { start: { offset: number }; end: { offset: number } }): string {
+  const t = f.text.slice(r.start.offset, r.end.offset);
+  if (t.includes('<<')) return t;
+  let out = '';
+  let inString = false;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (inString) {
+      out += c;
+      if (c === '\\') out += t[++i] ?? '';
+      else if (c === '"') inString = false;
+    } else if (/\s/.test(c)) {
+      if (!out.endsWith(' ')) out += ' ';
+    } else {
+      if (c === '"') inString = true;
+      out += c;
+    }
+  }
+  return out.trim();
+}
+
 const abs = (repoPath: string) => '/' + (repoPath === '.' ? '' : repoPath);
 const fromAbs = (p: string, base: string) => normalize(p.startsWith('/') ? p.replace(/^\/+/, '') || '.' : path.posix.join(base, p));
 const inside = (p: string) => p !== '..' && !p.startsWith('../');
@@ -170,29 +198,40 @@ function readDeployment(source: FileSource, file: string): TerragruntDeployment 
     return undefined;
   }
 
-  // Inputs: parents first, then the child, merged per include's strategy.
-  const inputsOf = (f: ParsedFile): Map<string, TerragruntInput> | string => {
+  // Inputs: parents in order, then the child. Each include folds in with its own strategy: shallow sets a
+  // key, deep merges maps and appends lists; a later include, and the child, win.
+  type Item = { key: string; value: TerragruntInput; known: boolean; reads: string[] };
+  const inputsOf = (f: ParsedFile): Item[] | string => {
     const expr = attrOf(f.body, 'inputs');
-    const out = new Map<string, TerragruntInput>();
-    if (!expr) return out;
+    if (!expr) return [];
+    const item = (key: string, r: Evaluated, value: unknown): Item => ({
+      key,
+      value: { value, file: f.file, fingerprint: r.fingerprint, constructs: r.constructs, locals: r.locals, reads: r.reads },
+      known: !r.constructs.length && !containsUnknownDeep(value),
+      reads: r.reads,
+    });
     if (expr.kind === 'object') {
-      for (const item of expr.items) {
-        const key = item.key.kind === 'paren' ? undefined : literalKey(item.key);
+      const out: Item[] = [];
+      for (const it of expr.items) {
+        const key = it.key.kind === 'paren' ? undefined : literalKey(it.key);
         if (key === undefined) return `inputs in ${f.file} has a key that is not known statically`;
-        const r = evalIn(source, f, item.value, fns, f === child ? parentTexts : new Map());
-        for (const p of r.reads) d.reads.add(p);
-        out.set(key, { value: r.value, file: f.file, fingerprint: r.fingerprint, constructs: r.constructs });
+        const r = evalIn(source, f, it.value, fns, f === child ? parentTexts : new Map());
+        out.push(item(key, r, r.value));
       }
       return out;
     }
     const r = evalIn(source, f, expr, fns, f === child ? parentTexts : new Map());
-    for (const p of r.reads) d.reads.add(p);
-    const plain = r.value;
-    if (!plain || typeof plain !== 'object' || Array.isArray(plain) || isUnknown(plain)) {
-      return `inputs in ${f.file} is not known statically${r.constructs.length ? ` (it reads ${r.constructs.join(', ')})` : ''}`;
+    if (!isObject(r.value)) return `inputs in ${f.file} is not known statically${r.constructs.length ? ` (it reads ${r.constructs.join(', ')})` : ''}`;
+    return Object.entries(r.value).map(([k, v]) => item(k, r, v));
+  };
+  const items = new Map<ParsedFile, Item[]>();
+  const fold = (got: Item[], deep: boolean) => {
+    for (const it of got) {
+      for (const p of it.reads) d.reads.add(p);
+      const was = d.inputs.get(it.key);
+      const mergeable = was && ((isObject(was.value) && isObject(it.value.value)) || (Array.isArray(was.value) && Array.isArray(it.value.value)));
+      d.inputs.set(it.key, deep && mergeable ? { ...it.value, value: deepMerge(was!.value, it.value.value), constructs: [...new Set([...was!.constructs, ...it.value.constructs])], locals: [...was!.locals, ...it.value.locals], reads: [...was!.reads, ...it.value.reads] } : it.value);
     }
-    for (const [k, v] of Object.entries(plain as Record<string, unknown>)) out.set(k, { value: v, file: f.file, fingerprint: r.fingerprint, constructs: r.constructs });
-    return out;
   };
   for (const p of parents) {
     if (p.merge === 'no_merge') continue;
@@ -201,39 +240,77 @@ function readDeployment(source: FileSource, file: string): TerragruntDeployment 
       d.problems.push(got);
       continue;
     }
-    for (const [k, v] of got) d.inputs.set(k, v);
+    items.set(p.file, got);
+    fold(got, p.merge === 'deep');
   }
   const own = inputsOf(child);
   if (typeof own === 'string') d.problems.push(own);
   else {
-    const deep = parents.some((p) => p.merge === 'deep');
-    for (const [k, v] of own) {
-      const was = d.inputs.get(k);
-      const mergeable = (a: unknown, b: unknown) => (isObject(a) && isObject(b)) || (Array.isArray(a) && Array.isArray(b));
-      if (deep && was && mergeable(was.value, v.value)) {
-        d.inputs.set(k, { value: deepMerge(was.value, v.value), file: v.file, fingerprint: was.fingerprint + '\n' + v.fingerprint, constructs: [...new Set([...was.constructs, ...v.constructs])] });
-      } else d.inputs.set(k, v);
-    }
+    items.set(child, own);
+    // A child key merges deeply with what the last include that set it gave, when that include is deep.
+    const lastDeep = new Map<string, boolean>();
+    for (const p of parents) if (p.merge !== 'no_merge') for (const it of items.get(p.file) ?? []) lastDeep.set(it.key, p.merge === 'deep');
+    for (const it of own) fold([it], lastDeep.get(it.key) ?? false);
   }
 
-  // What is not evaluated, by name, so a change to it is named.
-  for (const f of [...parents.filter((p) => p.merge !== 'no_merge').map((p) => p.file), child]) {
-    const where = f === child ? '' : ` (in ${f.file})`;
-    const fp = (b: Block | { range: Block['range'] }, exprs: Expr[]) => [sliceOf(f, b.range), ...exprs.flatMap((e) => localFingerprints(f, e))].join('\n');
+  // Everything else in these files is not evaluated. Each top-level part is kept by name with its exact
+  // text (whitespace outside strings aside), so any edit to it is named: blocks, attributes, locals,
+  // inputs whose value is not known, and files those inputs read. An input with a known value is
+  // evaluated, and so is a local that only such inputs read; they are left out.
+  const childExprs = [...child.body.attributes.map((a) => a.expr), ...child.body.blocks.flatMap((b) => blockExprs(b.body))];
+  const exposed = new Set<string>();
+  for (const e of childExprs) walk(e, (x) => {
+    if (x.kind === 'getattr' && x.obj.kind === 'scope' && x.obj.name === 'include') exposed.add(x.name);
+  });
+  const active = [...parents.filter((p) => p.merge !== 'no_merge'), { label: '', file: child, merge: '' }];
+  for (const { label, file: f } of active) {
+    const where = f === child ? '' : ` (in include${label ? ` "${label}"` : ''})`;
+    // A parent the child reads through include.<label> is not evaluated at all.
+    const whole = f !== child && exposed.has(label);
+    const known = new Set((items.get(f) ?? []).filter((it) => it.known && !whole).map((it) => it.key));
+    const parts: Array<{ name: string; text: string; exprs: Expr[]; local?: string }> = [];
     for (const b of f.body.blocks) {
-      if (b.type === 'locals' || b.type === 'include' || b.type === 'dependencies' || b.type === 'dependency') continue;
-      if (b.type === 'terraform') {
-        for (const a of b.body.attributes) if (a.name !== 'source') d.elements.set(`terraform.${a.name}${where}`, fp(a, [a.expr]));
-        for (const inner of b.body.blocks) d.elements.set(`terraform ${inner.type}${inner.labels[0] ? ` "${inner.labels[0]}"` : ''}${where}`, fp(inner, blockExprs(inner.body)));
+      if (b.type === 'dependencies' || (f === child && b.type === 'include')) continue;
+      if (b.type === 'locals') {
+        for (const a of b.body.attributes) parts.push({ name: `local.${a.name}`, text: canonical(f, a.range), exprs: [a.expr], local: a.name });
         continue;
       }
       if (b.type === 'generate') d.generates = true;
-      d.elements.set(`${b.type}${b.labels[0] ? ` "${b.labels[0]}"` : ''}${where}`, fp(b, blockExprs(b.body)));
+      // A dependency's mock outputs are used only where it has no state; they do not change what is applied.
+      // terraform.source is evaluated: the module it names is what is compared.
+      const attrs = b.type === 'dependency' ? b.body.attributes.filter((a) => !MOCK_ATTRIBUTES.test(a.name)) : b.type === 'terraform' ? b.body.attributes.filter((a) => a.name !== 'source') : undefined;
+      const text = attrs ? attrs.map((a) => canonical(f, a.range)).join('\n') + b.body.blocks.map((x) => canonical(f, x.range)).join('\n') : canonical(f, b.range);
+      parts.push({ name: `${b.type}${b.labels[0] ? ` "${b.labels[0]}"` : ''}`, text, exprs: blockExprs(b.body) });
     }
-    for (const a of f.body.attributes) if (a.name !== 'inputs') d.elements.set(`${a.name}${where}`, fp(a, [a.expr]));
-    if (f !== child) for (const b of f.body.blocks) if (b.type === 'include') d.elements.set(`include in ${f.file}`, sliceOf(f, b.range));
+    for (const a of f.body.attributes) {
+      if (a.name !== 'inputs') {
+        parts.push({ name: a.name, text: canonical(f, a.range), exprs: [a.expr] });
+        continue;
+      }
+      if (a.expr.kind === 'object') {
+        for (const it of a.expr.items) {
+          const key = literalKey(it.key);
+          if (key !== undefined && known.has(key)) continue;
+          parts.push({ name: `input ${key ?? '(computed key)'}`, text: canonical(f, { start: it.key.range.start, end: it.value.range.end }), exprs: [it.key, it.value] });
+        }
+      } else if (!(items.get(f) ?? []).every((it) => known.has(it.key)) || whole || !items.has(f)) {
+        parts.push({ name: 'inputs', text: canonical(f, a.range), exprs: [a.expr] });
+      }
+    }
+    // Locals read by something kept are kept; a local only known inputs read is evaluated with them.
+    const needed = new Set<string>();
+    const visit = (e: Expr) => walk(e, (x) => {
+      if (x.kind === 'getattr' && x.obj.kind === 'scope' && x.obj.name === 'local' && !needed.has(x.name)) {
+        needed.add(x.name);
+        const def = f.locals.get(x.name);
+        if (def) visit(def);
+      }
+    });
+    for (const part of parts) if (!part.local) part.exprs.forEach(visit);
+    for (const part of parts) if (!part.local || whole || needed.has(part.local)) d.elements.set(part.name + where, part.text);
+    // Files that inputs not known statically read.
+    for (const it of items.get(f) ?? []) if (!known.has(it.key)) for (const p of it.reads) d.elements.set(`file ${p}${where}`, source.readFile(p) ?? '(missing)');
   }
-  // An exposed parent can be read as include.<label>: not evaluated, named where an input reads it.
   return d;
 }
 
@@ -430,6 +507,8 @@ interface Evaluated {
   constructs: string[];
   /** Repository files it reads. */
   reads: string[];
+  /** Locals it reads, transitively. */
+  locals: string[];
 }
 
 /**
@@ -482,7 +561,11 @@ function evalIn(source: FileSource, f: ParsedFile, expr: Expr, fns: (name: strin
   };
   let value: unknown = constructs.length ? new Unknown(`reads ${constructs.join(', ')}`) : toPlain(evaluate(substitute(expr, fns), scope));
   if (value === undefined) value = new Unknown('not known statically');
-  return { value, fingerprint, constructs, reads: [...reads] };
+  return { value, fingerprint, constructs, reads: [...reads], locals: [...localsRead(f, expr)] };
+}
+
+function keysOf(base: TerragruntDeployment | undefined, head: TerragruntDeployment): Set<string> {
+  return new Set([...head.inputs.keys(), ...(base?.inputs.keys() ?? [])]);
 }
 
 /** True when two input values are the same, known value. */
@@ -515,24 +598,39 @@ export function unevaluatedChanges(base: TerragruntDeployment | undefined, head:
     const was = base?.elements.get(n);
     const now = head.elements.get(n);
     if (was === now) continue;
+    const input = /^input (\S+)(?: \(in include.*\))?$/.exec(n)?.[1];
+    const reads = (k: string) => {
+      const constructs = [...new Set([...(base?.inputs.get(k)?.constructs ?? []), ...(head.inputs.get(k)?.constructs ?? [])])];
+      return constructs.length ? `input ${k} reads ${constructs.join(', ')}` : `input ${k} is not known statically`;
+    };
+    if (input) {
+      out.push(reads(input));
+      continue;
+    }
+    // A local, a file or an exposed parent changes: name the inputs that are not known and read it.
+    const via = /^local\.(\S+)$/.exec(n)?.[1];
+    const file = n.startsWith('file ') ? n.slice(5).replace(/ \(in include.*\)$/, '') : undefined;
+    const label = / \(in include(?: "([^"]*)")?\)$/.exec(n)?.[1];
+    const affected = [...keysOf(base, head)].filter((k) => {
+      const its = [base?.inputs.get(k), head.inputs.get(k)].filter((x): x is TerragruntInput => Boolean(x));
+      return its.some((i) => (via !== undefined && i.locals.includes(via)) || (file !== undefined && i.reads.includes(file)) || (label !== undefined && i.constructs.includes(`include.${label}`)));
+    });
+    const what = file ?? n;
+    if (affected.length) {
+      for (const k of affected) out.push(`${reads(k)} (${what} changes)`);
+      continue;
+    }
     out.push(`${n} ${was === undefined ? 'is added' : now === undefined ? 'is removed' : 'changes'}, and Diffseal does not evaluate it`);
   }
+  // Inputs with known values were evaluated; one the module does not declare goes nowhere Diffseal can see.
   const keys = new Set([...head.inputs.keys(), ...(base?.inputs.keys() ?? [])]);
   for (const k of [...keys].sort()) {
     const was = base?.inputs.get(k);
     const now = head.inputs.get(k);
-    if (was && now && (was.fingerprint === now.fingerprint || sameKnownValue(was.value, now.value))) continue;
-    const constructs = [...new Set([...(was?.constructs ?? []), ...(now?.constructs ?? [])])];
-    if (constructs.length) {
-      out.push(`input ${k} reads ${constructs.join(', ')}`);
-      continue;
-    }
-    if ((now && containsUnknownDeep(now.value)) || (was && containsUnknownDeep(was.value))) {
-      out.push(`input ${k} is not known statically`);
-      continue;
-    }
+    if (was && now && sameKnownValue(was.value, now.value)) continue;
+    if (out.some((l) => l.startsWith(`input ${k} `))) continue;
     const undeclared = (now && !declared.head.has(k)) || (was && !declared.base.has(k));
     if (undeclared) out.push(`input ${k}, which ${head.moduleDir ?? 'its module'} does not declare${head.generates || base?.generates ? ' (a generate block may declare it)' : ''}`);
   }
-  return out;
+  return [...new Set(out)];
 }

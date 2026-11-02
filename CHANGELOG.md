@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Added
+
+- A `roots` mapping in `.diffseal.json` says how each root is deployed: per root directory or pattern (`ops/services/*`), the environments with their var-files, loaded in order as repeated `-var-file` options, and their workspace. Exactly those environments are evaluated. A changed var-file that the mapping covers and that was evaluated no longer raises a coverage REVIEW; one that sets a variable no mapped root declares still does. Diffseal reads the mapping from the base commit, so a pull request cannot change how it is reviewed. `docs/guide/configuration.md` has the format.
+- Terragrunt configuration is read without running anything. A `terragrunt.hcl` with a local `terraform { source }` is replayed with the module it runs and its `inputs`: literal values and locals built from literals and pure functions, merged with a parent found by `find_in_parent_folders()` or a path, following `merge_strategy`. A file an input reads with `file()` or `read_terragrunt_config()` is tracked, so an edit to it replays the configuration. The inputs come in below `terraform.tfvars`, as `TF_VAR_` variables do. A changed input that needs `dependency` outputs, `get_env`, `run_cmd`, `read_terragrunt_config` or an exposed include, a changed `generate` block, hook or `remote_state`, a remote source, and an input the module does not declare stay a coverage REVIEW, and the line now names them. A parent file such as `root.hcl` counts as Terragrunt configuration when a `terragrunt.hcl` includes it.
+
+### Changed
+
+- A root whose configuration tells Terraform workspaces apart (`terraform.workspace == "prod"`, `contains([...], terraform.workspace)`, `lookup(var.accounts, terraform.workspace)`, also through a local, a module output or a module input) is evaluated once per workspace name found, besides `default`, up to 8. Before, every root was evaluated as `default` only, so a DynamoDB table renamed without `moved` and limited to production by workspace passed (beneficiary-fhir-data `1828a22ba`). The gate is the worst result, and every finding, root name, JSON root (`workspace`) and change record says which workspace it came from. A var-file named like such a workspace is evaluated in it. A root that reads `terraform.workspace` without a name Diffseal can find is still evaluated as `default`, and the report says so.
+- The replay JSON names a root's var-files `varFiles` (a list, in load order) instead of `varFile`, and `baseVarFiles` instead of `baseVarFile`. Reports and change records list notes that do not change the gate: workspaces not found or capped, and mapping entries that were ignored.
+
 ### Fixed
 
 - A `.tf` link whose target has no `.tf` name (`r/table.tf -> ../shared/config`) counts as changed Terraform under the link's name. When no replayed root reads it (a root outside `--roots-under`, or a module no root calls), the change is reviewed and the line names the link. Before, such a change could pass.

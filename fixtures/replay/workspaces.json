@@ -265,6 +265,53 @@
      "not a8, a9"
     ]
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review round 2: a deleted root is checked in each workspace its base tells apart, so a root deployed only in prod is reviewed as deleted",
+   "base": {
+    "keep/main.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "svc/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  count = terraform.workspace == \"prod\" ? 1 : 0\n  name  = \"q\"\n}\n"
+   },
+   "head": {
+    "keep/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "svc",
+     "svc (workspace prod)"
+    ],
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "Root svc is deleted with 1 resource"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review round 2: a deleted root keeps its base mapping",
+   "base": {
+    ".diffseal.json": "{\"roots\": {\"svc\": {\"workspaces\": [\"prod\"]}}}",
+    "keep/main.tf": "terraform {\n  backend \"s3\" {}\n}\n",
+    "svc/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  count = terraform.workspace == \"prod\" ? 1 : 0\n  name  = \"q\"\n}\n"
+   },
+   "head": {
+    ".diffseal.json": "{\"roots\": {\"svc\": {\"workspaces\": [\"prod\"]}}}",
+    "keep/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "svc (workspace prod)"
+    ],
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "Root svc is deleted with 1 resource"
+     ]
+    }
+   }
   }
  ]
 }
