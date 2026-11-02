@@ -248,8 +248,8 @@ function sameOwner(type: string, before: Attrs, after: Attrs, all: ResourceChang
   const refs = [...(isUnknown(now) ? now.refs : []), ...(references[owner.attr] ?? [])];
   const named = (a: string) => refs.some((r) => a === r || a.startsWith(r + '[') || a.startsWith(r + '.'));
   if (recreated.some((c) => named(c.address))) return false;
-  // The principals the owner reference names; none of them is recreated.
-  const referenced = all.filter((c) => c.type === owner.type && named(c.address));
+  // The principals the owner reference names; none of them is recreated. A data source is a lookup by name, not a principal.
+  const referenced = all.filter((c) => c.mode === 'managed' && c.type === owner.type && named(c.address));
   const wasName = principalName(was);
   const nowName = principalName(now);
   if (stableKey(was) !== stableKey(now) && (wasName === undefined || wasName !== nowName)) {

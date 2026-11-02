@@ -708,6 +708,35 @@
      "resultNot": "pass"
     }
    }
+  },
+  {
+   "kind": "terraform",
+   "name": "principal identity guard: an owner named through a data source is a name lookup, matched against a role of that name replaced in the same change",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"app\" {\n  name               = \"app\"\n  path               = \"/\"\n  assume_role_policy = \"{}\"\n}\ndata \"aws_iam_role\" \"r\" {\n  name = \"app\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  name   = \"p\"\n  role   = data.aws_iam_role.r.name\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"All\", Effect = \"Allow\", Action = \"s3:*\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"app\" {\n  name               = \"app\"\n  path               = \"/svc/\"\n  assume_role_policy = \"{}\"\n}\ndata \"aws_iam_role\" \"r\" {\n  name = \"app\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  name   = \"p\"\n  role   = data.aws_iam_role.r.name\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"Get\", Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_iam_role.app",
+      "action": "replace"
+     }
+    ],
+    "findings": [
+     {
+      "ruleId": "iam.least-privilege",
+      "resource": "aws_iam_role_policy.p",
+      "preExisting": null
+     }
+    ],
+    "gate": {
+     "resultNot": "pass"
+    }
+   }
   }
  ]
 }

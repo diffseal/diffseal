@@ -208,6 +208,20 @@ describe('changeRecord', () => {
       expect([...addresses].some((a) => a.includes('module.unknown_'))).toBe(false);
     });
 
+    test('a blocked gate lists only what blocks, and every other new FAIL and HIGH risk is kept too', () => {
+      // decideGate stops at the blocking rows, so these raise the gate without a gate item of their own.
+      const raising: AnalysisResult = {
+        ...big,
+        blast: [...blast, { severity: 'HIGH', resource: 'aws_lb_listener.web', type: 'aws_lb_listener', action: 'delete', reason: 'cuts traffic', dataLoss: false, downtime: 'yes' }],
+        findings: [...findings, ...Array.from({ length: 2000 }, (_, i) => finding(`module.new_${pad}.aws_iam_role_policy.p[${i}]`, 'FAIL'))],
+      };
+      const full = changeRecord({ commit, base: 'b'.repeat(40), roots, result: raising, engine: { version: 't', replaceCatalog: 'x' }, maxBytes: Infinity });
+      const r = changeRecord({ commit, base: 'b'.repeat(40), roots, result: raising, engine: { version: 't', replaceCatalog: 'x' } });
+      expect(r.resources.length).toBeLessThan(full.resources.length);
+      expect(r.controls.filter((c) => c.status === 'FAIL' && !c.preExisting).length).toBe(full.controls.filter((c) => c.status === 'FAIL' && !c.preExisting).length);
+      expect(r.risks.some((x) => x.resource === 'aws_lb_listener.web')).toBe(true);
+    });
+
     test('a record under the limit is not changed', () => {
       const small = changeRecord({ commit, base: 'b'.repeat(40), roots: [], result, engine: { version: 't', replaceCatalog: 'x' } });
       expect(small.resources.length).toBe(result.changes.length);

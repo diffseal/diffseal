@@ -140,9 +140,16 @@ function fitRecord(record: ChangeRecord, maxBytes: number): ChangeRecord {
   if (size(record) <= maxBytes) return record;
   // With several roots, rows carry root labels (`a: x`, or `a, b: x` for a row the same in both) and gate
   // items name the bare address; a resource is kept or left out in every root together.
-  const protectedResources = new Set(record.gate.items.flatMap((i) => (i.resource ? [i.resource] : [])));
+  // What raises the gate: a resource a gate item names, and, since a blocked gate lists only what blocks,
+  // every new FAIL and every HIGH or CRITICAL risk not accepted.
+  const protectedResources = new Set([
+    ...record.gate.items.flatMap((i) => (i.resource ? [i.resource] : [])),
+    ...record.risks.filter((r) => (r.severity === 'HIGH' || r.severity === 'CRITICAL') && !r.accepted).map((r) => bareAddress(r.resource)),
+    ...record.controls.filter((c) => c.status === 'FAIL' && !c.preExisting && !c.accepted).map((c) => bareAddress(c.resource)),
+  ]);
   // A row a gate item names is kept whatever its labels look like.
-  const gated = (address: string) => protectedResources.has(bareAddress(address)) || [...protectedResources].some((r) => address === r || address.endsWith(`: ${r}`));
+  const protectedList = [...protectedResources];
+  const gated = (address: string) => protectedResources.has(bareAddress(address)) || protectedList.some((r) => address === r || address.endsWith(`: ${r}`));
   // Rank each resource by its worst risk or finding (a FAIL weighs as a HIGH risk), then by how sure its change is.
   const rank = new Map<string, [number, number]>();
   const at = (address: string) => rank.get(bareAddress(address)) ?? rank.set(bareAddress(address), [-1, 2]).get(bareAddress(address))!;
