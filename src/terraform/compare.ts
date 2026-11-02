@@ -153,11 +153,12 @@ export function compareEvaluations(base: RootEvaluation | undefined, head: RootE
   // unless what the value reads is a resource this change creates, replaces or deletes, or a data source
   // whose arguments change (a new AMI filter selects another image).
   const touched = new Set(out.filter((c) => c.action === 'create' || c.action === 'replace' || c.action === 'delete').map((c) => configAddressOf(c.address)));
+  // A data source reference names an instance or the whole block; each instance is compared by its address.
   const selects = (m: Map<string, StaticInstance>, ref: string) =>
-    [...m.values()].filter((i) => i.mode === 'data' && i.configAddress === ref).map((i) => stableKey(dataSelector(i.type, i.attrs))).sort().join('\u0000');
+    stableKey([...m.values()].filter((i) => i.mode === 'data' && (i.address === ref || i.configAddress === ref)).sort((x, y) => (x.address < y.address ? -1 : 1)).map((i) => [i.address, dataSelector(i.type, i.attrs)]));
   for (const c of out) {
     const refs = UNKNOWN_ORIGIN.get(c);
-    if (!refs || refs.some((r) => touched.has(r) || (/(^|\.)data\./.test(r) && selects(before, r) !== selects(after, r)))) continue;
+    if (!refs || refs.some((r) => touched.has(configAddressOf(r)) || (isDataRef(r) && selects(before, r) !== selects(after, r)))) continue;
     const keys = (c.replacePaths ?? []).map((p) => p[0]);
     c.action = 'update';
     c.confidence = 'unknown';
@@ -374,7 +375,7 @@ const isDataRef = (r: string) => /(^|\.)data\./.test(r);
 const REMOTE_STATE_ACCESS = new Set([
   'role_arn', 'assume_role', 'assume_role_with_web_identity', 'profile', 'access_key', 'secret_key', 'token',
   'shared_credentials_file', 'shared_credentials_files', 'shared_config_files', 'external_id', 'session_name',
-  'sts_endpoint', 'iam_endpoint', 'endpoints', 'max_retries', 'retry_mode', 'skip_credentials_validation',
+  'sts_endpoint', 'iam_endpoint', 'max_retries', 'retry_mode', 'skip_credentials_validation',
   'skip_metadata_api_check', 'skip_region_validation', 'skip_requesting_account_id', 'skip_s3_checksum',
   'dynamodb_table', 'use_lockfile', 'encrypt', 'kms_key_id', 'acl',
 ]);
@@ -389,7 +390,7 @@ function dataSelector(type: string, attrs: Attrs): unknown {
 
 /**
  * The resources and data sources read by two values that differ only where both are unknown, with the
- * same known text around the unknown parts and reading the same managed resources; undefined when they
+ * same known text around the unknown parts and reading the same resources and data sources; undefined when they
  * differ in anything known, or when one side is known where the other is not.
  */
 function unknownOriginOnly(before: unknown, after: unknown): string[] | undefined {
@@ -401,10 +402,10 @@ function unknownOriginOnly(before: unknown, after: unknown): string[] | undefine
     // No pattern, or `{?}` alone, says nothing about the value's text.
     const text = (u: typeof b) => (u.pattern === undefined || u.pattern === UNKNOWN_PART ? undefined : u.pattern);
     if (text(b) !== text(a)) return undefined;
-    // The same managed resources on both sides; data sources may differ (checked against their arguments).
-    const refs = (u: typeof b) => [...new Set(u.refs.map(configAddressOf))];
-    const managed = (u: typeof b) => refs(u).filter((r) => !isDataRef(r)).sort().join(',');
-    return managed(b) === managed(a) ? [...new Set([...refs(b), ...refs(a)])] : undefined;
+    // The same resources and data sources on both sides, instance keys included: `s[0]` to `s[1]` reads
+    // another subnet. A data source whose arguments change is checked by the caller.
+    const refs = (u: typeof b) => [...new Set(u.refs)].sort().join('\u0000');
+    return refs(b) === refs(a) ? [...new Set(a.refs)] : undefined;
   }
   const merge = (parts: Array<string[] | undefined>) => (parts.some((x) => x === undefined) ? undefined : [...new Set(parts.flat() as string[])]);
   if (Array.isArray(b) && Array.isArray(a)) return b.length === a.length ? merge(b.map((x, i) => unknownOriginOnly(x, a[i]))) : undefined;

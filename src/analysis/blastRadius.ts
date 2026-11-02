@@ -176,7 +176,7 @@ export function analyzeBlastRadius(changes: ResourceChange[]): BlastFinding[] {
 
     const note = c.actionReason && !/^[a-z_]+$/.test(c.actionReason) ? ` (${c.actionReason})` : '';
     // A plan deletes it, but with skip_destroy = true the provider only removes it from state.
-    if (c.action === 'delete' && retainedOnDestroy(c.type, before)) {
+    if (c.action === 'delete' && !c.preventDestroy && retainedOnDestroy(c.type, before)) {
       out.push({ severity: 'LOW', resource: c.address, type: c.type, action: c.action, reason: `Deletes ${c.type} from Terraform state only: skip_destroy = true, so the provider leaves it in AWS${note}`, dataLoss: false, downtime: 'no' });
       continue;
     }

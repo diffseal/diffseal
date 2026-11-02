@@ -460,6 +460,115 @@
           "result": "review"
         }
       }
+    },
+    {
+      "kind": "terraform",
+      "name": "an unknown value that now reads another instance of the same resource is still a possible replacement (review round 1)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_subnet\" \"s\" {\n  count      = 2\n  vpc_id     = \"vpc-1\"\n  cidr_block = \"10.0.${count.index}.0/24\"\n}\nresource \"aws_instance\" \"i\" {\n  ami           = \"ami-1\"\n  instance_type = \"t3.micro\"\n  subnet_id     = aws_subnet.s[0].id\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_subnet\" \"s\" {\n  count      = 2\n  vpc_id     = \"vpc-1\"\n  cidr_block = \"10.0.${count.index}.0/24\"\n}\nresource \"aws_instance\" \"i\" {\n  ami           = \"ami-1\"\n  instance_type = \"t3.micro\"\n  subnet_id     = aws_subnet.s[1].id\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "aws_instance.i",
+            "action": "replace",
+            "confidence": "likely"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "an unknown value that now reads another existing data source is still a possible replacement (review round 1)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_ami\" \"ubuntu\" {\n  owners = [\"099720109477\"]\n}\ndata \"aws_ami\" \"al2023\" {\n  owners = [\"amazon\"]\n}\nresource \"aws_instance\" \"i\" {\n  ami           = data.aws_ami.ubuntu.id\n  instance_type = \"t3.micro\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_ami\" \"ubuntu\" {\n  owners = [\"099720109477\"]\n}\ndata \"aws_ami\" \"al2023\" {\n  owners = [\"amazon\"]\n}\nresource \"aws_instance\" \"i\" {\n  ami           = data.aws_ami.al2023.id\n  instance_type = \"t3.micro\"\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "aws_instance.i",
+            "action": "replace",
+            "confidence": "likely"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "instances of a data source that swap their arguments still give possible replacements (review round 1)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_vpc\" \"v\" {\n  for_each = { a = \"x\", b = \"y\" }\n  tags = { Name = each.value }\n}\nresource \"aws_security_group\" \"g\" {\n  for_each = toset([\"a\", \"b\"])\n  name     = \"g-${each.key}\"\n  vpc_id   = data.aws_vpc.v[each.key].id\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_vpc\" \"v\" {\n  for_each = { a = \"y\", b = \"x\" }\n  tags = { Name = each.value }\n}\nresource \"aws_security_group\" \"g\" {\n  for_each = toset([\"a\", \"b\"])\n  name     = \"g-${each.key}\"\n  vpc_id   = data.aws_vpc.v[each.key].id\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "aws_security_group.g[\"a\"]",
+            "action": "replace",
+            "confidence": "likely"
+          }
+        ],
+        "gate": {
+          "result": "review"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "a remote state that now reads another S3 endpoint still gives a possible replacement (review round 1)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"terraform_remote_state\" \"net\" {\n  backend = \"s3\"\n  config = {\n    bucket    = \"state\"\n    key       = \"net.tfstate\"\n    endpoints = { s3 = \"https://s3.one.example\" }\n  }\n}\nresource \"aws_security_group\" \"g\" {\n  name   = \"g\"\n  vpc_id = data.terraform_remote_state.net.outputs.vpc_id\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"terraform_remote_state\" \"net\" {\n  backend = \"s3\"\n  config = {\n    bucket    = \"state\"\n    key       = \"net.tfstate\"\n    endpoints = { s3 = \"https://s3.two.example\" }\n  }\n}\nresource \"aws_security_group\" \"g\" {\n  name   = \"g\"\n  vpc_id = data.terraform_remote_state.net.outputs.vpc_id\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "aws_security_group.g",
+            "action": "replace",
+            "confidence": "likely"
+          }
+        ],
+        "gate": {
+          "result": "review"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "a log group with skip_destroy and prevent_destroy whose count drops to zero is a guarded deletion that does not pass (review round 1)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_cloudwatch_log_group\" \"l\" {\n  count        = 1\n  name         = \"l\"\n  skip_destroy = true\n  lifecycle {\n    prevent_destroy = true\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_cloudwatch_log_group\" \"l\" {\n  count        = 0\n  name         = \"l\"\n  skip_destroy = true\n  lifecycle {\n    prevent_destroy = true\n  }\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "aws_cloudwatch_log_group.l[0]",
+            "action": "delete",
+            "preventDestroy": true
+          }
+        ],
+        "gate": {
+          "resultNot": "pass"
+        }
+      }
     }
   ]
 }
