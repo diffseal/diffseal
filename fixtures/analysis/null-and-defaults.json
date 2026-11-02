@@ -406,6 +406,46 @@
      "resultNot": "pass"
     }
    }
+  },
+  {
+   "kind": "terraform",
+   "name": "in a plugin-framework resource a value going to \"\" on an Optional+Computed argument is a proven change: the framework tells \"\" from null",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_backup_logically_air_gapped_vault\" \"v\" {\n  name               = \"v\"\n  max_retention_days = 30\n  min_retention_days = 7\n  encryption_key_arn = \"arn:aws:kms:eu-west-1:111111111111:key/k\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_backup_logically_air_gapped_vault\" \"v\" {\n  name               = \"v\"\n  max_retention_days = 30\n  min_retention_days = 7\n  encryption_key_arn = \"\"\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_backup_logically_air_gapped_vault.v",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ]
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "guard: in a plugin-framework resource null becoming \"\" on an Optional+Computed argument may still match what the provider computed",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_backup_logically_air_gapped_vault\" \"v\" {\n  name               = \"v\"\n  max_retention_days = 30\n  min_retention_days = 7\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_backup_logically_air_gapped_vault\" \"v\" {\n  name               = \"v\"\n  max_retention_days = 30\n  min_retention_days = 7\n  encryption_key_arn = \"\"\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_backup_logically_air_gapped_vault.v",
+      "action": "replace",
+      "confidence": "likely"
+     }
+    ]
+   }
   }
  ]
 }

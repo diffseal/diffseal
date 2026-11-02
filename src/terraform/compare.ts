@@ -471,8 +471,9 @@ function nullSemantics(type: string, key: string, rawBefore: unknown, rawAfter: 
     now ??= fallback;
   }
   // Only an argument left out (or null) keeps the state value on an Optional and Computed argument; ""
-  // is configured, and may be a change from whatever the provider computed.
-  if (facts.optionalComputed.has(key) && after === '' && before !== '') return 'possible';
+  // is configured, and may be a change from whatever the provider computed. The plugin framework tells
+  // "" from null, so a configured value going to "" there is planned as "": compared as it is.
+  if (facts.optionalComputed.has(key) && after === '' && before !== '' && (sdk || nullish(before))) return 'possible';
   if (was === null && now === null) return 'same';
   if (facts.optionalComputed.has(key)) {
     if (now === null) return sdk ? 'same' : 'possible';
