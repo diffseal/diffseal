@@ -158,7 +158,7 @@ export function evaluatePolicies(all: ResourceChange[], policy: PolicyConfig = {
   const ctx = new RuleContext(all, { ...DEFAULT_POLICY, ...policy });
   const ctxBefore = new RuleContext(all, { ...DEFAULT_POLICY, ...policy }, 'before');
   // Resources this change creates, replaces or deletes: a reference to one names a new principal.
-  const recreated = all.filter((c) => c.action === 'replace' || c.action === 'create' || c.action === 'delete').map((c) => c.address);
+  const recreated = all.filter((c) => c.action === 'replace' || c.action === 'create' || c.action === 'delete');
   // An unchanged owner whose helper changed (versioning suspended) is judged too, against its helpers'
   // prior values, so only what the helper change introduced counts as new.
   const helperChanged = (res: ResourceChange) => {
@@ -221,16 +221,27 @@ export function evaluatePolicies(all: ResourceChange[], policy: PolicyConfig = {
   return findings;
 }
 
+const OWNERS: Record<string, { attr: string; type: string }> = {
+  aws_iam_role_policy: { attr: 'role', type: 'aws_iam_role' },
+  aws_iam_user_policy: { attr: 'user', type: 'aws_iam_user' },
+  aws_iam_group_policy: { attr: 'group', type: 'aws_iam_group' },
+};
+
 /** An inline policy is narrower only for the same role, user or group; a managed policy has no owner here. */
-function sameOwner(type: string, before: Attrs, after: Attrs, recreated: string[], references: Record<string, string[]>): boolean {
-  const owner = { aws_iam_role_policy: 'role', aws_iam_user_policy: 'user', aws_iam_group_policy: 'group' }[type];
+function sameOwner(type: string, before: Attrs, after: Attrs, recreated: ResourceChange[], references: Record<string, string[]>): boolean {
+  const owner = OWNERS[type];
   if (!owner) return true;
   // An owner known only by reference (aws_iam_role.app.id) is the same when it names the same reference.
-  const was = before[owner];
-  const now = after[owner];
+  const was = before[owner.attr];
+  const now = after[owner.attr];
   if (was === undefined || was === null || stableKey(was) !== stableKey(now)) return false;
-  const refs = [...(isUnknown(now) ? now.refs : []), ...(references[owner] ?? [])];
-  return !refs.some((r) => recreated.some((a) => a === r || a.startsWith(r + '[') || a.startsWith(r + '.')));
+  const refs = [...(isUnknown(now) ? now.refs : []), ...(references[owner.attr] ?? [])];
+  if (refs.some((r) => recreated.some(({ address: a }) => a === r || a.startsWith(r + '[') || a.startsWith(r + '.')))) return false;
+  // An owner named literally (role = "app", or its ARN) is a new principal when a role, user or group of
+  // that name is created, replaced or deleted in the same change, or one whose name is not known statically.
+  if (typeof now !== 'string') return true;
+  const name = now.startsWith('arn:') ? now.slice(now.lastIndexOf('/') + 1) : now;
+  return !recreated.some((c) => c.type === owner.type && [c.before?.name, c.after?.name].some((n) => n === name || isUnknown(n)));
 }
 
 export const capitalize = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);

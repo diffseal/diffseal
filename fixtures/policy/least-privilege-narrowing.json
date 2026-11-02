@@ -313,6 +313,78 @@
      }
     ]
    }
+  },
+  {
+   "kind": "terraform",
+   "name": "an inline policy naming its role by a literal name belongs to a new principal when that role is replaced in the same change",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"app\" {\n  name               = \"app\"\n  path               = \"/\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  name   = \"p\"\n  role   = \"app\"\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"All\", Effect = \"Allow\", Action = \"s3:*\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"app\" {\n  name               = \"app\"\n  path               = \"/svc/\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  name   = \"p\"\n  role   = \"app\"\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"Get\", Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_iam_role.app",
+      "action": "replace"
+     }
+    ],
+    "findings": [
+     {
+      "ruleId": "iam.least-privilege",
+      "resource": "aws_iam_role_policy.p",
+      "preExisting": null
+     }
+    ]
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "an inline policy naming its user by a literal name belongs to a new principal when a user of that name is deleted and created in the same change",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_user\" \"old\" {\n  name = \"deploy\"\n}\nresource \"aws_iam_user_policy\" \"p\" {\n  name   = \"p\"\n  user   = \"deploy\"\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"All\", Effect = \"Allow\", Action = \"s3:*\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_user\" \"new\" {\n  name = \"deploy\"\n}\nresource \"aws_iam_user_policy\" \"p\" {\n  name   = \"p\"\n  user   = \"deploy\"\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"Get\", Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "expect": {
+    "findings": [
+     {
+      "ruleId": "iam.least-privilege",
+      "resource": "aws_iam_user_policy.p",
+      "preExisting": null
+     }
+    ]
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "guard: an inline policy naming its role by a literal name keeps the same principal when another role is replaced",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"app\" {\n  name               = \"app\"\n  path               = \"/\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role\" \"other\" {\n  name               = \"other\"\n  path               = \"/\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  name   = \"p\"\n  role   = \"app\"\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"All\", Effect = \"Allow\", Action = \"s3:*\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"app\" {\n  name               = \"app\"\n  path               = \"/\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role\" \"other\" {\n  name               = \"other\"\n  path               = \"/svc/\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  name   = \"p\"\n  role   = \"app\"\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"Get\", Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_iam_role.other",
+      "action": "replace"
+     }
+    ],
+    "findings": [
+     {
+      "ruleId": "iam.least-privilege",
+      "resource": "aws_iam_role_policy.p",
+      "preExisting": true
+     }
+    ]
+   }
   }
  ]
 }
