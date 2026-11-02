@@ -51,8 +51,6 @@ interface Parsed {
 export interface WorkspaceSurvey {
   /** Full workspace names to evaluate besides `default`, sorted. */
   names: string[];
-  /** Every derivation of `terraform.workspace` that removes or takes a part, described as Terraform writes it. */
-  transforms: string[];
   /**
    * The derivations that tell environments apart but from which no full name could be built
    * (`trimprefix(terraform.workspace, (not known))`), so those environments are not evaluated.
@@ -269,7 +267,7 @@ export function surveyWorkspaces(source: FileSource, root: string, rootVarValues
     parsed.set(dir, p);
     perSource.set(dir, p);
   }
-  const empty: WorkspaceSurvey = { names: [], transforms: [], unbuilt: [], built: false, gated: false };
+  const empty: WorkspaceSurvey = { names: [], unbuilt: [], built: false, gated: false };
   if (![...parsed.values()].length) return empty;
   const callOf = (p: Parsed, name: string) => {
     const mod = loadModule(source, p.dir);
@@ -392,10 +390,14 @@ export function surveyWorkspaces(source: FileSource, root: string, rootVarValues
   const wsOutputs = new Map<string, Map<string, View[]>>();
   const wsVars = new Map<string, Map<string, View[]>>();
   const get = (m: Map<string, Map<string, View[]>>, dir: string, name: string) => m.get(dir)?.get(name);
+  // A module called more than once holds every caller's derivation of an input, each once.
   const add = (m: Map<string, Map<string, View[]>>, dir: string, name: string, views: View[]) => {
     const s = m.get(dir) ?? new Map<string, View[]>();
-    if (s.has(name)) return false;
-    s.set(name, views);
+    const known = s.get(name) ?? [];
+    const seen = new Set(known.map((v) => JSON.stringify(v)));
+    const fresh = views.filter((v) => !seen.has(JSON.stringify(v)));
+    if (!fresh.length || known.length >= MAX_VARIANTS) return false;
+    s.set(name, [...known, ...fresh].slice(0, MAX_VARIANTS));
     m.set(dir, s);
     return true;
   };
@@ -510,11 +512,9 @@ export function surveyWorkspaces(source: FileSource, root: string, rootVarValues
   // name from a part a split or a regex took.
   const prefixes = new Set<string>();
   const suffixes = new Set<string>();
-  const transforms: View[] = [];
   const noteView = (views: View[]) => {
     for (const view of views) {
       if (!view.length) continue;
-      transforms.push(view);
       for (const op of view) {
         if (op.k === 'trimprefix' && op.s) prefixes.add(op.s);
         if (op.k === 'trimsuffix' && op.s) suffixes.add(op.s);
@@ -583,13 +583,16 @@ export function surveyWorkspaces(source: FileSource, root: string, rootVarValues
   const valuesOf = (values: unknown[]) => values.flatMap((v) => (v && typeof v === 'object' && !Array.isArray(v) ? strings(Object.values(v)) : []));
   const keysOf = (values: unknown[]) => values.flatMap((v) => (v && typeof v === 'object' && !Array.isArray(v) ? Object.keys(v) : []));
 
-  // In a filter, `can(regex("${x}$", terraform.workspace))` tests the name; the regex takes no part of it.
+  // The outermost derivations in a filter. `can(regex("${x}$", terraform.workspace))` tests the name: a
+  // regex whose result is not read further takes no part of it, so its items are names as they are.
   const viewsIn = (e: Expr, p: Parsed): View[] => {
     const out: View[] = [];
-    walkExpr(e, (x) => {
+    const walk = (x: Expr) => {
       const v = viewsOf(x, p);
-      if (v) out.push(...v.map((view) => (view.some((op) => op.k === 'regex') ? view.slice(0, view.findIndex((op) => op.k === 'regex')) : view)));
-    });
+      if (!v) return children(x).forEach(walk);
+      out.push(...v.map((view) => (view.length && view[view.length - 1].k === 'regex' ? view.slice(0, -1) : view)));
+    };
+    walk(e);
     return out;
   };
   for (const p of parsed.values()) {
@@ -681,7 +684,6 @@ export function surveyWorkspaces(source: FileSource, root: string, rootVarValues
   names.delete('default');
   return {
     names: [...names].filter((n) => VALID_NAME.test(n)).sort(),
-    transforms: [...new Set(transforms.map(describe))].sort(),
     unbuilt: [...unbuilt].sort(),
     built: builtFromTransform,
     gated,

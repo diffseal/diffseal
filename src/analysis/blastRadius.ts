@@ -245,18 +245,18 @@ export function analyzeBlastRadius(changes: ResourceChange[]): BlastFinding[] {
         const what = CATALOGUE[c.type] ?? MACHINES[c.type];
         const text = `${verb} ${c.type}${forcedBy}: ${what}${order}${unguarded}${note}`;
         out.push({ severity: 'HIGH', resource: c.address, type: c.type, action: c.action, reason: c.confidence !== 'proven' ? `Possibly ${text[0].toLowerCase()}${text.slice(1)}` : text, dataLoss: false, downtime: CATALOGUE[c.type] ? 'possible' : 'yes' });
-      } else if (unguarded) {
-        const text = `${verb} ${c.type}${forcedBy}${order}${unguarded}${note}`;
-        out.push({ severity: 'HIGH', resource: c.address, type: c.type, action: c.action, reason: c.confidence !== 'proven' ? `Possibly ${text[0].toLowerCase()}${text.slice(1)}` : text, dataLoss: false, downtime: c.action === 'replace' ? 'possible' : 'no' });
       } else if (identity) {
         // What a replacement breaks is the swap to a new object; a deletion has no new object.
         const what = c.action === 'replace' ? `: ${identity}` : ': whatever still refers to it fails';
         const possibly = c.confidence !== 'proven' ? 'Possibly ' : '';
-        const text = `${verb} ${c.type}${forcedBy}${what}${order}${note}`;
+        const text = `${verb} ${c.type}${forcedBy}${what}${order}${unguarded}${note}`;
         out.push({ severity: 'HIGH', resource: c.address, type: c.type, action: c.action, reason: possibly ? possibly + text[0].toLowerCase() + text.slice(1) : text, dataLoss: false, downtime: c.replaceOrder === 'create-first' ? 'possible' : 'yes' });
       } else if (c.action === 'delete' && SERVES_TRAFFIC[c.type]) {
-        const text = `Deletes ${c.type}: ${SERVES_TRAFFIC[c.type]}${note}`;
+        const text = `Deletes ${c.type}: ${SERVES_TRAFFIC[c.type]}${unguarded}${note}`;
         out.push({ severity: 'HIGH', resource: c.address, type: c.type, action: c.action, reason: c.confidence !== 'proven' ? `Possibly ${text[0].toLowerCase()}${text.slice(1)}` : text, dataLoss: false, downtime: 'yes' });
+      } else if (unguarded) {
+        const text = `${verb} ${c.type}${forcedBy}${order}${unguarded}${note}`;
+        out.push({ severity: 'HIGH', resource: c.address, type: c.type, action: c.action, reason: c.confidence !== 'proven' ? `Possibly ${text[0].toLowerCase()}${text.slice(1)}` : text, dataLoss: false, downtime: c.action === 'replace' ? 'possible' : 'no' });
       } else if (c.action === 'replace' && ROUTINE_REPLACE.has(c.type)) {
         const env = envChange(c);
         out.push({ severity: 'INFO', resource: c.address, type: c.type, action: c.action, reason: `Recreates ${c.type}${forcedBy}${order}${env ? `; ${env}` : ''}${note}`, dataLoss: false, downtime: 'no' });

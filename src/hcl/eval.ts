@@ -1,4 +1,4 @@
-import { isNode, parseAllDocuments, visit } from 'yaml';
+import { isNode, isScalar, parseAllDocuments, visit } from 'yaml';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { isIP } from 'node:net';
 import { Redacted, UNKNOWN_PART, Unknown, hasRedacted, isRedacted, isUnknown, reveal } from '../core/model.js';
@@ -355,7 +355,9 @@ const candidateKey = (v: unknown) => (v instanceof KeyError ? `error:${v.message
 function keyedUnknown(k: Omit<Keyed, 'candidates'>, candidates: Array<[string, unknown]>): Unknown {
   const refs = new Set(k.keyRefs);
   for (const [, v] of candidates) for (const u of flattenUnknowns(v)) for (const r of u.refs) refs.add(r);
-  const u = withPath(new Unknown('index not known', undefined, [...refs].sort()), `[?${k.key}]{${candidates.map(([c, v]) => `${JSON.stringify(c)}:${candidateKey(v)}`).join(',')}}`);
+  // In key order: the order a map is written in is no part of its value.
+  const ordered = [...candidates].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  const u = withPath(new Unknown('index not known', undefined, [...refs].sort()), `[?${k.key}]{${ordered.map(([c, v]) => `${JSON.stringify(c)}:${candidateKey(v)}`).join(',')}}`);
   KEYED.set(u, { ...k, candidates });
   return u;
 }
@@ -1164,10 +1166,18 @@ function decodeYaml(text: string): unknown {
     if (docs.length === 0) return null;
     const doc = docs[0];
     if (doc.errors.length || doc.warnings.length) return undefined;
+    // Left unknown where this decoder and Terraform's differ: custom tags, aliases (merge keys, and
+    // recursive ones), and unquoted timestamps, which Terraform rewrites in RFC 3339.
     let plain = true;
     visit(doc, {
+      Alias() {
+        plain = false;
+        return visit.BREAK;
+      },
       Node(_, node) {
         if (isNode(node) && node.tag && !/^tag:yaml\.org,2002:(str|int|float|bool|null|map|seq)$/.test(node.tag)) plain = false;
+        if (isScalar(node) && node.type === 'PLAIN' && typeof node.value === 'string' && /^\d{4}-\d{1,2}-\d{1,2}(?:[Tt ]|$)/.test(node.value)) plain = false;
+        if (isScalar(node) && node.value === '<<') plain = false;
       },
     });
     if (!plain) return undefined;

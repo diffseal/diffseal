@@ -249,8 +249,9 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
             // is an environment, not a workspace: never evaluated bare. When no full name can be built, the
             // environments are not evaluated, and a count or for_each that depends on them is reviewed.
             const surveys = [baseSurvey, headSurvey].filter((x) => x !== undefined);
-            const noneBuilt = surveys.some((x) => x.transforms.length) && !surveys.some((x) => x.built);
-            const unbuilt = [...new Set(surveys.flatMap((x) => (noneBuilt ? [...x.transforms, ...x.unbuilt] : x.unbuilt)))].sort();
+            // Only derivations compared with keys need a name; one used only to build resource names does not.
+            const unbuilt = [...new Set(surveys.flatMap((x) => x.unbuilt))].sort();
+            const noneBuilt = unbuilt.length > 0 && !surveys.some((x) => x.built);
             if (unbuilt.length) {
               const how = unbuilt.slice(0, 3).join(', ') + (unbuilt.length > 3 ? ` and ${unbuilt.length - 3} more` : '');
               const what = noneBuilt
@@ -259,7 +260,7 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
               noteFor(root, `${what}; list its workspaces under roots in .diffseal.json`);
               // Reviewed when the configuration tells environments apart through the transform (it compares
               // or looks up keys) and a count or for_each depends on it; with no key, as with no name, a note.
-              if (noneBuilt && surveys.some((x) => x.unbuilt.length) && surveys.some((x) => x.gated)) {
+              if (noneBuilt && surveys.some((x) => x.gated)) {
                 reviewFor(root, `Root ${root} creates resources depending on terraform.workspace, which it transforms (${how}), and no full workspace name could be built, so what this change does in its environments is not known; list its workspaces under roots in .diffseal.json, or review a plan`);
               }
             } else if (!names.length) noteFor(root, `Root ${root} reads terraform.workspace, but no workspace names could be found in its configuration, so it was evaluated as workspace default only; list its workspaces under roots in .diffseal.json`);

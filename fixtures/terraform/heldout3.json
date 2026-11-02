@@ -382,6 +382,104 @@
      }
     ]
    }
+  },
+  {
+   "kind": "terraform",
+   "name": "review round 1 (held-out 3): YAML with a merge key is left unknown, so an equivalent rewrite is no proven deletion",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  d = yamldecode(file(\"${path.module}/d.yaml\"))\n}\nresource \"aws_sqs_queue\" \"q\" {\n  for_each = local.d.prod\n  name     = each.key\n}\n",
+    "r/d.yaml": "prod:\n  jobs: 1\n  mail: 2\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  d = yamldecode(file(\"${path.module}/d.yaml\"))\n}\nresource \"aws_sqs_queue\" \"q\" {\n  for_each = local.d.prod\n  name     = each.key\n}\n",
+    "r/d.yaml": "base: &base\n  jobs: 1\n  mail: 2\nprod:\n  <<: *base\n"
+   },
+   "expect": {
+    "gate": {
+     "resultNot": "block"
+    },
+    "noFindingFor": []
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "review round 1 (held-out 3): a recursive YAML alias is left unknown without crashing",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  d = yamldecode(file(\"${path.module}/d.yaml\"))\n}\nresource \"aws_sqs_queue\" \"q\" {\n  for_each = local.d.prod\n  name     = each.key\n}\n",
+    "r/d.yaml": "prod:\n  jobs: 1\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  d = yamldecode(file(\"${path.module}/d.yaml\"))\n}\nresource \"aws_sqs_queue\" \"q\" {\n  for_each = local.d.prod\n  name     = each.key\n}\n",
+    "r/d.yaml": "a: &a [*a]\nprod:\n  jobs: 1\n"
+   },
+   "expect": {
+    "diagnostics": []
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "review round 1 (held-out 3): an unquoted YAML date is left unknown, since Terraform rewrites it as a timestamp",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  d = yamldecode(file(\"${path.module}/d.yaml\"))\n}\nresource \"aws_sqs_queue\" \"q\" {\n  for_each = local.d.prod\n  name     = each.key\n}\n",
+    "r/d.yaml": "prod:\n  \"2020-01-01T00:00:00Z\": 1\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  d = yamldecode(file(\"${path.module}/d.yaml\"))\n}\nresource \"aws_sqs_queue\" \"q\" {\n  for_each = local.d.prod\n  name     = each.key\n}\n",
+    "r/d.yaml": "prod:\n  2020-01-01: 1\n"
+   },
+   "expect": {
+    "gate": {
+     "resultNot": "block"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "review round 1 (held-out 3): reordering the keys of a map read by an unknown key changes nothing",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"env\" {\n  type = string\n}\nlocals {\n  configs = {\n    dev  = { name = \"app-dev\" }\n    prod = { name = \"app-prod\" }\n  }\n}\nresource \"aws_rds_cluster\" \"db\" {\n  cluster_identifier = local.configs[var.env].name\n  engine             = \"aurora-postgresql\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"env\" {\n  type = string\n}\nlocals {\n  configs = {\n    prod = { name = \"app-prod\" }\n    dev  = { name = \"app-dev\" }\n  }\n}\nresource \"aws_rds_cluster\" \"db\" {\n  cluster_identifier = local.configs[var.env].name\n  engine             = \"aurora-postgresql\"\n}\n"
+   },
+   "expect": {
+    "changedAddresses": [],
+    "gate": {
+     "result": "pass"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "review round 1 (held-out 3): a listener removed with its prevent_destroy guard keeps its traffic rating and names the guard",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_lb_listener\" \"https\" {\n  load_balancer_arn = \"arn:aws:elasticloadbalancing:eu-west-2:111111111111:loadbalancer/app/x/1\"\n  port              = 443\n  default_action {\n    type             = \"forward\"\n    target_group_arn = \"arn:tg\"\n  }\n  lifecycle {\n    prevent_destroy = true\n  }\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+   },
+   "expect": {
+    "blast": [
+     {
+      "resource": "aws_lb_listener.https",
+      "action": "delete",
+      "severity": "HIGH",
+      "reasonContains": "stops accepting connections"
+     },
+     {
+      "resource": "aws_lb_listener.https",
+      "reasonContains": "prevent_destroy = true at the base"
+     }
+    ],
+    "gate": {
+     "result": "review"
+    }
+   }
   }
  ]
 }

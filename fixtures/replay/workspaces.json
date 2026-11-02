@@ -392,7 +392,7 @@
      "result": "pass"
     },
     "notesContain": [
-     "Root app derives its environment from terraform.workspace (trimprefix(terraform.workspace, (not known)))"
+     "Root app reads terraform.workspace, but no workspace names could be found"
     ]
    }
   },
@@ -485,8 +485,88 @@
      "result": "pass"
     },
     "notesContain": [
-     "no full workspace name could be built"
+     "Root app reads terraform.workspace, but no workspace names could be found"
     ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review round 1 (held-out 3): a module called twice with the workspace and a part of it is evaluated in the names both build",
+   "base": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"a\" {\n  source = \"./child\"\n  env    = trimprefix(terraform.workspace, \"app-\")\n  make   = false\n}\nmodule \"b\" {\n  source = \"./child\"\n  env    = terraform.workspace\n  make   = true\n}\n",
+    "app/child/main.tf": "variable \"env\" {\n  type = string\n}\nvariable \"make\" {\n  type = bool\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  count        = var.make && var.env == \"prod\" ? 1 : 0\n  name         = \"t\"\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n"
+   },
+   "head": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nmodule \"a\" {\n  source = \"./child\"\n  env    = trimprefix(terraform.workspace, \"app-\")\n  make   = false\n}\nmodule \"b\" {\n  source = \"./child\"\n  env    = terraform.workspace\n  make   = true\n}\n",
+    "app/child/main.tf": "variable \"env\" {\n  type = string\n}\nvariable \"make\" {\n  type = bool\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "app",
+     "app (workspace app-prod)",
+     "app (workspace prod)"
+    ],
+    "changedAddresses": [
+     "delete workspace prod: module.b.aws_dynamodb_table.t[0]"
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review round 1 (held-out 3): a filter comparing items with a part of the workspace builds full names only, not bare ones",
+   "base": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  envs = [\"prod\", \"staging\"]\n  env  = one([for x in local.envs : x if x == trimprefix(terraform.workspace, \"svc-\")])\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  count        = local.env == \"prod\" ? 1 : 0\n  name         = \"t\"\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n"
+   },
+   "head": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  envs = [\"prod\", \"staging\"]\n  env  = one([for x in local.envs : x if x == trimprefix(terraform.workspace, \"svc-\")])\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "app",
+     "app (workspace svc-prod)",
+     "app (workspace svc-staging)"
+    ],
+    "changedAddresses": [
+     "delete workspace svc-prod: aws_dynamodb_table.t[0]"
+    ],
+    "notes": []
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review round 1 (held-out 3): a filter on a regex group of the workspace builds full names",
+   "base": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  env  = regex(\"^billing-(.+)$\", terraform.workspace)[0]\n  m    = { production = 1, staging = 2 }\n  pick = [for k, v in local.m : v if k == local.env]\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  count        = length(local.pick) > 0 && local.env == \"production\" ? 1 : 0\n  name         = \"t\"\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"id\"\n  attribute {\n    name = \"id\"\n    type = \"S\"\n  }\n}\n"
+   },
+   "head": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  env  = regex(\"^billing-(.+)$\", terraform.workspace)[0]\n  m    = { production = 1, staging = 2 }\n  pick = [for k, v in local.m : v if k == local.env]\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "app",
+     "app (workspace billing-production)",
+     "app (workspace billing-staging)"
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review round 1 (held-out 3): a transform used only to build names is no note when the workspace names are found",
+   "base": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  prefix = replace(terraform.workspace, \"_\", \"-\")\n}\nresource \"aws_s3_bucket\" \"b\" {\n  count  = terraform.workspace == \"prod\" ? 1 : 0\n  bucket = \"${local.prefix}-logs\"\n}\n"
+   },
+   "head": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  prefix = replace(terraform.workspace, \"_\", \"-\")\n}\nresource \"aws_s3_bucket\" \"b\" {\n  count  = terraform.workspace == \"prod\" ? 1 : 0\n  bucket = \"${local.prefix}-logs\"\n  tags   = { a = \"b\" }\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "app",
+     "app (workspace prod)"
+    ],
+    "notes": []
    }
   }
  ]
