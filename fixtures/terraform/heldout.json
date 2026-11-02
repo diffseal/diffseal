@@ -270,6 +270,63 @@
           "result": "review"
         }
       }
+    },
+    {
+      "kind": "terraform",
+      "name": "an edit to a partly unknown jsonencode() result inside a string template shows as a change (source case: opg-use-an-lpa ECS container definitions, probe rs-template)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_ecr_repository\" \"x\" {\n  name = \"app\"\n}\nlocals {\n  app = jsonencode({\n    name  = \"app\"\n    image = \"app@${aws_ecr_repository.x.repository_url}\"\n    environment = [\n      { name = \"A\", value = \"1\" },\n      { name = \"B\", value = \"2\" },\n    ]\n  })\n}\nresource \"aws_ecs_task_definition\" \"t\" {\n  family                = \"t\"\n  container_definitions = \"[${local.app}]\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_ecr_repository\" \"x\" {\n  name = \"app\"\n}\nlocals {\n  app = jsonencode({\n    name  = \"app\"\n    image = \"app@${aws_ecr_repository.x.repository_url}\"\n    environment = [\n      { name = \"A\", value = \"1\" },\n    ]\n  })\n}\nresource \"aws_ecs_task_definition\" \"t\" {\n  family                = \"t\"\n  container_definitions = \"[${local.app}]\"\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_ecs_task_definition.t"
+        ],
+        "changes": [
+          {
+            "address": "aws_ecs_task_definition.t",
+            "action": "replace",
+            "confidence": "likely"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "a partly unknown jsonencode() result inside a string template that does not change is no change",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_ecr_repository\" \"x\" {\n  name = \"app\"\n}\nlocals {\n  app = jsonencode({\n    name  = \"app\"\n    image = \"app@${aws_ecr_repository.x.repository_url}\"\n    environment = [\n      { name = \"A\", value = \"1\" },\n    ]\n  })\n}\nresource \"aws_ecs_task_definition\" \"t\" {\n  family                = \"t\"\n  container_definitions = \"[${local.app}]\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_ecr_repository\" \"x\" {\n  name = \"app\"\n}\nlocals {\n  app = jsonencode({\n    name  = \"app\"\n    image = \"app@${aws_ecr_repository.x.repository_url}\"\n    environment = [\n      { name = \"A\", value = \"1\" },\n    ]\n  })\n}\nresource \"aws_ecs_task_definition\" \"t\" {\n  family                = \"t\"\n  container_definitions = \"[${local.app}]\"\n}\n"
+      },
+      "expect": {
+        "changedAddresses": []
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "a sensitive value inside a partly unknown jsonencode() result in a string template is never printed",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_ecr_repository\" \"x\" {\n  name = \"app\"\n}\nvariable \"token\" {\n  sensitive = true\n  default   = \"tok-SECRET-1\"\n}\nlocals {\n  app = jsonencode({\n    name  = \"app\"\n    image = \"app@${aws_ecr_repository.x.repository_url}\"\n    environment = [\n      { name = \"A\", value = var.token },\n    ]\n  })\n}\nresource \"aws_ecs_task_definition\" \"t\" {\n  family                = \"t\"\n  container_definitions = \"[${local.app}]\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_ecr_repository\" \"x\" {\n  name = \"app\"\n}\nvariable \"token\" {\n  sensitive = true\n  default   = \"tok-SECRET-2\"\n}\nlocals {\n  app = jsonencode({\n    name  = \"app\"\n    image = \"app@${aws_ecr_repository.x.repository_url}\"\n    environment = [\n      { name = \"A\", value = var.token },\n    ]\n  })\n}\nresource \"aws_ecs_task_definition\" \"t\" {\n  family                = \"t\"\n  container_definitions = \"[${local.app}]\"\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_ecs_task_definition.t"
+        ],
+        "forbiddenSubstrings": [
+          "tok-SECRET-1",
+          "tok-SECRET-2"
+        ]
+      }
     }
   ]
 }
