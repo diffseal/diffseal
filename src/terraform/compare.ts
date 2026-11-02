@@ -2,7 +2,7 @@ import { isRedacted, isUnknown, reveal, type Action, type Attrs, type ResourceCh
 import { containsUnknown, redact, stableKey } from '../hcl/eval.js';
 import type { ReplaceTrigger, RootEvaluation, StaticInstance } from './expand.js';
 import { CONDITIONAL_REPLACE, NESTED_REPLACE, REPLACE_ON_CHANGE, REPLACE_SETS } from './replaceCatalog.js';
-import { argumentFacts } from './schemaCatalog.js';
+import { argumentFacts, retainedOnDestroy } from './schemaCatalog.js';
 
 /**
  * Turn two static evaluations of the same root into ResourceChanges, the way `terraform plan` would
@@ -117,7 +117,13 @@ export function compareEvaluations(base: RootEvaluation | undefined, head: RootE
     // prevent_destroy applies while the block is in the configuration: removing the block allows the
     // destroy, but removing instances of a block that still exists makes the plan fail, even when
     // count or for_each drops to zero.
-    const change = { ...toChange(b, 'delete', b.attrs, null), preventDestroy: head?.preventDestroy.has(b.configAddress) || undefined };
+    const guarded = head?.preventDestroy.has(b.configAddress) || undefined;
+    // skip_destroy = true: the provider's delete only drops the object from state; it stays in AWS.
+    if (!guarded && retainedOnDestroy(b.type, b.attrs)) {
+      out.push({ ...toChange(b, 'forget', b.attrs, null), actionReason: 'skip_destroy = true: Terraform removes it from state and the provider leaves it in AWS' });
+      continue;
+    }
+    const change = { ...toChange(b, 'delete', b.attrs, null), preventDestroy: guarded };
     // A symbolic instance stands for a count not known statically at the base, which may have been zero.
     if (addr.includes('[*]')) {
       change.confidence = 'likely';

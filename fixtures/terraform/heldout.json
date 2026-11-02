@@ -22,6 +22,85 @@
           }
         ]
       }
+    },
+    {
+      "kind": "terraform",
+      "name": "a removed log group with skip_destroy = true is forgotten, not deleted: the provider leaves it and its logs in AWS (source case: beneficiary-fhir-data 75e2cde9d)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_cloudwatch_log_group\" \"server_access\" {\n  name              = \"server-access\"\n  retention_in_days = 30\n  skip_destroy      = true\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "forget aws_cloudwatch_log_group.server_access"
+        ],
+        "changes": [
+          {
+            "address": "aws_cloudwatch_log_group.server_access",
+            "action": "forget",
+            "confidence": "proven",
+            "actionReasonContains": "skip_destroy = true"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_cloudwatch_log_group.server_access",
+            "severity": "LOW",
+            "dataLoss": false
+          }
+        ],
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "a removed log group with skip_destroy = false is still a deletion that loses the logs",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_cloudwatch_log_group\" \"server_access\" {\n  name              = \"server-access\"\n  retention_in_days = 30\n  skip_destroy      = false\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete aws_cloudwatch_log_group.server_access"
+        ],
+        "blast": [
+          {
+            "resource": "aws_cloudwatch_log_group.server_access",
+            "severity": "CRITICAL",
+            "dataLoss": true
+          }
+        ],
+        "gate": {
+          "result": "block"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "skip_destroy on a resource type that does not support it does not stop a deletion",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name         = \"q\"\n  skip_destroy = true\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete aws_sqs_queue.q"
+        ],
+        "gate": {
+          "result": "block"
+        }
+      }
     }
   ]
 }

@@ -4,6 +4,7 @@ import { typed } from '../policy/values.js';
 import { describeGrants, diffGrants } from '../policy/grants.js';
 import { describeEnvDiff, diffEnvironment } from '../terraform/environment.js';
 import { REPLACE_ON_CHANGE, ROUTINE_REPLACE } from '../terraform/replaceCatalog.js';
+import { retainedOnDestroy } from '../terraform/schemaCatalog.js';
 
 const POLICY_TYPES = new Set(['aws_iam_policy', 'aws_iam_role_policy', 'aws_iam_user_policy', 'aws_iam_group_policy']);
 
@@ -163,6 +164,11 @@ export function analyzeBlastRadius(changes: ResourceChange[]): BlastFinding[] {
     const identity = IDENTITY_OR_ENDPOINT[c.type];
 
     const note = c.actionReason && !/^[a-z_]+$/.test(c.actionReason) ? ` (${c.actionReason})` : '';
+    // A plan deletes it, but with skip_destroy = true the provider only removes it from state.
+    if (c.action === 'delete' && retainedOnDestroy(c.type, before)) {
+      out.push({ severity: 'LOW', resource: c.address, type: c.type, action: c.action, reason: `Deletes ${c.type} from Terraform state only: skip_destroy = true, so the provider leaves it in AWS${note}`, dataLoss: false, downtime: 'no' });
+      continue;
+    }
     if (c.action === 'delete' || c.action === 'replace') {
       const verb = c.action === 'delete' ? 'Deletes' : 'Replaces';
       const inferred = !c.replacePaths?.length && c.action === 'replace' ? changedAttrs(c.before, c.after).filter((a) => REPLACE_ON_CHANGE[c.type]?.includes(a)) : [];
