@@ -1,5 +1,5 @@
 import * as path from 'node:path';
-import { isUnknown, Unknown } from '../core/model.js';
+import { isUnknown, reveal, Unknown } from '../core/model.js';
 import type { Block, Body, Expr, TemplatePart } from '../hcl/ast.js';
 import { LazyMap, evaluate, stableKey, toPlain, type EvalScope } from '../hcl/eval.js';
 import { parseHcl } from '../hcl/parser.js';
@@ -262,7 +262,8 @@ function readDeployment(source: FileSource, file: string): TerragruntDeployment 
   for (const e of childExprs) walk(e, (x) => {
     if (x.kind === 'getattr' && x.obj.kind === 'scope' && x.obj.name === 'include') exposed.add(x.name);
   });
-  const active = [...parents.filter((p) => p.merge !== 'no_merge'), { label: '', file: child, merge: '' }];
+  // A parent the child reads through include.<label> counts even with no_merge: its values reach inputs.
+  const active = [...parents.filter((p) => p.merge !== 'no_merge' || exposed.has(p.label)), { label: '', file: child, merge: '' }];
   for (const { label, file: f } of active) {
     const where = f === child ? '' : ` (in include${label ? ` "${label}"` : ''})`;
     // A parent the child reads through include.<label> is not evaluated at all.
@@ -528,11 +529,6 @@ function evalIn(source: FileSource, f: ParsedFile, expr: Expr, fns: (name: strin
       if (x.kind === 'getattr' && x.obj.kind === 'scope' && x.obj.name === 'dependency') deps.add(x.name);
       if (x.kind === 'getattr' && x.obj.kind === 'scope' && x.obj.name === 'include') exposed.add(x.name);
     });
-    walk(substitute(e, fns), (x) => {
-      if (x.kind !== 'call' || !FILE_READERS.has(x.name) || !x.args[0]) return;
-      const p = literalKey(x.args[0]);
-      if (p !== undefined && inside(resolvePath(p))) reads.add(resolvePath(p));
-    });
   }
   // Dependency blocks an input reads are part of what it depends on (their mocks are not), with the locals they read.
   const depText = [...deps].sort().map((name) => {
@@ -562,6 +558,15 @@ function evalIn(source: FileSource, f: ParsedFile, expr: Expr, fns: (name: strin
       return source.readFile(candidate);
     },
   };
+  // Files a reader names, even one that is not evaluated (read_terragrunt_config): its path is evaluated
+  // when it is known (a literal, a local, a path function), so an edit to that file is seen.
+  for (const e of exprs) {
+    walk(substitute(e, fns), (x) => {
+      if (x.kind !== 'call' || !FILE_READERS.has(x.name) || !x.args[0]) return;
+      const p = reveal(evaluate(x.args[0], scope));
+      if (typeof p === 'string' && inside(resolvePath(p))) reads.add(resolvePath(p));
+    });
+  }
   let value: unknown = constructs.length ? new Unknown(`reads ${constructs.join(', ')}`) : toPlain(evaluate(substitute(expr, fns), scope));
   if (value === undefined) value = new Unknown('not known statically');
   return { value, fingerprint, constructs, reads: [...reads], locals: [...localsRead(f, expr)] };

@@ -338,8 +338,12 @@ export async function replayCommit(opts: ReplayOptions): Promise<ReplayResult> {
           [...headFiles, ...baseFiles, ...tgFiles].some((f) => touchedPaths.has(f));
         if (!touchesEnv && !(dataChanged.length && readsFiles(envClosure, headSource, baseSource))) continue;
         const inputs = (side: 'head' | 'base') => ({ ...(workspace ? { workspace } : {}), ...(tg ? { envVars: inputValues(side === 'head' ? tg.head : tg.base) } : {}) });
-        // A Terragrunt configuration new at the head is a new deployment: nothing of it exists yet.
-        const baseEval = tg && !tg.base ? emptyEvaluation(envBaseRoot) : evaluateRoot(baseSource, envBaseRoot, {}, baseFiles, inputs('base'));
+        // A Terragrunt configuration new at the head is a new deployment: nothing of it exists yet. Unless it
+        // wraps Terraform that was a root already: then it most likely plans against that root's state, so it
+        // is compared with the root as it was, and reviewed.
+        const wrapsRoot = Boolean(tg && !tg.base && baseRoots.includes(envBaseRoot));
+        if (tg && wrapsRoot) reviewFor(root, `${tg.file} is new for ${root}, which existed before as a root: it is compared with ${root} as it was, without Terragrunt inputs; confirm that it keeps that state`);
+        const baseEval = tg && !tg.base && !wrapsRoot ? emptyEvaluation(envBaseRoot) : evaluateRoot(baseSource, envBaseRoot, {}, baseFiles, inputs('base'));
         const headEval = evaluateRoot(headSource, root, {}, headFiles, inputs('head'));
         if (!touchesEnv && !dataChanged.some((p) => headEval.readFiles.has(p) || baseEval.readFiles.has(p))) continue;
         // An evaluation with no instances still carries removed, moved and prevent_destroy blocks.

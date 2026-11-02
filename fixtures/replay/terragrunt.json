@@ -619,6 +619,78 @@
      }
     ]
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review round 3: a terragrunt.hcl added beside an existing root is compared with that root as it was, and reviewed",
+   "base": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"app\"\n  }\n}\nvariable \"name\" {\n  type    = string\n  default = \"logs\"\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name = var.name\n}\n"
+   },
+   "head": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {\n    bucket = \"b\"\n    key    = \"app\"\n  }\n}\nvariable \"name\" {\n  type    = string\n  default = \"logs\"\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name = var.name\n}\n",
+    "app/terragrunt.hcl": "inputs = {\n  name = \"logs-v2\"\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "app: aws_cloudwatch_log_group.g",
+      "action": "replace",
+      "confidence": "proven"
+     }
+    ],
+    "gate": {
+     "result": "block",
+     "reasonsContain": [
+      "app/terragrunt.hcl is new for app, which existed before"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review round 3: an exposed include with no_merge is still read by its inputs, so retargeting it is reviewed",
+   "base": {
+    "modules/app/main.tf": "variable \"name\" {\n  type    = string\n  default = \"logs\"\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name = var.name\n}\n",
+    "live/a.hcl": "locals {\n  name = \"a\"\n}\n",
+    "live/b.hcl": "locals {\n  name = \"b\"\n}\n",
+    "live/app/terragrunt.hcl": "terraform {\n  source = \"../../modules//app\"\n}\ninclude \"env\" {\n  path           = \"../a.hcl\"\n  expose         = true\n  merge_strategy = \"no_merge\"\n}\ninputs = {\n  name = include.env.locals.name\n}\n"
+   },
+   "head": {
+    "modules/app/main.tf": "variable \"name\" {\n  type    = string\n  default = \"logs\"\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name = var.name\n}\n",
+    "live/a.hcl": "locals {\n  name = \"a\"\n}\n",
+    "live/b.hcl": "locals {\n  name = \"b\"\n}\n",
+    "live/app/terragrunt.hcl": "terraform {\n  source = \"../../modules//app\"\n}\ninclude \"env\" {\n  path           = \"../b.hcl\"\n  expose         = true\n  merge_strategy = \"no_merge\"\n}\ninputs = {\n  name = include.env.locals.name\n}\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "input name reads include.env"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review round 3: a file read_terragrunt_config reads through a local is tracked, and its edit is reviewed",
+   "base": {
+    "modules/app/main.tf": "variable \"name\" {\n  type    = string\n  default = \"logs\"\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name = var.name\n}\n",
+    "live/app/terragrunt.hcl": "terraform {\n  source = \"../../modules//app\"\n}\nlocals {\n  f = \"env.hcl\"\n}\ninputs = {\n  name = read_terragrunt_config(local.f).locals.name\n}\n",
+    "live/app/env.hcl": "locals {\n  name = \"a\"\n}\n"
+   },
+   "head": {
+    "modules/app/main.tf": "variable \"name\" {\n  type    = string\n  default = \"logs\"\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name = var.name\n}\n",
+    "live/app/terragrunt.hcl": "terraform {\n  source = \"../../modules//app\"\n}\nlocals {\n  f = \"env.hcl\"\n}\ninputs = {\n  name = read_terragrunt_config(local.f).locals.name\n}\n",
+    "live/app/env.hcl": "locals {\n  name = \"b\"\n}\n"
+   },
+   "expect": {
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "input name reads read_terragrunt_config()"
+     ]
+    }
+   }
   }
  ]
 }
