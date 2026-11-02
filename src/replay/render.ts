@@ -22,6 +22,14 @@ export function renderReplay(r: ReplayResult, opts: { commit?: boolean } = {}): 
   });
 }
 
+/** The replay report as JSON (what `diffseal replay` writes): the result without the git sources, which do not serialize. */
+export function replayJson(r: ReplayResult) {
+  const { headSource, baseSource, ...rest } = r;
+  void headSource;
+  void baseSource;
+  return { version: VERSION, ...rest, roots: rest.roots.map(({ root, result, diagnostics, varFiles, baseVarFiles, workspace, mapped, terragrunt, terragruntBaseRoot, movedFrom, deleted }) => ({ root, ...(varFiles ? { varFiles } : {}), ...(baseVarFiles ? { baseVarFiles } : {}), ...(workspace ? { workspace } : {}), ...(mapped ? { mapped } : {}), ...(terragrunt ? { terragrunt } : {}), ...(terragruntBaseRoot ? { terragruntBaseRoot } : {}), ...(movedFrom ? { movedFrom } : {}), ...(deleted ? { deleted } : {}), result, diagnostics })) };
+}
+
 /** One CSV row per replayed commit: the change population an auditor samples from. */
 export function csvRow(r: ReplayResult): string[] {
   const c = r.combined;

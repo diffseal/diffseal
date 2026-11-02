@@ -94,7 +94,9 @@ test('npm publishing skips a version already on npm, selects beta for prerelease
 
 test('trusted upload workflow has no analysis inputs and uses base Git settings and the release Action', () => {
   const w = workflow('upload');
-  expect(w.on).toEqual({ workflow_call: null });
+  // The only input says how long the report artifact is kept; nothing the caller passes reaches the analysis.
+  expect(Object.keys(w.on)).toEqual(['workflow_call']);
+  expect(Object.keys((w.on.workflow_call as { inputs: object }).inputs)).toEqual(['retention-days']);
   expect(w.permissions).toEqual({ contents: 'read', 'pull-requests': 'write', 'id-token': 'write' });
   const steps = w.jobs.upload.steps;
   expect(steps[0].uses).toMatch(/^actions\/checkout@[a-f0-9]{40}$/);
@@ -102,13 +104,47 @@ test('trusted upload workflow has no analysis inputs and uses base Git settings 
   // The trusted workflow runs the Action from its own release, never an older one.
   const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   expect(steps[2].uses).toBe(`diffseal/diffseal@v${version}`);
-  expect(steps[2].with).toMatchObject({ mode: 'pr', upload: 'true', advisory: 'true' });
+  expect(steps[2].with).toMatchObject({ mode: 'pr', upload: 'true', advisory: 'true', 'report-artifact': 'true' });
   const text = readFileSync(new URL('../.github/workflows/upload.yml', import.meta.url), 'utf8');
   expect(text).toContain('github.event.pull_request.base.sha || github.sha');
   expect(text).toContain("['show', `${rev}:${file}`]");
   expect(text).toContain("['.diffseal.json', '.terratrust.json']");
-  expect(text).not.toContain('inputs.');
+  expect(text.replaceAll('inputs.retention-days', '')).not.toContain('inputs.');
   expect(text).not.toContain('readFileSync');
+});
+
+test('trusted upload workflow keeps the full report of a review as an artifact, without wider permissions', () => {
+  const w = workflow('upload');
+  expect((w.on.workflow_call as { inputs: Record<string, unknown> }).inputs['retention-days']).toMatchObject({ type: 'number', required: false, default: 90 });
+  // Artifacts are uploaded with the runner's own token; the job gets no permission for them.
+  expect(w.permissions).toEqual({ contents: 'read', 'pull-requests': 'write', 'id-token': 'write' });
+  expect(w.jobs.upload.permissions).toBeUndefined();
+  const steps = w.jobs.upload.steps as Array<Step & { id?: string; if?: string; 'continue-on-error'?: boolean }>;
+  const review = steps.findIndex((s) => s.uses?.startsWith('diffseal/diffseal@'));
+  const keep = steps.findIndex((s) => s.uses?.startsWith('actions/upload-artifact@'));
+  expect(steps[review].id).toBe('diffseal');
+  expect(keep).toBe(review + 1);
+  const step = steps[keep];
+  expect(step.uses).toMatch(/^actions\/upload-artifact@[a-f0-9]{40}$/);
+  const text = readFileSync(new URL('../.github/workflows/upload.yml', import.meta.url), 'utf8');
+  expect(text).toMatch(new RegExp(`uses: ${step.uses!.replace('/', '\\/')} # v\\d+\\.\\d+\\.\\d+\\n`));
+  // Only after a review ran, also when it failed the step, but not when the run is cancelled.
+  expect(step.if).toBe("${{ !cancelled() && steps.diffseal.outputs.report-dir != '' }}");
+  expect(step.with).toEqual({
+    name: '${{ steps.diffseal.outputs.artifact-name }}',
+    path: '${{ steps.diffseal.outputs.report-dir }}',
+    'retention-days': '${{ inputs.retention-days }}',
+    'if-no-files-found': 'error',
+    overwrite: true,
+  });
+  // A failed artifact upload warns; like a failed evidence upload, it does not fail the advisory job.
+  expect(step['continue-on-error']).toBe(true);
+});
+
+test('the Action declares the report input and outputs the workflow uses', () => {
+  const action = Bun.YAML.parse(readFileSync(new URL('../action.yml', import.meta.url), 'utf8')) as { inputs: Record<string, { default?: string }>; outputs: Record<string, unknown> };
+  expect(action.inputs['report-artifact']?.default).toBe('false');
+  expect(Object.keys(action.outputs)).toEqual(expect.arrayContaining(['report-dir', 'artifact-name']));
 });
 
 test('trusted settings ignore the working tree and reject output injection', async () => {

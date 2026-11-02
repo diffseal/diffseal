@@ -64,6 +64,11 @@ export function changeRecord(input: {
   replayNotes?: string[];
   /** Serialized size the record is trimmed to; MAX_RECORD_BYTES unless a test says otherwise. */
   maxBytes?: number;
+  /**
+   * Where a trimmed record says the full list is, as in "the diffseal-0123456 artifact of this run".
+   * The replay report for the commit unless the caller keeps the full report somewhere else.
+   */
+  fullListIn?: string;
 }): ChangeRecord {
   const { commit, result } = input;
   const notes: string[] = [];
@@ -104,7 +109,7 @@ export function changeRecord(input: {
     }),
     access: [],
     notes,
-  }, input.maxBytes ?? MAX_RECORD_BYTES);
+  }, input.maxBytes ?? MAX_RECORD_BYTES, input.fullListIn ?? 'the replay report for this commit (the JSON that diffseal replay writes)');
 }
 
 /**
@@ -133,9 +138,10 @@ function bareAddress(address: string): string {
  * Leave out resources, with their risks and findings, until the serialized record fits in `maxBytes`:
  * the lowest risk first, and among those the unchanged ones and those whose action is unknown. A resource
  * a gate item names is always kept, so every risk and finding that raises the gate stays, and the gate,
- * its reasons and items, and the roots are never touched. A note says how many were left out.
+ * its reasons and items, and the roots are never touched. A note says how many were left out and that the
+ * full list is in `fullListIn`.
  */
-function fitRecord(record: ChangeRecord, maxBytes: number): ChangeRecord {
+function fitRecord(record: ChangeRecord, maxBytes: number, fullListIn: string): ChangeRecord {
   const size = (r: ChangeRecord) => Buffer.byteLength(JSON.stringify(r));
   if (size(record) <= maxBytes) return record;
   // With several roots, rows carry root labels (`a: x`, or `a, b: x` for a row the same in both) and gate
@@ -181,7 +187,7 @@ function fitRecord(record: ChangeRecord, maxBytes: number): ChangeRecord {
       controls: record.controls.filter((c) => kept(c.resource)),
       notes: [
         ...record.notes,
-        `${dropped} of ${total} resource entries were left out, with their risks and findings, to keep this record under the evidence service's upload limit: the lowest risk first, and unchanged ones or ones whose action is unknown before the others. None of them raises the gate. The full list is in the replay report for this commit (the JSON that diffseal replay writes).`,
+        `${dropped} of ${total} resource entries were left out, with their risks and findings, to keep this record under the evidence service's upload limit: the lowest risk first, and unchanged ones or ones whose action is unknown before the others. None of them raises the gate. The full list is in ${fullListIn}.`,
       ],
     };
   };

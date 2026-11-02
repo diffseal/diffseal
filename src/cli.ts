@@ -10,7 +10,7 @@ import type { AnalysisResult, PolicyConfig } from './core/model.js';
 import { protectedRoots, writeOutput } from './io/output.js';
 import { readPlan } from './plan/readPlan.js';
 import { renderMarkdown } from './report/markdown.js';
-import { CSV_HEADER, VERSION, csvRow, renderReplay, toCsv } from './replay/render.js';
+import { CSV_HEADER, VERSION, csvRow, renderReplay, replayJson, toCsv } from './replay/render.js';
 import { replayCommit, rootNames, type ReplayResult } from './replay/replay.js';
 import { git } from './terraform/source.js';
 import { changeRecord, loadApprovals, manifest } from './evidence/changeRecord.js';
@@ -150,7 +150,7 @@ async function runReplay(args: Args): Promise<number> {
     if (!r.roots.length && !r.combined.gate.reasons.length && commits.length > 1) continue;
     const name = r.commit.sha.slice(0, 9);
     emit(`${name}.md`, renderReplay(r));
-    emit(`${name}.json`, json(serializable(r)));
+    emit(`${name}.json`, json(replayJson(r)));
     const record = changeRecord({
       commit: r.commit,
       base: r.base,
@@ -202,14 +202,6 @@ async function runDemo(): Promise<number> {
 
 function summaryLine(sha: string, subject: string, r: AnalysisResult): string {
   return `| [${sha.slice(0, 9)}](${sha.slice(0, 9)}.md) | ${r.gate.result} | ${r.changes.length} | ${subject.replace(/\|/g, '\\|')} |`;
-}
-
-/** Drop the git sources (not serializable) from a replay result. */
-function serializable(r: ReplayResult) {
-  const { headSource, baseSource, ...rest } = r;
-  void headSource;
-  void baseSource;
-  return { version: VERSION, ...rest, roots: rest.roots.map(({ root, result, diagnostics, varFiles, baseVarFiles, workspace, mapped, terragrunt, terragruntBaseRoot, movedFrom, deleted }) => ({ root, ...(varFiles ? { varFiles } : {}), ...(baseVarFiles ? { baseVarFiles } : {}), ...(workspace ? { workspace } : {}), ...(mapped ? { mapped } : {}), ...(terragrunt ? { terragrunt } : {}), ...(terragruntBaseRoot ? { terragruntBaseRoot } : {}), ...(movedFrom ? { movedFrom } : {}), ...(deleted ? { deleted } : {}), result, diagnostics })) };
 }
 
 /** Printed when a removed command is used, so an old script fails with one clear line. */

@@ -1,12 +1,15 @@
 import { addGateItem, type Gate } from './core/model.js';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { analyze } from './analysis/analyze.js';
 import { readPlan } from './plan/readPlan.js';
 import { renderMarkdown } from './report/markdown.js';
-import { VERSION, renderReplay } from './replay/render.js';
+import { VERSION, renderReplay, replayJson } from './replay/render.js';
 import { replayCommit } from './replay/replay.js';
 import { uploadRun, uploadComment } from './action/upload.js';
+import { artifactName, artifactPlace, writeReports } from './action/report.js';
+import type { ChangeRecord } from './evidence/changeRecord.js';
 import type { ReplayResult } from './replay/replay.js';
 import { upsertComment } from './action/comment.js';
 import { actionExitCode, eventBase, needsBase, pullRequestBase, readPolicy } from './action/inputs.js';
@@ -55,12 +58,14 @@ async function main(): Promise<number> {
   let gate: 'pass' | 'review' | 'block';
   let hasReport = true;
   let replay: ReplayResult | undefined;
+  let json: unknown;
   if (mode === 'plan') {
     const planFile = path.resolve(workspace, input('plan-json', 'tfplan.json'));
     const result = analyze(readPlan(JSON.parse(fs.readFileSync(planFile, 'utf8'))), { policy });
     if (policyChanged) reviewPolicyChange(result.gate, policyPath);
     markdown = renderMarkdown(result, { title: `Plan review of \`${path.basename(planFile)}\`.`, version: VERSION });
     gate = result.gate.result;
+    json = result;
   } else if (mode === 'pr') {
     const r = await replayCommit({
       repo: workspace,
@@ -78,13 +83,36 @@ async function main(): Promise<number> {
     markdown = renderReplay(r, { commit: false });
     gate = r.combined.gate.result;
     hasReport = Boolean(r.roots.length || r.combined.gate.reasons.length || policyChanged);
+    json = replayJson(r);
   } else {
     throw new Error(`Unknown mode "${mode}". Use pr or plan.`);
   }
 
-  const uploaded = await uploadRun({ upload: input('upload'), url: input('upload-url', 'https://api.diffseal.com'), mode, eventName: process.env.GITHUB_EVENT_NAME, event: process.env.GITHUB_EVENT_PATH ? JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8')) : undefined, advisory: input('advisory', 'false') === 'true', replay });
+  // The artifact a later workflow step keeps the full reports in, named after the commit reviewed.
+  const artifact = artifactName(replay?.commit.sha ?? process.env.GITHUB_SHA);
+  let fullRecord: ChangeRecord | undefined;
+  const uploaded = await uploadRun({
+    upload: input('upload'),
+    url: input('upload-url', 'https://api.diffseal.com'),
+    mode,
+    eventName: process.env.GITHUB_EVENT_NAME,
+    event: process.env.GITHUB_EVENT_PATH ? JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8')) : undefined,
+    advisory: input('advisory', 'false') === 'true',
+    replay,
+    // Only a workflow that keeps the artifact sets report-artifact, so the record names it only then.
+    fullListIn: input('report-artifact', 'false') === 'true' ? artifactPlace(artifact, process.env) : undefined,
+    onRecord: (record) => { fullRecord = record; },
+  });
   if (uploaded) setOutput('upload-id', uploaded.id);
   markdown = uploadComment(markdown, gate, uploaded);
+  // The outputs are set only once the reports are written, so a workflow uploads them only after a review.
+  try {
+    const dir = writeReports(process.env.RUNNER_TEMP || os.tmpdir(), { json, markdown, record: fullRecord });
+    setOutput('report-dir', dir);
+    setOutput('artifact-name', artifact);
+  } catch (e) {
+    console.warn(`Diffseal: the full report could not be written: ${(e as Error).message}`);
+  }
   if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, markdown + '\n');
   setOutput('gate', gate);
   if (input('comment', 'true') === 'true') {

@@ -54,12 +54,22 @@ inputs:
     description: 'Token for the PR comment. Needs pull-requests: write.'
     required: false
     default: ${{ github.token }}
+  report-artifact:
+    description: >-
+      Set to true when a later step uploads the report-dir output as the artifact named by the artifact-name output.
+      A change record that leaves out resources then says the full list is in that artifact.
+    required: false
+    default: 'false'
 
 outputs:
   upload-id:
     description: 'Stored Diffseal run id, when upload succeeds.'
   gate:
     description: 'pass, review or block'
+  report-dir:
+    description: 'Directory holding the full reports of this run: report.json, report.md and, when an upload built one, change-record.json. Set only when the review ran.'
+  artifact-name:
+    description: 'Name for the report artifact: diffseal- and the short commit reviewed.'
 
 runs:
   using: 'node24'

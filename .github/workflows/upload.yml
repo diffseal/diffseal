@@ -1,6 +1,14 @@
 name: Diffseal upload
 on:
   workflow_call:
+    inputs:
+      # The only input. It says how long the full report is kept and never reaches the analysis.
+      retention-days:
+        description: 'Days to keep the report artifact of each run. GitHub caps it at the repository or organisation maximum; 0 uses that setting.'
+        type: number
+        required: false
+        default: 90
+# Uploading an artifact uses the runner's own token and needs no permission here.
 permissions:
   contents: read
   pull-requests: write
@@ -39,10 +47,25 @@ jobs:
       # Keep this release tag in sync with the reusable workflow's release.
       # Never run the Action from the customer's checkout.
       - uses: diffseal/diffseal@v0.6.2-beta
+        id: diffseal
         with:
           mode: pr
           upload: 'true'
           advisory: 'true'
+          report-artifact: 'true'
           roots-under: ${{ steps.settings.outputs.roots-under }}
           policy: ${{ steps.settings.outputs.policy }}
           module-cache: ${{ steps.settings.outputs.module-cache }}
+      # The full JSON and Markdown reports and the untrimmed change record, which the job summary may cut
+      # short and the uploaded record may leave rows out of. report-dir is set only once a review ran.
+      - name: Keep the full report
+        if: ${{ !cancelled() && steps.diffseal.outputs.report-dir != '' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        continue-on-error: true
+        with:
+          name: ${{ steps.diffseal.outputs.artifact-name }}
+          path: ${{ steps.diffseal.outputs.report-dir }}
+          retention-days: ${{ inputs.retention-days }}
+          if-no-files-found: error
+          # A re-run of the job replaces the artifact of the earlier attempt.
+          overwrite: true

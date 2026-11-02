@@ -21,6 +21,10 @@ export interface UploadOptions {
   url?: string;
   advisory: boolean;
   replay?: ReplayResult;
+  /** Where the record says the full list is when it leaves resources out; see changeRecord. */
+  fullListIn?: string;
+  /** Receives the record with every resource, before any is left out, once one is built for upload. */
+  onRecord?: (record: ChangeRecord) => void;
   env?: NodeJS.ProcessEnv;
   fetchFn?: typeof fetch;
   log?: (message: string) => void;
@@ -61,8 +65,11 @@ export async function uploadRun(o: UploadOptions): Promise<RunUploadResponse | u
       }
       pullRequest = { number, headSha: pr.head.sha, baseSha: pr.base.sha };
     }
-    const record = changeRecord({ commit: r.commit, base: r.base, roots: rootNames(r.roots), result: r.combined, engine: { version: VERSION, replaceCatalog: REPLACE_CATALOG_SOURCE }, diagnostics: [...new Set(r.roots.flatMap((root) => root.diagnostics))], replayNotes: r.notes });
-    record.notes = record.notes.filter((note) => !note.startsWith('No approvals were supplied'));
+    const input: Parameters<typeof changeRecord>[0] = { commit: r.commit, base: r.base, roots: rootNames(r.roots), result: r.combined, engine: { version: VERSION, replaceCatalog: REPLACE_CATALOG_SOURCE }, diagnostics: [...new Set(r.roots.flatMap((root) => root.diagnostics))], replayNotes: r.notes, fullListIn: o.fullListIn };
+    // The service collects approvals from GitHub, so the record does not say they are missing.
+    const withoutApprovalNote = (record: ChangeRecord) => ({ ...record, notes: record.notes.filter((note) => !note.startsWith('No approvals were supplied')) });
+    const record = withoutApprovalNote(changeRecord(input));
+    if (o.onRecord) o.onRecord(withoutApprovalNote(changeRecord({ ...input, maxBytes: Infinity })));
     const body: RunUpload = { schema: 'diffseal.run/v1', event: o.eventName, commit: r.commit.sha, ...(pullRequest ? { pullRequest } : {}), action: { version: VERSION, mode: 'pr', advisory: o.advisory }, record };
     const serialized = JSON.stringify(body);
     if (Buffer.byteLength(serialized) > 1024 * 1024) throw new Error('change record exceeds the 1 MiB upload limit');

@@ -162,6 +162,15 @@ describe('changeRecord', () => {
       expect(note).toContain('full list');
     });
 
+    test('the note points to the replay report, or to the place the caller names', () => {
+      const note = (r: typeof record) => r.notes.find((n) => n.includes('left out'))!;
+      expect(note(record).endsWith('The full list is in the replay report for this commit (the JSON that diffseal replay writes).')).toBe(true);
+      const named = changeRecord({ commit, base: 'b'.repeat(40), roots, result: big, engine: { version: 't', replaceCatalog: 'x' }, fullListIn: 'the diffseal-ccccccc artifact of this run' });
+      expect(note(named).endsWith('The full list is in the diffseal-ccccccc artifact of this run.')).toBe(true);
+      expect(note(named)).not.toContain('diffseal replay');
+      expect(Buffer.byteLength(JSON.stringify(named))).toBeLessThanOrEqual(MAX_RECORD_BYTES);
+    });
+
     test('with several roots, a resource is matched to the gate by its address without the root labels', () => {
       // combineRoots labels changes per root (`a: x`) and collapses identical rows (`a, b: x`); gate items keep the bare address.
       const labelled: AnalysisResult = {

@@ -3,6 +3,8 @@ import { uploadRun, uploadComment, type UploadOptions, type RunUpload } from './
 import { actionExitCode } from './inputs.js';
 import { combineRoots } from '../replay/replay.js';
 import type { ReplayResult } from '../replay/replay.js';
+import type { AnalysisResult, ResourceChange } from '../core/model.js';
+import type { ChangeRecord } from '../evidence/changeRecord.js';
 
 function setup(statuses = [200]) {
   const calls: Array<{ url: string; init?: RequestInit }> = [], warnings: string[] = [], logs: string[] = [];
@@ -35,6 +37,28 @@ test('OIDC audience and authorization, merge commit body and push body match the
     expect(body).toMatchObject({ schema: 'diffseal.run/v1', event: eventName, commit: 'merge', action: { mode: 'pr', advisory: true }, record: { change: { commit: 'merge' }, approvals: null, gate: { items: [], reasons: [], result: 'pass' } } });
     expect(body.record.notes.some((n) => n.startsWith('No approvals'))).toBe(false);
     expect(body.pullRequest).toEqual(eventName === 'pull_request' ? { number: 7, headSha: 'head', baseSha: 'base' } : undefined);
+  }
+});
+test('the untrimmed record goes to onRecord, and a trimmed record says where the full list is', async () => {
+  const s = setup();
+  const pad = 'x'.repeat(150);
+  const changes: ResourceChange[] = Array.from({ length: 6000 }, (_, i) => ({ address: `module.m_${pad}.aws_sns_topic.t[${i}]`, type: 'aws_sns_topic', name: 't', mode: 'managed', action: 'create', before: null, after: {}, references: {}, confidence: 'proven' }));
+  s.options.replay!.combined = { ...s.options.replay!.combined, changes } as AnalysisResult;
+  const full: ChangeRecord[] = [];
+  await uploadRun({ ...s.options, fullListIn: 'the diffseal-abc1234 artifact of this run', onRecord: (r) => full.push(r) });
+  const body = JSON.parse(String(s.calls[1].init?.body)) as RunUpload;
+  expect(body.record.resources.length).toBeLessThan(changes.length);
+  expect(body.record.notes.at(-1)!.endsWith('The full list is in the diffseal-abc1234 artifact of this run.')).toBe(true);
+  expect(full).toHaveLength(1);
+  expect(full[0].resources).toHaveLength(changes.length);
+  expect(full[0].change.commit).toBe('merge');
+  expect(full[0].notes.some((n) => n.includes('left out') || n.startsWith('No approvals'))).toBe(false);
+});
+test('no record reaches onRecord when the upload stops before building one', async () => {
+  for (const override of [{ upload: undefined }, { env: {} }]) {
+    const s = setup(); const full: ChangeRecord[] = [];
+    await uploadRun({ ...s.options, ...override, onRecord: (r) => full.push(r) });
+    expect(full).toHaveLength(0);
   }
 });
 test('fork pull requests without OIDC variables warn without fetching', async () => {
@@ -81,9 +105,11 @@ test('the Action job keeps its passing exit code when upload fails', async () =>
     };
     git('init', '-q'); git('commit', '--allow-empty', '-qm', 'base'); git('commit', '--allow-empty', '-qm', 'head');
     fs.writeFileSync(path.join(dir, 'event.json'), '{}');
-    const r = spawnSync('node', ['--import', 'data:text/javascript,globalThis.fetch=async(url,init)=>{if(!init.method)return Response.json({value:"oidc"});throw new Error("offline upload failure")}', path.resolve(import.meta.dirname, '../../dist/action.js')], { cwd: dir, encoding: 'utf8', env: { ...process.env, INPUT_MODE: 'pr', INPUT_UPLOAD: 'true', INPUT_COMMENT: 'false', GITHUB_WORKSPACE: dir, GITHUB_EVENT_PATH: path.join(dir, 'event.json'), GITHUB_EVENT_NAME: 'push', GITHUB_OUTPUT: path.join(dir, 'outputs'), ACTIONS_ID_TOKEN_REQUEST_URL: 'https://token.example/token', ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'request-token' } });
+    const r = spawnSync('node', ['--import', 'data:text/javascript,globalThis.fetch=async(url,init)=>{if(!init.method)return Response.json({value:"oidc"});throw new Error("offline upload failure")}', path.resolve(import.meta.dirname, '../../dist/action.js')], { cwd: dir, encoding: 'utf8', env: { ...process.env, INPUT_MODE: 'pr', INPUT_UPLOAD: 'true', INPUT_COMMENT: 'false', GITHUB_WORKSPACE: dir, GITHUB_EVENT_PATH: path.join(dir, 'event.json'), GITHUB_EVENT_NAME: 'push', GITHUB_OUTPUT: path.join(dir, 'outputs'), RUNNER_TEMP: dir, ACTIONS_ID_TOKEN_REQUEST_URL: 'https://token.example/token', ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'request-token' } });
     expect(r.status).toBe(0); expect(r.stderr).toContain('upload network request failed');
-    expect(fs.readFileSync(path.join(dir, 'outputs'), 'utf8')).toBe('gate=pass\n');
+    const outputs = fs.readFileSync(path.join(dir, 'outputs'), 'utf8').split('\n');
+    expect(outputs).toContain('gate=pass');
+    expect(outputs.some((line) => line.startsWith('upload-id='))).toBe(false);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

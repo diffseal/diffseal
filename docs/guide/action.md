@@ -49,6 +49,7 @@ Set `mode` to select what the Action checks:
 | `comment` | `'true'` | all | Set to `'true'` to create or update a pull request comment when running on a `pull_request` event with a valid `github-token`. |
 | `comment-author` | `'github-actions[bot]'` | all | GitHub login expected on an existing Diffseal comment. Diffseal updates in place only a comment authored by this login that contains `<!-- diffseal-report -->`. |
 | `github-token` | `'${{ github.token }}'` | all | GitHub token used to list, create, or update the pull request comment. |
+| `report-artifact` | `'false'` | `pr` | Set to `'true'` when a later step uploads `report-dir` as the artifact named by `artifact-name`. A change record that leaves out resources then says the full list is in that artifact. See [Keep the full report](#keep-the-full-report). |
 
 ## Outputs
 
@@ -56,6 +57,8 @@ Set `mode` to select what the Action checks:
 | :-- | :-- | :-- |
 | `upload-id` | run id | Set only when the service accepts an upload. |
 | `gate` | `pass`, `review`, `block` | Lowercase gate result for the run. |
+| `report-dir` | directory path | Directory with the full reports of the run. Set only when the review ran. |
+| `artifact-name` | `diffseal-<short sha>` | Name for the report artifact: `diffseal-` and the first 7 characters of the commit reviewed. |
 
 ## Exit codes and gate behavior
 
@@ -74,6 +77,37 @@ When `comment` is `'true'`, the event payload includes `pull_request.number`, an
 In `pr` mode, if a pull request produces nothing to report, Diffseal sets `onlyUpdate: true` on the comment request. A report is present when at least one Terraform root is evaluated, at least one gate reason is present, or the `policy` file changed.
 
 When `onlyUpdate` is `true`, Diffseal updates an existing Diffseal comment if one was posted on an earlier commit of the pull request, and posts nothing on pull requests that have no report.
+
+## Keep the full report
+
+The job summary is cut short on a large change, and an uploaded change record over 900 KiB leaves out its lowest-risk resources. To keep everything, the Action writes the full reports of each run to a new directory under `$RUNNER_TEMP` and names it in the `report-dir` output:
+
+- `report.json`: the replay result in `pr` mode, the same JSON that `diffseal replay` writes, or the analysis result in `plan` mode, the same JSON as `diffseal review --json`.
+- `report.md`: the whole Markdown report, as written to the job summary and the comment.
+- `change-record.json`: the change record with every resource, when the Action built one to upload.
+
+The Action uploads nothing itself. Add the standard `actions/upload-artifact` step after it to keep the directory as an artifact of the run:
+
+```yaml
+      - uses: diffseal/diffseal@v0.6.2-beta
+        id: diffseal
+        with:
+          mode: pr
+
+      - name: Keep the full report
+        if: ${{ !cancelled() && steps.diffseal.outputs.report-dir != '' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ steps.diffseal.outputs.artifact-name }}
+          path: ${{ steps.diffseal.outputs.report-dir }}
+          retention-days: 90
+```
+
+The `if` condition uploads the report when the gate fails the step too, and skips it when the Action stopped before reviewing anything, because `report-dir` is then not set. Uploading an artifact needs no `permissions:` entry. If one workflow run reviews more than once, for example per root in a matrix, give each artifact its own name.
+
+Anyone who can read the repository can download its artifacts. In `plan` mode `report.json` holds the planned attribute values that Terraform does not mark sensitive; sensitive values are written as `(sensitive)`.
+
+The [trusted upload workflow](#upload-to-diffseal) already does this. Its artifact is named `diffseal-<short sha>` after the commit it reviewed, which for a pull request is GitHub's test merge commit, the same commit as the uploaded record. When the record leaves out resources, its note says the full list is in that artifact and links the workflow run.
 
 ## Base commit resolution
 
@@ -172,7 +206,17 @@ jobs:
     uses: diffseal/diffseal/.github/workflows/upload.yml@v0.6.2-beta
 ```
 
-The workflow checks out GitHub's test merge commit for a pull request. It reads analysis settings from `.diffseal.json` on the base branch through `git show`. It accepts no analysis inputs. Use the optional [`replay` settings](configuration.md#trusted-upload-replay-settings) to select roots, a policy file or a verified offline module cache. The workflow runs the Action from the same release tag, with `mode: pr`, `upload: 'true'` and `advisory: 'true'`.
+The workflow checks out GitHub's test merge commit for a pull request. It reads analysis settings from `.diffseal.json` on the base branch through `git show`. It accepts no analysis inputs. Use the optional [`replay` settings](configuration.md#trusted-upload-replay-settings) to select roots, a policy file or a verified offline module cache. The workflow runs the Action from the same release tag, with `mode: pr`, `upload: 'true'`, `advisory: 'true'` and `report-artifact: 'true'`, and then keeps the [full report](#keep-the-full-report) of the run as an artifact. A failed artifact upload shows a warning and does not fail the job.
+
+The workflow's one input, `retention-days`, says how many days the artifact is kept. It defaults to 90. GitHub caps it at the retention maximum of the repository or organisation, and `0` uses that setting. To keep reports for a whole audit period, raise the maximum in the repository settings (up to 400 days for a private repository) and pass a larger value:
+
+```yaml
+jobs:
+  diffseal:
+    uses: diffseal/diffseal/.github/workflows/upload.yml@v0.6.2-beta
+    with:
+      retention-days: 400
+```
 
 The service accepts only jobs identified by GitHub OIDC as trusted reusable workflows. Setting `upload: 'true'` in an ordinary pull request workflow does not make it trusted. An organisation owner can register another reusable workflow that pull request authors cannot edit. Uploads use a short-lived GitHub OIDC token with audience `diffseal`.
 
