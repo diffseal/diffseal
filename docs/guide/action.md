@@ -31,7 +31,7 @@ Set `mode` to select what the Action checks:
 - `pr`: Static replay of a pull request or merge group commit range. Evaluates affected Terraform roots at the base and head commits.
 - `plan`: Reviews the JSON output of `terraform show -json <planfile>` at the path given by `plan-json`.
 
-`mode: app`, the check of application code against IAM roles, has been removed. A workflow that still sets it fails with exit code `1` and the single line `mode: app was removed in v0.6.1-beta; Diffseal reviews Terraform only`. Remove the step, or switch it to `mode: pr` in the repository that holds the Terraform. The `infra-path`, `role` and `entry` inputs went with it.
+`mode: app`, the check of application code against IAM roles, has been removed. A workflow that still sets it fails with exit code `1` and the single line `mode: app was removed in v0.6.2-beta; Diffseal reviews Terraform only`. Remove the step, or switch it to `mode: pr` in the repository that holds the Terraform. The `infra-path`, `role` and `entry` inputs went with it.
 
 ## Inputs
 
@@ -114,7 +114,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: diffseal/diffseal@v0.6.1-beta
+      - uses: diffseal/diffseal@v0.6.2-beta
         with:
           mode: pr
           roots-under: infra/envs/prod
@@ -148,7 +148,7 @@ jobs:
           terraform plan -input=false -out=tfplan
           terraform show -json tfplan > tfplan.json
 
-      - uses: diffseal/diffseal@v0.6.1-beta
+      - uses: diffseal/diffseal@v0.6.2-beta
         with:
           mode: plan
           plan-json: tfplan.json
@@ -169,7 +169,7 @@ permissions:
   id-token: write
 jobs:
   diffseal:
-    uses: diffseal/diffseal/.github/workflows/upload.yml@v0.6.1-beta
+    uses: diffseal/diffseal/.github/workflows/upload.yml@v0.6.2-beta
 ```
 
 The workflow checks out GitHub's test merge commit for a pull request. It reads analysis settings from `.diffseal.json` on the base branch through `git show`. It accepts no analysis inputs. Use the optional [`replay` settings](configuration.md#trusted-upload-replay-settings) to select roots, a policy file or a verified offline module cache. The workflow runs the Action from the same release tag, with `mode: pr`, `upload: 'true'` and `advisory: 'true'`.
