@@ -198,7 +198,7 @@ export function evaluatePolicies(all: ResourceChange[], policy: PolicyConfig = {
           const kept = result.issues.filter((i) => i.level !== 'UNKNOWN' && priorMessages.has(i.message)).length;
           // A policy update that grants nothing new introduces nothing, whatever its statement ids say; but an
           // inline policy whose known owner changed or is recreated grants all it holds to a new principal.
-          const ownerKept = rule.id === 'iam.least-privilege' && sameOwner(res.type, before!, after, recreated, res.references);
+          const ownerKept = rule.id === 'iam.least-privilege' && sameOwner(res.type, before!, after, all, recreated, res.references);
           const newPrincipal = rule.id === 'iam.least-privilege' && OWNERS[res.type] !== undefined && before![OWNERS[res.type].attr] != null && !ownerKept;
           if (!newPrincipal && (!introduced.length || (ownerKept && res.type !== 'aws_iam_role' && grantsWithin(resolvePolicyValue(before!.policy, res, 'policy', ctxBefore), resolvePolicyValue(after.policy, res, 'policy', ctx))))) {
             preExisting = true;
@@ -231,21 +231,49 @@ const OWNERS: Record<string, { attr: string; type: string }> = {
   aws_iam_group_policy: { attr: 'group', type: 'aws_iam_group' },
 };
 
-/** An inline policy is narrower only for the same role, user or group; a managed policy has no owner here. */
-function sameOwner(type: string, before: Attrs, after: Attrs, recreated: ResourceChange[], references: Record<string, string[]>): boolean {
+/**
+ * An inline policy is narrower only for the same role, user or group; a managed policy has no owner here.
+ *
+ * A principal is identified by its case-folded name, as IAM does (`App` and `app` are one role), or by
+ * the resource an owner reference names. An owner reference follows that resource through an in-place
+ * rename, and is not matched by name against other principals. A principal created, replaced or deleted in
+ * this change is new. The provider's AWS account is not part of the identity: changes do not carry it.
+ */
+function sameOwner(type: string, before: Attrs, after: Attrs, all: ResourceChange[], recreated: ResourceChange[], references: Record<string, string[]>): boolean {
   const owner = OWNERS[type];
   if (!owner) return true;
-  // An owner known only by reference (aws_iam_role.app.id) is the same when it names the same reference.
   const was = before[owner.attr];
   const now = after[owner.attr];
-  if (was === undefined || was === null || stableKey(was) !== stableKey(now)) return false;
+  if (was === undefined || was === null) return false;
   const refs = [...(isUnknown(now) ? now.refs : []), ...(references[owner.attr] ?? [])];
-  if (refs.some((r) => recreated.some(({ address: a }) => a === r || a.startsWith(r + '[') || a.startsWith(r + '.')))) return false;
+  const named = (a: string) => refs.some((r) => a === r || a.startsWith(r + '[') || a.startsWith(r + '.'));
+  if (recreated.some((c) => named(c.address))) return false;
+  // The principals the owner reference names; none of them is recreated.
+  const referenced = all.filter((c) => c.type === owner.type && named(c.address));
+  const wasName = principalName(was);
+  const nowName = principalName(now);
+  if (stableKey(was) !== stableKey(now) && (wasName === undefined || wasName !== nowName)) {
+    // A referenced principal renamed in place, from the old owner name to the new one, is the same principal.
+    const renamed = wasName !== undefined && referenced.some((c) =>
+      principalName(c.before?.name) === wasName && (isUnknown(now) || principalName(c.after?.name) === nowName));
+    if (!renamed) return false;
+  }
+  if (nowName === undefined) return true;
+  // An owner that a reference names (aws_iam_user.app.name) is that principal, whatever else this change creates.
+  if (referenced.some((c) => [c.before?.name, c.after?.name].some((n) => principalName(n) === nowName))) return true;
   // An owner named literally (role = "app", or its ARN) is a new principal when a role, user or group of
   // that name is created, replaced or deleted in the same change, or one whose name is not known statically.
-  if (typeof now !== 'string') return true;
-  const name = now.startsWith('arn:') ? now.slice(now.lastIndexOf('/') + 1) : now;
-  return !recreated.some((c) => c.type === owner.type && [c.before?.name, c.after?.name].map((n) => reveal(n)).some((n) => n === name || isUnknown(n) || isRedacted(n)));
+  return !recreated.some((c) => c.type === owner.type && [c.before?.name, c.after?.name].some((n) => {
+    const v = reveal(n);
+    return isUnknown(v) || isRedacted(v) || principalName(v) === nowName;
+  }));
+}
+
+/** IAM names are unique without case; an ARN names the principal by its last path segment. */
+function principalName(value: unknown): string | undefined {
+  const v = reveal(value);
+  if (typeof v !== 'string') return undefined;
+  return (v.startsWith('arn:') ? v.slice(v.lastIndexOf('/') + 1) : v).toLowerCase();
 }
 
 export const capitalize = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);

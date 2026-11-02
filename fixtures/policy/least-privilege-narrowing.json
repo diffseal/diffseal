@@ -465,6 +465,226 @@
      "resultNot": "pass"
     }
    }
+  },
+  {
+   "kind": "terraform",
+   "name": "principal identity: an owner name is compared without case, so \"App\" names a role \"app\" replaced in the same change",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"app\" {\n  name               = \"app\"\n  path               = \"/\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  name   = \"p\"\n  role   = \"App\"\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"All\", Effect = \"Allow\", Action = \"s3:*\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"app\" {\n  name               = \"app\"\n  path               = \"/svc/\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  name   = \"p\"\n  role   = \"App\"\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"Get\", Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_iam_role.app",
+      "action": "replace"
+     }
+    ],
+    "findings": [
+     {
+      "ruleId": "iam.least-privilege",
+      "resource": "aws_iam_role_policy.p",
+      "preExisting": null
+     }
+    ],
+    "gate": {
+     "resultNot": "pass"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "principal identity: an owner name that only changes case keeps the same principal",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"app\" {\n  name               = \"app\"\n  path               = \"/\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  name   = \"p\"\n  role   = \"App\"\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"All\", Effect = \"Allow\", Action = \"s3:*\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_role\" \"app\" {\n  name               = \"app\"\n  path               = \"/\"\n  assume_role_policy = \"{}\"\n}\nresource \"aws_iam_role_policy\" \"p\" {\n  name   = \"p\"\n  role   = \"app\"\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"Get\", Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "expect": {
+    "findings": [
+     {
+      "ruleId": "iam.least-privilege",
+      "resource": "aws_iam_role_policy.p",
+      "preExisting": true
+     }
+    ],
+    "gate": {
+     "result": "pass"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "principal identity: a user renamed in place keeps its inline policy when the policy names it by .name",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_user\" \"app\" {\n  name = \"old\"\n}\nresource \"aws_iam_user_policy\" \"p\" {\n  name   = \"p\"\n  user   = aws_iam_user.app.name\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"All\", Effect = \"Allow\", Action = \"s3:*\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_user\" \"app\" {\n  name = \"new\"\n}\nresource \"aws_iam_user_policy\" \"p\" {\n  name   = \"p\"\n  user   = aws_iam_user.app.name\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"Get\", Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_iam_user.app",
+      "action": "update"
+     }
+    ],
+    "findings": [
+     {
+      "ruleId": "iam.least-privilege",
+      "resource": "aws_iam_user_policy.p",
+      "preExisting": true
+     }
+    ],
+    "gate": {
+     "result": "pass"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "principal identity: a user renamed in place keeps its inline policy when the policy names it by .id",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_user\" \"app\" {\n  name = \"old\"\n}\nresource \"aws_iam_user_policy\" \"p\" {\n  name   = \"p\"\n  user   = aws_iam_user.app.id\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"All\", Effect = \"Allow\", Action = \"s3:*\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_user\" \"app\" {\n  name = \"new\"\n}\nresource \"aws_iam_user_policy\" \"p\" {\n  name   = \"p\"\n  user   = aws_iam_user.app.id\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"Get\", Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_iam_user.app",
+      "action": "update"
+     }
+    ],
+    "findings": [
+     {
+      "ruleId": "iam.least-privilege",
+      "resource": "aws_iam_user_policy.p",
+      "preExisting": true
+     }
+    ],
+    "gate": {
+     "result": "pass"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "principal identity: a group renamed in place keeps its inline policy when the policy names it by .name",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_group\" \"ops\" {\n  name = \"ops\"\n}\nresource \"aws_iam_group_policy\" \"p\" {\n  name   = \"p\"\n  group   = aws_iam_group.ops.name\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"All\", Effect = \"Allow\", Action = \"s3:*\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_group\" \"ops\" {\n  name = \"Operators\"\n}\nresource \"aws_iam_group_policy\" \"p\" {\n  name   = \"p\"\n  group   = aws_iam_group.ops.name\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"Get\", Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_iam_group.ops",
+      "action": "update"
+     }
+    ],
+    "findings": [
+     {
+      "ruleId": "iam.least-privilege",
+      "resource": "aws_iam_group_policy.p",
+      "preExisting": true
+     }
+    ],
+    "gate": {
+     "result": "pass"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "principal identity guard: a policy that moves to another user renamed in place is new to that user",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_user\" \"a\" {\n  name = \"a\"\n}\nresource \"aws_iam_user\" \"b\" {\n  name = \"x\"\n}\nresource \"aws_iam_user_policy\" \"p\" {\n  name   = \"p\"\n  user   = aws_iam_user.a.name\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"All\", Effect = \"Allow\", Action = \"s3:*\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_user\" \"a\" {\n  name = \"a\"\n}\nresource \"aws_iam_user\" \"b\" {\n  name = \"y\"\n}\nresource \"aws_iam_user_policy\" \"p\" {\n  name   = \"p\"\n  user   = aws_iam_user.b.name\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"Get\", Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "expect": {
+    "findings": [
+     {
+      "ruleId": "iam.least-privilege",
+      "resource": "aws_iam_user_policy.p",
+      "preExisting": null
+     }
+    ],
+    "gate": {
+     "resultNot": "pass"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "principal identity: an owner named through a reference to a user this change keeps is that user, not any new user of unknown name",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"random_id\" \"r\" {\n  byte_length = 4\n}\nresource \"aws_iam_user\" \"app\" {\n  name = \"app\"\n}\nresource \"aws_iam_user_policy\" \"p\" {\n  name   = \"p\"\n  user   = aws_iam_user.app.name\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"All\", Effect = \"Allow\", Action = \"s3:*\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"random_id\" \"r\" {\n  byte_length = 4\n}\nresource \"aws_iam_user\" \"app\" {\n  name = \"app\"\n}\nresource \"aws_iam_user\" \"svc\" {\n  name = \"svc-${random_id.r.hex}\"\n}\nresource \"aws_iam_user_policy\" \"p\" {\n  name   = \"p\"\n  user   = aws_iam_user.app.name\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"Get\", Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_iam_user.svc",
+      "action": "create"
+     }
+    ],
+    "findings": [
+     {
+      "ruleId": "iam.least-privilege",
+      "resource": "aws_iam_user_policy.p",
+      "preExisting": true
+     }
+    ],
+    "gate": {
+     "result": "pass"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "principal identity guard: an owner named literally is still matched against a new user of unknown name",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"random_id\" \"r\" {\n  byte_length = 4\n}\nresource \"aws_iam_user\" \"app\" {\n  name = \"app\"\n}\nresource \"aws_iam_user_policy\" \"p\" {\n  name   = \"p\"\n  user   = \"app\"\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"All\", Effect = \"Allow\", Action = \"s3:*\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"random_id\" \"r\" {\n  byte_length = 4\n}\nresource \"aws_iam_user\" \"app\" {\n  name = \"app\"\n}\nresource \"aws_iam_user\" \"svc\" {\n  name = \"svc-${random_id.r.hex}\"\n}\nresource \"aws_iam_user_policy\" \"p\" {\n  name   = \"p\"\n  user   = \"app\"\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"Get\", Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_iam_user.svc",
+      "action": "create"
+     }
+    ],
+    "findings": [
+     {
+      "ruleId": "iam.least-privilege",
+      "resource": "aws_iam_user_policy.p",
+      "preExisting": null
+     }
+    ],
+    "gate": {
+     "resultNot": "pass"
+    }
+   }
   }
  ]
 }
