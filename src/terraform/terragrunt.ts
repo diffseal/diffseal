@@ -556,7 +556,10 @@ function evalIn(source: FileSource, f: ParsedFile, expr: Expr, fns: (name: strin
     readFile(p) {
       // Relative to the file that holds the expression, or from the repository root; inside it only.
       const candidate = resolvePath(p);
-      return inside(candidate) ? source.readFile(candidate) : undefined;
+      if (!inside(candidate)) return undefined;
+      // Every file the evaluation reads is tracked, however its path was built.
+      reads.add(candidate);
+      return source.readFile(candidate);
     },
   };
   let value: unknown = constructs.length ? new Unknown(`reads ${constructs.join(', ')}`) : toPlain(evaluate(substitute(expr, fns), scope));

@@ -590,6 +590,35 @@
      "result": "pass"
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review round 3: a file read through a path built from a local is tracked, and its edit replays the configuration",
+   "base": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name = var.name\n}\n",
+    "live/app/terragrunt.hcl": "terraform {\n  source = \"../../modules//app\"\n}\nlocals {\n  env = \"prod\"\n}\ninputs = {\n  name = trimspace(file(\"${local.env}.txt\"))\n}\n",
+    "live/app/prod.txt": "a\n"
+   },
+   "head": {
+    "modules/app/main.tf": "variable \"name\" {\n  type = string\n}\nresource \"aws_cloudwatch_log_group\" \"g\" {\n  name = var.name\n}\n",
+    "live/app/terragrunt.hcl": "terraform {\n  source = \"../../modules//app\"\n}\nlocals {\n  env = \"prod\"\n}\ninputs = {\n  name = trimspace(file(\"${local.env}.txt\"))\n}\n",
+    "live/app/prod.txt": "b\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "modules/app (terragrunt live/app/terragrunt.hcl)"
+    ],
+    "changes": [
+     {
+      "address": "aws_cloudwatch_log_group.g",
+      "action": "replace",
+      "confidence": "proven",
+      "after": {
+       "name": "b"
+      }
+     }
+    ]
+   }
   }
  ]
 }
