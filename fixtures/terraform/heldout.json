@@ -405,6 +405,38 @@
           "result": "review"
         }
       }
+    },
+    {
+      "kind": "terraform",
+      "name": "a rename hint pairs each deleted instance with the created instance of the same key (source case: beneficiary-fhir-data eccc5da4e)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"prefix\" {}\nmodule \"eft_bucket\" {\n  source   = \"./modules/q\"\n  for_each = toset([\"ab2d\", \"bcda\", \"dpc\"])\n  name     = \"${var.prefix}-${each.key}\"\n}\n",
+        "r/modules/q/main.tf": "variable \"name\" {}\nresource \"aws_sqs_queue\" \"this\" {\n  delay_seconds = 0\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"prefix\" {}\nmodule \"buckets\" {\n  source   = \"./modules/q\"\n  for_each = toset([\"ab2d\", \"bcda\", \"dpc\"])\n  name     = \"${var.prefix}-${each.key}\"\n}\n",
+        "r/modules/q/main.tf": "variable \"name\" {}\nresource \"aws_sqs_queue\" \"this\" {\n  delay_seconds = 0\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "module.eft_bucket[\"bcda\"].aws_sqs_queue.this",
+            "action": "delete",
+            "actionReasonContains": "rename to module.buckets[\"bcda\"].aws_sqs_queue.this"
+          },
+          {
+            "address": "module.eft_bucket[\"ab2d\"].aws_sqs_queue.this",
+            "action": "delete",
+            "actionReasonContains": "rename to module.buckets[\"ab2d\"].aws_sqs_queue.this"
+          },
+          {
+            "address": "module.eft_bucket[\"dpc\"].aws_sqs_queue.this",
+            "action": "delete",
+            "actionReasonContains": "rename to module.buckets[\"dpc\"].aws_sqs_queue.this"
+          }
+        ]
+      }
     }
   ]
 }

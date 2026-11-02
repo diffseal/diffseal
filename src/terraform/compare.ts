@@ -107,6 +107,10 @@ export function compareEvaluations(base: RootEvaluation | undefined, head: RootE
   }
 
   const created = out.filter((c) => c.action === 'create');
+  const hinted = new Set<ResourceChange>();
+  const deleted: Array<{ change: ResourceChange; addr: string; b: StaticInstance }> = [];
+  // The instance keys of an address, so `a["x"].t` is paired with `b["x"].t` before any other twin.
+  const keysOf = (a: string) => (a.match(/\[("([^"\\]|\\.)*"|[^\]]*)\]/g) ?? []).join('');
   for (const [addr, b] of before) {
     if (after.has(addr) || consumedBefore.has(addr)) continue;
     const removed = head?.removed.find((r) => addr === r.from || addr.startsWith(`${r.from}.`) || addr.startsWith(`${r.from}[`));
@@ -129,9 +133,19 @@ export function compareEvaluations(base: RootEvaluation | undefined, head: RootE
       change.confidence = 'likely';
       change.actionReason = `count or for_each of ${b.configAddress} was not known statically at base, so instances may already have been absent`;
     }
-    const twin = created.find((c) => c.type === b.type && c.mode === b.mode && sameBody(c.after, b.attrs));
-    if (twin) change.actionReason = `looks like a rename to ${twin.address} without a moved block; add moved { from = ${addr}, to = ${twin.address} } to keep it`;
+    deleted.push({ change, addr, b });
     out.push(change);
+  }
+  // Rename hints: a created resource of the same type and body, each used once. Twins with the same
+  // instance keys are paired first, so `a["x"]` is not offered `b["y"]` while `b["x"]` exists.
+  for (const sameKeys of [true, false]) {
+    for (const { change, addr, b } of deleted) {
+      if (change.actionReason?.startsWith('looks like a rename')) continue;
+      const twin = created.find((c) => c.type === b.type && c.mode === b.mode && !hinted.has(c) && (!sameKeys || keysOf(c.address) === keysOf(addr)) && sameBody(c.after, b.attrs));
+      if (!twin) continue;
+      hinted.add(twin);
+      change.actionReason = `looks like a rename to ${twin.address} without a moved block; add moved { from = ${addr}, to = ${twin.address} } to keep it`;
+    }
   }
 
   // A possible replacement whose forcing arguments are unknown at both commits and differ only in the
