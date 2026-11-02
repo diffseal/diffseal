@@ -3,7 +3,7 @@ import { stableKey } from '../hcl/eval.js';
 import { typed } from '../policy/values.js';
 import { describeGrants, diffGrants } from '../policy/grants.js';
 import { describeEnvDiff, diffEnvironment } from '../terraform/environment.js';
-import { REPLACE_ON_CHANGE, ROUTINE_REPLACE } from '../terraform/replaceCatalog.js';
+import { CONDITIONAL_REPLACE, REPLACE_ON_CHANGE, ROUTINE_REPLACE } from '../terraform/replaceCatalog.js';
 import { retainedOnDestroy } from '../terraform/schemaCatalog.js';
 
 const POLICY_TYPES = new Set(['aws_iam_policy', 'aws_iam_role_policy', 'aws_iam_user_policy', 'aws_iam_group_policy']);
@@ -81,6 +81,25 @@ const IDENTITY_OR_ENDPOINT: Record<string, string> = {
 };
 
 /**
+ * Deleting or replacing these loses metadata that other systems built up and Terraform does not hold:
+ * reviewed, not blocked, since the data the metadata describes stays.
+ */
+const CATALOGUE: Record<string, string> = {
+  aws_glue_catalog_database:
+    'every table definition in the database goes with it, including tables crawlers and jobs created outside Terraform, and the Lake Formation grants on it; the data in S3 stays',
+  aws_glue_catalog_table: 'the table definition and the partitions registered on it go with it; the data in S3 stays',
+};
+
+/**
+ * Replacing these loses what lives on the machine. A replacement is a side effect of changing one
+ * argument (`key_name`, `ami`), easy to miss in a diff, so it is reviewed.
+ */
+const MACHINES: Record<string, string> = {
+  aws_instance:
+    'its root volume and instance store are lost unless delete_on_termination = false, and the new instance gets a new instance ID, private IP and, without an Elastic IP, public IP',
+};
+
+/**
  * Deleting these takes an entry point out of service with nothing to replace it: no data is lost, but
  * requests fail until it is created again. Replacing them is a brief swap, rated below.
  */
@@ -144,6 +163,12 @@ const SHOW_VALUE_CHANGES: Record<string, string[]> = {
   aws_db_instance: ['instance_class', 'engine_version', 'allocated_storage'],
 };
 
+/** A possible replacement only through blocks the provider decides on at plan time (`root_block_device`). */
+function conditionalOnly(c: ResourceChange): boolean {
+  const conditional = CONDITIONAL_REPLACE[c.type] ?? [];
+  return c.confidence !== 'proven' && Boolean(c.replacePaths?.length) && c.replacePaths!.every((p) => conditional.includes(p[0]));
+}
+
 const capitalizeFirst = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
 function envChange(c: ResourceChange): string | undefined {
@@ -182,6 +207,10 @@ export function analyzeBlastRadius(changes: ResourceChange[]): BlastFinding[] {
     }
     if (c.action === 'delete' || c.action === 'replace') {
       const verb = c.action === 'delete' ? 'Deletes' : 'Replaces';
+      // The base ruled this destroy out with prevent_destroy, and the change removes the guard.
+      const unguarded = c.protectedAtBase && !c.preventDestroy
+        ? `; it had lifecycle.prevent_destroy = true at the base, and this change removes the guard, so Terraform will destroy it`
+        : '';
       const inferred = !c.replacePaths?.length && c.action === 'replace' ? changedAttrs(c.before, c.after).filter((a) => REPLACE_ON_CHANGE[c.type]?.includes(a)) : [];
       const forcedBy = c.replacePaths?.length
         ? ` (forced by changing ${c.replacePaths.map((p) => p.join('.')).join(', ')})`
@@ -204,7 +233,14 @@ export function analyzeBlastRadius(changes: ResourceChange[]): BlastFinding[] {
           severity = 'HIGH';
           reason = `Possibly ${reason[0].toLowerCase()}${reason.slice(1)}`;
         }
-        out.push({ severity, resource: c.address, type: c.type, action: c.action, reason: reason + order + note, dataLoss: !guard, downtime: 'yes' });
+        out.push({ severity, resource: c.address, type: c.type, action: c.action, reason: reason + order + unguarded + note, dataLoss: !guard, downtime: 'yes' });
+      } else if (CATALOGUE[c.type] || (c.action === 'replace' && MACHINES[c.type] && !conditionalOnly(c))) {
+        const what = CATALOGUE[c.type] ?? MACHINES[c.type];
+        const text = `${verb} ${c.type}${forcedBy}: ${what}${order}${unguarded}${note}`;
+        out.push({ severity: 'HIGH', resource: c.address, type: c.type, action: c.action, reason: c.confidence !== 'proven' ? `Possibly ${text[0].toLowerCase()}${text.slice(1)}` : text, dataLoss: false, downtime: CATALOGUE[c.type] ? 'possible' : 'yes' });
+      } else if (unguarded) {
+        const text = `${verb} ${c.type}${forcedBy}${order}${unguarded}${note}`;
+        out.push({ severity: 'HIGH', resource: c.address, type: c.type, action: c.action, reason: c.confidence !== 'proven' ? `Possibly ${text[0].toLowerCase()}${text.slice(1)}` : text, dataLoss: false, downtime: c.action === 'replace' ? 'possible' : 'no' });
       } else if (identity) {
         // What a replacement breaks is the swap to a new object; a deletion has no new object.
         const what = c.action === 'replace' ? `: ${identity}` : ': whatever still refers to it fails';
@@ -218,12 +254,15 @@ export function analyzeBlastRadius(changes: ResourceChange[]): BlastFinding[] {
         const env = envChange(c);
         out.push({ severity: 'INFO', resource: c.address, type: c.type, action: c.action, reason: `Recreates ${c.type}${forcedBy}${order}${env ? `; ${env}` : ''}${note}`, dataLoss: false, downtime: 'no' });
       } else {
+        // An instance the provider may replace for a block it decides on at plan time (a root volume
+        // grown in place, typically): what a replacement would lose is said, not reviewed.
+        const machine = c.action === 'replace' && MACHINES[c.type] ? `: if it is replaced, ${MACHINES[c.type]}` : '';
         out.push({
           severity: c.action === 'replace' ? 'MEDIUM' : 'LOW',
           resource: c.address,
           type: c.type,
           action: c.action,
-          reason: `${verb} ${c.type}${forcedBy}${order}${note}`,
+          reason: `${verb} ${c.type}${forcedBy}${machine}${order}${note}`,
           dataLoss: false,
           downtime: c.action === 'replace' ? 'possible' : 'no',
         });

@@ -187,6 +187,11 @@ export interface ResourceChange {
   previousAddress?: string;
   /** lifecycle { prevent_destroy = true }: Terraform refuses to plan a destroy. */
   preventDestroy?: boolean;
+  /**
+   * The base had lifecycle { prevent_destroy = true } on it and the head does not: the change removes the
+   * guard (with the block, or from it), so a destroy the team had ruled out is now planned.
+   */
+  protectedAtBase?: boolean;
   source?: SourceRef;
   /** How sure the producer is about `action`. Plan JSON is `proven`; static replay may be less. */
   confidence: 'proven' | 'likely' | 'unknown';

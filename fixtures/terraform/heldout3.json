@@ -1,0 +1,164 @@
+{
+ "suite": "terraform/heldout3",
+ "description": "Third held-out accuracy measurement of 750 public commits (November 2026): lifecycle guards, catalogue and instance ratings, map lookups by an unknown key, and unknown templates",
+ "cases": [
+  {
+   "kind": "terraform",
+   "name": "a resource whose block had prevent_destroy at the base and is removed is reviewed, naming the guard (source case: Data-Platform 49acecf1f)",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_cloudwatch_event_rule\" \"nightly\" {\n  name                = \"nightly\"\n  schedule_expression = \"cron(0 2 * * ? *)\"\n\n  lifecycle {\n    prevent_destroy = true\n  }\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+   },
+   "expect": {
+    "changedAddresses": [
+     "delete aws_cloudwatch_event_rule.nightly"
+    ],
+    "blast": [
+     {
+      "resource": "aws_cloudwatch_event_rule.nightly",
+      "action": "delete",
+      "severity": "HIGH",
+      "reasonContains": "lifecycle.prevent_destroy = true at the base"
+     }
+    ],
+    "gate": {
+     "result": "review"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "a Glue catalog database removed with its prevent_destroy guard is reviewed: its table definitions go with it (source case: Data-Platform 49acecf1f)",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_glue_catalog_database\" \"child_edu_refined\" {\n  name = \"child_edu_refined\"\n\n  lifecycle {\n    prevent_destroy = true\n  }\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+   },
+   "expect": {
+    "changedAddresses": [
+     "delete aws_glue_catalog_database.child_edu_refined"
+    ],
+    "blast": [
+     {
+      "resource": "aws_glue_catalog_database.child_edu_refined",
+      "action": "delete",
+      "severity": "HIGH",
+      "reasonContains": "every table definition"
+     }
+    ],
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "aws_glue_catalog_database.child_edu_refined",
+      "lifecycle.prevent_destroy = true at the base"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "a Glue catalog database removed without a guard is still reviewed",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_glue_catalog_database\" \"child_edu_refined\" {\n  name = \"child_edu_refined\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+   },
+   "expect": {
+    "blast": [
+     {
+      "resource": "aws_glue_catalog_database.child_edu_refined",
+      "action": "delete",
+      "severity": "HIGH"
+     }
+    ],
+    "gate": {
+     "result": "review"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "a stateful resource removed with its prevent_destroy guard follows the stateful rules and says the guard was there",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_dynamodb_table\" \"t\" {\n  name         = \"codes\"\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"code\"\n  attribute {\n    name = \"code\"\n    type = \"S\"\n  }\n  lifecycle {\n    prevent_destroy = true\n  }\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+   },
+   "expect": {
+    "blast": [
+     {
+      "resource": "aws_dynamodb_table.t",
+      "action": "delete",
+      "severity": "CRITICAL",
+      "reasonContains": "lifecycle.prevent_destroy = true at the base"
+     }
+    ],
+    "gate": {
+     "result": "block"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "an EC2 instance replaced by a key_name change is reviewed: its root volume and identity are lost (source case: govwifi-terraform f3289170e)",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_instance\" \"prometheus\" {\n  ami           = \"ami-0abc\"\n  instance_type = \"t3.medium\"\n  key_name      = \"govwifi-prometheus-key\"\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_instance\" \"prometheus\" {\n  ami           = \"ami-0abc\"\n  instance_type = \"t3.medium\"\n  key_name      = \"govwifi-prometheus-key-2025\"\n}\n"
+   },
+   "expect": {
+    "changedAddresses": [
+     "replace aws_instance.prometheus"
+    ],
+    "blast": [
+     {
+      "resource": "aws_instance.prometheus",
+      "action": "replace",
+      "severity": "HIGH",
+      "reasonContains": "root volume"
+     }
+    ],
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "aws_instance.prometheus"
+     ]
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "an EC2 instance whose root volume grows is a possible replacement the provider decides, not reviewed for it",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_instance\" \"prometheus\" {\n  ami           = \"ami-0abc\"\n  instance_type = \"t3.medium\"\n  key_name      = \"k\"\n  root_block_device {\n    volume_type = \"gp3\"\n    volume_size = 150\n  }\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_instance\" \"prometheus\" {\n  ami           = \"ami-0abc\"\n  instance_type = \"t3.medium\"\n  key_name      = \"k\"\n  root_block_device {\n    volume_type = \"gp3\"\n    volume_size = 200\n  }\n}\n"
+   },
+   "expect": {
+    "blast": [
+     {
+      "resource": "aws_instance.prometheus",
+      "action": "replace",
+      "severity": "MEDIUM"
+     }
+    ],
+    "gate": {
+     "result": "pass"
+    }
+   }
+  }
+ ]
+}

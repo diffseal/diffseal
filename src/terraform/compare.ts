@@ -128,7 +128,7 @@ export function compareEvaluations(base: RootEvaluation | undefined, head: RootE
       out.push({ ...toChange(b, 'forget', b.attrs, null), actionReason: 'skip_destroy = true: Terraform removes it from state and the provider leaves it in AWS' });
       continue;
     }
-    const change = { ...toChange(b, 'delete', b.attrs, null), preventDestroy: guarded };
+    const change = { ...toChange(b, 'delete', b.attrs, null), preventDestroy: guarded, protectedAtBase: (b.preventDestroy && !guarded) || undefined };
     // A symbolic instance stands for a count not known statically at the base, which may have been zero.
     if (addr.includes('[*]')) {
       change.confidence = 'likely';
@@ -460,6 +460,7 @@ function diffInstance(b: StaticInstance, a: StaticInstance): ResourceChange {
   const base = toChange(a, 'no-op', b.attrs, applied(b.attrs, a.attrs, ignored));
   base.configuredBefore = b.configuredAttrs;
   base.preventDestroy = a.preventDestroy || undefined;
+  if (b.preventDestroy && !a.preventDestroy) base.protectedAtBase = true;
   if (!changed.length || a.mode === 'data') return base;
 
   if (a.externalModule) {
