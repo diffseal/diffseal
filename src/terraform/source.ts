@@ -105,12 +105,18 @@ export class GitSource implements FileSource {
   private readonly blobs = new Map<string, string>();
   private readonly contents = new Map<string, string>();
   private readonly dirs = new Map<string, string[]>();
+  /** Git submodules (gitlinks, mode 160000): path -> the commit recorded. Their content is not read. */
+  private readonly gitlinks = new Map<string, string>();
 
   private modules?: OfflineModules;
   allowsModulePath(parent: string, child: string): boolean { return this.modules?.allowsLocal(parent, child) ?? true; }
   resolveModule(source: string, constraint?: string): string | undefined {
     if (!this.moduleCache) return;
     return (this.modules ??= new OfflineModules(this, this.moduleCache)).resolve(source, constraint);
+  }
+  /** Git submodules at this commit: path -> commit id. */
+  submodules(): ReadonlyMap<string, string> {
+    return this.gitlinks;
   }
   constructor(private readonly repo: string, rev: string, private readonly moduleCache?: string) {
     this.sha = resolveCommit(repo, rev);
@@ -121,8 +127,9 @@ export class GitSource implements FileSource {
       if (!entry) continue;
       const tab = entry.indexOf('\t');
       const [mode, type, sha] = entry.slice(0, tab).split(' ');
-      if (type !== 'blob') continue;
       const p = entry.slice(tab + 1);
+      if (type === 'commit') this.gitlinks.set(p, sha);
+      if (type !== 'blob') continue;
       if (mode === '120000') links.set(p, sha);
       else this.blobs.set(p, sha);
     }

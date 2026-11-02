@@ -1,0 +1,51 @@
+{
+  "suite": "analysis/heldout",
+  "description": "Held-out accuracy measurement of 750 public commits (November 2026): plan cases",
+  "cases": [
+    {
+      "kind": "plan",
+      "name": "a planned delete of a log group with skip_destroy = true loses no logs: the provider only removes it from state",
+      "plan": {
+        "format_version": "1.2",
+        "terraform_version": "1.9.5",
+        "resource_changes": [
+          {
+            "address": "aws_cloudwatch_log_group.server_access",
+            "mode": "managed",
+            "type": "aws_cloudwatch_log_group",
+            "name": "server_access",
+            "change": {
+              "actions": [
+                "delete"
+              ],
+              "before": {
+                "name": "server-access",
+                "retention_in_days": 30,
+                "skip_destroy": true
+              },
+              "after": null
+            }
+          }
+        ],
+        "configuration": {
+          "root_module": {
+            "resources": []
+          }
+        }
+      },
+      "expect": {
+        "blast": [
+          {
+            "resource": "aws_cloudwatch_log_group.server_access",
+            "severity": "LOW",
+            "dataLoss": false,
+            "reasonContains": "skip_destroy = true"
+          }
+        ],
+        "gate": {
+          "result": "pass"
+        }
+      }
+    }
+  ]
+}

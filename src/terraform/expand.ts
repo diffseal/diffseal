@@ -199,6 +199,13 @@ function providerName(expr:Expr|undefined):string|undefined {
  if(expr.kind==='template'&&expr.parts.every(p=>p.kind==='text'))return expr.parts.map(p=>p.kind==='text'?p.value:'').join('');
 }
 
+interface ChildModule {
+  call: ModuleCall;
+  instances: Array<{ key: string; mod: ModuleInstance }> | Unknown;
+  /** For a call with no instances: a symbolic instance whose lifecycle guards still apply. */
+  dormant?: ModuleInstance;
+}
+
 class ModuleInstance {
   readonly scope: EvalScope;
   private readonly reads?: Set<string>;
@@ -207,8 +214,9 @@ class ModuleInstance {
   private readonly refMemo = new Map<string, string[]>();
   private readonly refInProgress = new Set<string>();
   private providerMemo?: Map<string, ProviderBinding>;
-  private readonly dormantChildren: ModuleInstance[] = [];
-  private children?: Map<string, { call: ModuleCall; instances: Array<{ key: string; mod: ModuleInstance }> | Unknown }>;
+  /** Module calls instantiated so far, each on first use, so one call's for_each never waits on another. */
+  private readonly children = new Map<string, ChildModule>();
+  private readonly childrenInProgress = new Set<string>();
 
   constructor(
     private readonly source: FileSource,
@@ -394,15 +402,24 @@ class ModuleInstance {
     return this.instanceValue(rb, exps[0]);
   }
 
-  private childInstances() {
-    if (this.children) return this.children;
-    this.children = new Map();
-    for (const call of this.cfg.moduleCalls.values()) {
-      const childCfg = call.localDir && this.depth < MAX_DEPTH ? loadModule(this.source, call.localDir) : undefined;
-      if (!childCfg) {
-        this.children.set(call.name, { call, instances: new Unknown(`module "${call.name}" (${call.source ?? 'unknown source'}) is not available offline`) });
-        continue;
-      }
+  /**
+   * The instances of one module call, made on first use. Expanding every call at once made a reference
+   * to one module evaluate the count or for_each of all the others, which could read the local still
+   * being evaluated and turn a known for_each into a false reference cycle.
+   */
+  private childModule(name: string): ChildModule | undefined {
+    const hit = this.children.get(name);
+    if (hit) return hit;
+    const call = this.cfg.moduleCalls.get(name);
+    if (!call || this.childrenInProgress.has(name)) return undefined;
+    const childCfg = call.localDir && this.depth < MAX_DEPTH ? loadModule(this.source, call.localDir) : undefined;
+    if (!childCfg) {
+      const entry = { call, instances: new Unknown(`module "${call.name}" (${call.source ?? 'unknown source'}) is not available offline`) };
+      this.children.set(name, entry);
+      return entry;
+    }
+    this.childrenInProgress.add(name);
+    try {
       let exps = expand(call.block.body, this.scope);
       if (isUnknown(exps)) exps = [SYMBOLIC];
       const instantiate = (exp: Expansion) => {
@@ -426,14 +443,22 @@ class ModuleInstance {
         return { key: exp.key, mod };
       };
       const instances = exps.map(instantiate);
-      if (!instances.length) this.dormantChildren.push(instantiate(SYMBOLIC).mod);
-      this.children.set(call.name, { call, instances });
+      const entry: ChildModule = { call, instances, ...(instances.length ? {} : { dormant: instantiate(SYMBOLIC).mod }) };
+      this.children.set(name, entry);
+      return entry;
+    } finally {
+      this.childrenInProgress.delete(name);
     }
-    return this.children;
+  }
+
+  /** Every module call, in configuration order. */
+  private childInstances(): ChildModule[] {
+    return [...this.cfg.moduleCalls.keys()].map((name) => this.childModule(name)).filter((c): c is ChildModule => c !== undefined);
   }
 
   private moduleValue(name: string): unknown {
-    const child = this.childInstances().get(name);
+    if (this.childrenInProgress.has(name)) return new Unknown(`reference cycle through module "${name}"`);
+    const child = this.childModule(name);
     if (!child) throw new EvalError(`no module "${name}"`);
     if (isUnknown(child.instances)) return new Unknown(child.instances.reason, UNKNOWN_PART, [`${this.cfgPrefix}module.${name}`]);
     const outputs = (mod: ModuleInstance) =>
@@ -485,7 +510,7 @@ class ModuleInstance {
       return r ? this.memoRefs(`var.${a}`, r) : [];
     }
     if (root === 'module' && a) {
-      const child = this.childInstances().get(a);
+      const child = this.childModule(a);
       if (!child || isUnknown(child.instances) || !child.instances.length || !b) return [`${this.cfgPrefix}module.${a}`];
       const mod = child.instances[0].mod;
       const output = mod.cfg.outputs.get(b);
@@ -536,7 +561,8 @@ class ModuleInstance {
       }
     }
 
-    for (const { call, instances } of this.childInstances().values()) {
+    const children = this.childInstances();
+    for (const { call, instances } of children) {
       if (isUnknown(instances)) {
         if (lifecycleOnly) continue;
         const args = call.block.body.attributes.filter((a) => !MODULE_META.has(a.name));
@@ -573,7 +599,7 @@ class ModuleInstance {
       }
       for (const { mod } of instances) mod.collect(result,lifecycleOnly);
     }
-    for (const mod of this.dormantChildren) mod.collect(result,true);
+    for (const { dormant } of children) dormant?.collect(result,true);
   }
 
   private replaceTriggers(lifecycle: Block | undefined, exp: Expansion): { replaceTriggeredBy?: ReplaceTrigger[] } {

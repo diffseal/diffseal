@@ -104,14 +104,14 @@
       },
       "expect": {
         "changedAddresses": [
-          "replace aws_security_group_rule.r"
+          "update aws_security_group_rule.r"
         ],
         "changes": [
           {
             "address": "aws_security_group_rule.r",
-            "action": "replace",
-            "confidence": "likely",
-            "actionReasonContains": "replace_because_cannot_update",
+            "action": "update",
+            "confidence": "unknown",
+            "actionReasonContains": "only the expression or data source behind it changed",
             "after": {
               "type": "ingress",
               "security_group_id": "sg-1",

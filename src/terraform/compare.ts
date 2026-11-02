@@ -1,8 +1,9 @@
-import { isRedacted, isUnknown, reveal, type Action, type Attrs, type ResourceChange } from '../core/model.js';
+import { UNKNOWN_PART, isRedacted, isUnknown, reveal, type Action, type Attrs, type ResourceChange } from '../core/model.js';
 import { containsUnknown, redact, stableKey } from '../hcl/eval.js';
 import type { ReplaceTrigger, RootEvaluation, StaticInstance } from './expand.js';
 import { CONDITIONAL_REPLACE, NESTED_REPLACE, REPLACE_ON_CHANGE, REPLACE_SETS } from './replaceCatalog.js';
-import { argumentFacts } from './schemaCatalog.js';
+import { argumentFacts, retainedOnDestroy } from './schemaCatalog.js';
+import { STATEFUL } from '../analysis/blastRadius.js';
 
 /**
  * Turn two static evaluations of the same root into ResourceChanges, the way `terraform plan` would
@@ -107,6 +108,10 @@ export function compareEvaluations(base: RootEvaluation | undefined, head: RootE
   }
 
   const created = out.filter((c) => c.action === 'create');
+  const hinted = new Set<ResourceChange>();
+  const deleted: Array<{ change: ResourceChange; addr: string; b: StaticInstance }> = [];
+  // The instance keys of an address, so `a["x"].t` is paired with `b["x"].t` before any other twin.
+  const keysOf = (a: string) => (a.match(/\[("([^"\\]|\\.)*"|[^\]]*)\]/g) ?? []).join('');
   for (const [addr, b] of before) {
     if (after.has(addr) || consumedBefore.has(addr)) continue;
     const removed = head?.removed.find((r) => addr === r.from || addr.startsWith(`${r.from}.`) || addr.startsWith(`${r.from}[`));
@@ -117,15 +122,50 @@ export function compareEvaluations(base: RootEvaluation | undefined, head: RootE
     // prevent_destroy applies while the block is in the configuration: removing the block allows the
     // destroy, but removing instances of a block that still exists makes the plan fail, even when
     // count or for_each drops to zero.
-    const change = { ...toChange(b, 'delete', b.attrs, null), preventDestroy: head?.preventDestroy.has(b.configAddress) || undefined };
+    const guarded = head?.preventDestroy.has(b.configAddress) || undefined;
+    // skip_destroy = true: the provider's delete only drops the object from state; it stays in AWS.
+    if (!guarded && retainedOnDestroy(b.type, b.attrs)) {
+      out.push({ ...toChange(b, 'forget', b.attrs, null), actionReason: 'skip_destroy = true: Terraform removes it from state and the provider leaves it in AWS' });
+      continue;
+    }
+    const change = { ...toChange(b, 'delete', b.attrs, null), preventDestroy: guarded };
     // A symbolic instance stands for a count not known statically at the base, which may have been zero.
     if (addr.includes('[*]')) {
       change.confidence = 'likely';
       change.actionReason = `count or for_each of ${b.configAddress} was not known statically at base, so instances may already have been absent`;
     }
-    const twin = created.find((c) => c.type === b.type && c.mode === b.mode && sameBody(c.after, b.attrs));
-    if (twin) change.actionReason = `looks like a rename to ${twin.address} without a moved block; add moved { from = ${addr}, to = ${twin.address} } to keep it`;
+    deleted.push({ change, addr, b });
     out.push(change);
+  }
+  // Rename hints: a created resource of the same type and body, each used once. Twins with the same
+  // instance keys are paired first, so `a["x"]` is not offered `b["y"]` while `b["x"]` exists.
+  for (const sameKeys of [true, false]) {
+    for (const { change, addr, b } of deleted) {
+      if (change.actionReason?.startsWith('looks like a rename')) continue;
+      const twin = created.find((c) => c.type === b.type && c.mode === b.mode && !hinted.has(c) && (!sameKeys || keysOf(c.address) === keysOf(addr)) && sameBody(c.after, b.attrs));
+      if (!twin) continue;
+      hinted.add(twin);
+      change.actionReason = `looks like a rename to ${twin.address} without a moved block; add moved { from = ${addr}, to = ${twin.address} } to keep it`;
+    }
+  }
+
+  // A possible replacement whose forcing arguments are unknown at both commits and differ only in the
+  // expression behind them is not likely: the value most often stays the same. It is an unknown update,
+  // unless what the value reads is a resource this change creates, replaces or deletes, or a data source
+  // whose arguments change (a new AMI filter selects another image).
+  const touched = new Set(out.filter((c) => c.action === 'create' || c.action === 'replace' || c.action === 'delete').map((c) => configAddressOf(c.address)));
+  // A data source reference names an instance or the whole block; each instance is compared by its address.
+  const selects = (m: Map<string, StaticInstance>, ref: string) =>
+    stableKey([...m.values()].filter((i) => i.mode === 'data' && (i.address === ref || i.configAddress === ref)).sort((x, y) => (x.address < y.address ? -1 : 1)).map((i) => [i.address, dataSelector(i.type, i.attrs)]));
+  for (const c of out) {
+    const refs = UNKNOWN_ORIGIN.get(c);
+    if (!refs || refs.some((r) => touched.has(configAddressOf(r)) || (isDataRef(r) && selects(before, r) !== selects(after, r)))) continue;
+    const keys = (c.replacePaths ?? []).map((p) => p[0]);
+    c.action = 'update';
+    c.confidence = 'unknown';
+    c.actionReason = `${keys.join(', ')} ${keys.length === 1 ? 'is' : 'are'} not known statically at either commit, and only the expression or data source behind ${keys.length === 1 ? 'it' : 'them'} changed, so whether ${keys.length === 1 ? 'it changes' : 'they change'} is not known`;
+    delete c.replacePaths;
+    delete c.replaceOrder;
   }
 
   // A replacement gives new computed values, which can replace a dependent, which can trigger the next.
@@ -323,6 +363,62 @@ function sameBody(a: Attrs | null, b: Attrs | null): boolean {
   return stableKey(strip(a)) === stableKey(strip(b));
 }
 
+/** Possible replacements that differ only in the origin of unknown values -> the resources and data sources those values read. */
+const UNKNOWN_ORIGIN = new WeakMap<ResourceChange, string[]>();
+
+const configAddressOf = (a: string) => a.replace(/\[("([^"\\]|\\.)*"|[^\]]*)\]/g, '');
+const isDataRef = (r: string) => /(^|\.)data\./.test(r);
+
+/**
+ * Settings of terraform_remote_state that say how to reach the state, not which state is read: changing
+ * them (a role moved into assume_role) reads the same outputs.
+ */
+const REMOTE_STATE_ACCESS = new Set([
+  'role_arn', 'assume_role', 'assume_role_with_web_identity', 'profile', 'access_key', 'secret_key', 'token',
+  'shared_credentials_file', 'shared_credentials_files', 'shared_config_files', 'external_id', 'session_name',
+  'sts_endpoint', 'iam_endpoint', 'max_retries', 'retry_mode', 'skip_credentials_validation',
+  'skip_metadata_api_check', 'skip_region_validation', 'skip_requesting_account_id', 'skip_s3_checksum',
+  'dynamodb_table', 'use_lockfile', 'encrypt', 'kms_key_id', 'acl',
+]);
+
+/** The arguments of a data source that select what it reads. */
+function dataSelector(type: string, attrs: Attrs): unknown {
+  if (type !== 'terraform_remote_state') return attrs;
+  const config = reveal(attrs.config);
+  if (config === null || typeof config !== 'object' || Array.isArray(config) || isUnknown(config)) return attrs;
+  return { ...attrs, config: Object.fromEntries(Object.entries(config as Attrs).filter(([k]) => !REMOTE_STATE_ACCESS.has(k))) };
+}
+
+/**
+ * The resources and data sources read by two values that differ only where both are unknown, with the
+ * same known text around the unknown parts and reading the same resources and data sources; undefined when they
+ * differ in anything known, or when one side is known where the other is not.
+ */
+function unknownOriginOnly(before: unknown, after: unknown): string[] | undefined {
+  const b = reveal(before);
+  const a = reveal(after);
+  if (isRedacted(b) || isRedacted(a)) return undefined;
+  if (isUnknown(b) || isUnknown(a)) {
+    if (!isUnknown(b) || !isUnknown(a)) return undefined;
+    // No pattern, or `{?}` alone, says nothing about the value's text.
+    const text = (u: typeof b) => (u.pattern === undefined || u.pattern === UNKNOWN_PART ? undefined : u.pattern);
+    if (text(b) !== text(a)) return undefined;
+    // The same resources and data sources on both sides, instance keys included: `s[0]` to `s[1]` reads
+    // another subnet. A data source whose arguments change is checked by the caller.
+    const refs = (u: typeof b) => [...new Set(u.refs)].sort().join('\u0000');
+    return refs(b) === refs(a) ? [...new Set(a.refs)] : undefined;
+  }
+  const merge = (parts: Array<string[] | undefined>) => (parts.some((x) => x === undefined) ? undefined : [...new Set(parts.flat() as string[])]);
+  if (Array.isArray(b) && Array.isArray(a)) return b.length === a.length ? merge(b.map((x, i) => unknownOriginOnly(x, a[i]))) : undefined;
+  const obj = (x: unknown): x is Attrs => x !== null && typeof x === 'object' && !Array.isArray(x);
+  if (obj(b) && obj(a)) {
+    const kb = Object.keys(b).sort();
+    if (kb.join('\u0000') !== Object.keys(a).sort().join('\u0000')) return undefined;
+    return merge(kb.map((k) => unknownOriginOnly(b[k], a[k])));
+  }
+  return stableKey(b) === stableKey(a) ? [] : undefined;
+}
+
 function toChange(i: StaticInstance, action: Action, before: Attrs | null, after: Attrs | null): ResourceChange {
   return {
     address: i.address,
@@ -409,7 +505,7 @@ function diffInstance(b: StaticInstance, a: StaticInstance): ResourceChange {
       }
       return knownDiffer(was, now);
     });
-    return {
+    const change: ResourceChange = {
       ...base,
       action: 'replace',
       replacePaths: forcing.map((k) => [k]),
@@ -417,6 +513,14 @@ function diffInstance(b: StaticInstance, a: StaticInstance): ResourceChange {
       confidence: certain.length ? 'proven' : 'likely',
       actionReason: 'replace_because_cannot_update',
     };
+    // Every forcing argument unknown at both commits, differing only in where the unknown comes from.
+    // Not for a stateful type: a changed index or literal inside the expression is not seen here, and
+    // replacing a database or bucket loses data, so its possible replacement stays reviewed.
+    if (!certain.length && !STATEFUL[a.type] && !forcing.some((k) => possible.has(k) || NESTED_REPLACE[a.type]?.[k])) {
+      const origins = forcing.map((k) => unknownOriginOnly(masked(b.attrs[k], paths(k)), masked(a.attrs[k], paths(k))));
+      if (origins.every((o) => o !== undefined)) UNKNOWN_ORIGIN.set(change, [...new Set(origins.flat() as string[])]);
+    }
+    return change;
   }
   const conditional = changed.filter((k) => CONDITIONAL_REPLACE[a.type]?.includes(k));
   if (conditional.length) {

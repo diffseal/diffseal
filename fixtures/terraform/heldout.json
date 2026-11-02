@@ -1,0 +1,620 @@
+{
+  "suite": "terraform/heldout",
+  "description": "Held-out accuracy measurement of 750 public commits (November 2026): evaluator cases",
+  "cases": [
+    {
+      "kind": "terraform",
+      "name": "an unknown for_each derived through many nested operations evaluates without running out of memory",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_ssm_parameter\" \"p\" {\n  name = \"a\"\n}\nlocals {\n  l0 = jsondecode(data.aws_ssm_parameter.p.value)\n  l1 = local.l0 != local.l0 ? { a = local.l0 } : coalesce(local.l0, { for k, v in local.l0 : k => v })\n  l2 = local.l1 != local.l1 ? { a = local.l1 } : coalesce(local.l1, { for k, v in local.l1 : k => v })\n  l3 = local.l2 != local.l2 ? { a = local.l2 } : coalesce(local.l2, { for k, v in local.l2 : k => v })\n  l4 = local.l3 != local.l3 ? { a = local.l3 } : coalesce(local.l3, { for k, v in local.l3 : k => v })\n  l5 = local.l4 != local.l4 ? { a = local.l4 } : coalesce(local.l4, { for k, v in local.l4 : k => v })\n  l6 = local.l5 != local.l5 ? { a = local.l5 } : coalesce(local.l5, { for k, v in local.l5 : k => v })\n  l7 = local.l6 != local.l6 ? { a = local.l6 } : coalesce(local.l6, { for k, v in local.l6 : k => v })\n  l8 = local.l7 != local.l7 ? { a = local.l7 } : coalesce(local.l7, { for k, v in local.l7 : k => v })\n  l9 = local.l8 != local.l8 ? { a = local.l8 } : coalesce(local.l8, { for k, v in local.l8 : k => v })\n  l10 = local.l9 != local.l9 ? { a = local.l9 } : coalesce(local.l9, { for k, v in local.l9 : k => v })\n  l11 = local.l10 != local.l10 ? { a = local.l10 } : coalesce(local.l10, { for k, v in local.l10 : k => v })\n  l12 = local.l11 != local.l11 ? { a = local.l11 } : coalesce(local.l11, { for k, v in local.l11 : k => v })\n  l13 = local.l12 != local.l12 ? { a = local.l12 } : coalesce(local.l12, { for k, v in local.l12 : k => v })\n  l14 = local.l13 != local.l13 ? { a = local.l13 } : coalesce(local.l13, { for k, v in local.l13 : k => v })\n  l15 = local.l14 != local.l14 ? { a = local.l14 } : coalesce(local.l14, { for k, v in local.l14 : k => v })\n  l16 = local.l15 != local.l15 ? { a = local.l15 } : coalesce(local.l15, { for k, v in local.l15 : k => v })\n  l17 = local.l16 != local.l16 ? { a = local.l16 } : coalesce(local.l16, { for k, v in local.l16 : k => v })\n  l18 = local.l17 != local.l17 ? { a = local.l17 } : coalesce(local.l17, { for k, v in local.l17 : k => v })\n  l19 = local.l18 != local.l18 ? { a = local.l18 } : coalesce(local.l18, { for k, v in local.l18 : k => v })\n  l20 = local.l19 != local.l19 ? { a = local.l19 } : coalesce(local.l19, { for k, v in local.l19 : k => v })\n  l21 = local.l20 != local.l20 ? { a = local.l20 } : coalesce(local.l20, { for k, v in local.l20 : k => v })\n  l22 = local.l21 != local.l21 ? { a = local.l21 } : coalesce(local.l21, { for k, v in local.l21 : k => v })\n  l23 = local.l22 != local.l22 ? { a = local.l22 } : coalesce(local.l22, { for k, v in local.l22 : k => v })\n  l24 = local.l23 != local.l23 ? { a = local.l23 } : coalesce(local.l23, { for k, v in local.l23 : k => v })\n}\nresource \"aws_sqs_queue\" \"q\" {\n  for_each = local.l24\n  name     = each.key\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_ssm_parameter\" \"p\" {\n  name = \"b\"\n}\nlocals {\n  l0 = jsondecode(data.aws_ssm_parameter.p.value)\n  l1 = local.l0 != local.l0 ? { a = local.l0 } : coalesce(local.l0, { for k, v in local.l0 : k => v })\n  l2 = local.l1 != local.l1 ? { a = local.l1 } : coalesce(local.l1, { for k, v in local.l1 : k => v })\n  l3 = local.l2 != local.l2 ? { a = local.l2 } : coalesce(local.l2, { for k, v in local.l2 : k => v })\n  l4 = local.l3 != local.l3 ? { a = local.l3 } : coalesce(local.l3, { for k, v in local.l3 : k => v })\n  l5 = local.l4 != local.l4 ? { a = local.l4 } : coalesce(local.l4, { for k, v in local.l4 : k => v })\n  l6 = local.l5 != local.l5 ? { a = local.l5 } : coalesce(local.l5, { for k, v in local.l5 : k => v })\n  l7 = local.l6 != local.l6 ? { a = local.l6 } : coalesce(local.l6, { for k, v in local.l6 : k => v })\n  l8 = local.l7 != local.l7 ? { a = local.l7 } : coalesce(local.l7, { for k, v in local.l7 : k => v })\n  l9 = local.l8 != local.l8 ? { a = local.l8 } : coalesce(local.l8, { for k, v in local.l8 : k => v })\n  l10 = local.l9 != local.l9 ? { a = local.l9 } : coalesce(local.l9, { for k, v in local.l9 : k => v })\n  l11 = local.l10 != local.l10 ? { a = local.l10 } : coalesce(local.l10, { for k, v in local.l10 : k => v })\n  l12 = local.l11 != local.l11 ? { a = local.l11 } : coalesce(local.l11, { for k, v in local.l11 : k => v })\n  l13 = local.l12 != local.l12 ? { a = local.l12 } : coalesce(local.l12, { for k, v in local.l12 : k => v })\n  l14 = local.l13 != local.l13 ? { a = local.l13 } : coalesce(local.l13, { for k, v in local.l13 : k => v })\n  l15 = local.l14 != local.l14 ? { a = local.l14 } : coalesce(local.l14, { for k, v in local.l14 : k => v })\n  l16 = local.l15 != local.l15 ? { a = local.l15 } : coalesce(local.l15, { for k, v in local.l15 : k => v })\n  l17 = local.l16 != local.l16 ? { a = local.l16 } : coalesce(local.l16, { for k, v in local.l16 : k => v })\n  l18 = local.l17 != local.l17 ? { a = local.l17 } : coalesce(local.l17, { for k, v in local.l17 : k => v })\n  l19 = local.l18 != local.l18 ? { a = local.l18 } : coalesce(local.l18, { for k, v in local.l18 : k => v })\n  l20 = local.l19 != local.l19 ? { a = local.l19 } : coalesce(local.l19, { for k, v in local.l19 : k => v })\n  l21 = local.l20 != local.l20 ? { a = local.l20 } : coalesce(local.l20, { for k, v in local.l20 : k => v })\n  l22 = local.l21 != local.l21 ? { a = local.l21 } : coalesce(local.l21, { for k, v in local.l21 : k => v })\n  l23 = local.l22 != local.l22 ? { a = local.l22 } : coalesce(local.l22, { for k, v in local.l22 : k => v })\n  l24 = local.l23 != local.l23 ? { a = local.l23 } : coalesce(local.l23, { for k, v in local.l23 : k => v })\n}\nresource \"aws_sqs_queue\" \"q\" {\n  for_each = local.l24\n  name     = each.key\n}\n"
+      },
+      "expect": {
+        "instanceCount": 2,
+        "changes": [
+          {
+            "address": "aws_sqs_queue.q[*]",
+            "action": "update",
+            "confidence": "unknown"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "a removed log group with skip_destroy = true is forgotten, not deleted: the provider leaves it and its logs in AWS (source case: beneficiary-fhir-data 75e2cde9d)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_cloudwatch_log_group\" \"server_access\" {\n  name              = \"server-access\"\n  retention_in_days = 30\n  skip_destroy      = true\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "forget aws_cloudwatch_log_group.server_access"
+        ],
+        "changes": [
+          {
+            "address": "aws_cloudwatch_log_group.server_access",
+            "action": "forget",
+            "confidence": "proven",
+            "actionReasonContains": "skip_destroy = true"
+          }
+        ],
+        "blast": [
+          {
+            "resource": "aws_cloudwatch_log_group.server_access",
+            "severity": "LOW",
+            "dataLoss": false
+          }
+        ],
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "a removed log group with skip_destroy = false is still a deletion that loses the logs",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_cloudwatch_log_group\" \"server_access\" {\n  name              = \"server-access\"\n  retention_in_days = 30\n  skip_destroy      = false\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete aws_cloudwatch_log_group.server_access"
+        ],
+        "blast": [
+          {
+            "resource": "aws_cloudwatch_log_group.server_access",
+            "severity": "CRITICAL",
+            "dataLoss": true
+          }
+        ],
+        "gate": {
+          "result": "block"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "skip_destroy on a resource type that does not support it does not stop a deletion",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_sqs_queue\" \"q\" {\n  name         = \"q\"\n  skip_destroy = true\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete aws_sqs_queue.q"
+        ],
+        "gate": {
+          "result": "block"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "a module for_each over a map with literal keys and partly unknown values keeps its keys when a resource over the same map is evaluated first and the map reads another module, so moved blocks into its instances match (source case: beneficiary-fhir-data 01fc5569f)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  version = module.service.version\n  runners = {\n    lambda = { image = \"${aws_ecr_repository.r.repository_url}:${local.version}\" }\n    docker = { image = \"amazonlinux:3\" }\n  }\n}\nresource \"aws_ecr_repository\" \"r\" {\n  name = \"runner\"\n}\nresource \"aws_codebuild_project\" \"runner\" {\n  for_each     = local.runners\n  name         = each.key\n  service_role = \"arn:aws:iam::123456789012:role/codebuild\"\n  artifacts {\n    type = \"NO_ARTIFACTS\"\n  }\n  environment {\n    compute_type = \"BUILD_GENERAL1_SMALL\"\n    image        = each.value.image\n    type         = \"ARM_CONTAINER\"\n  }\n  source {\n    type = \"NO_SOURCE\"\n  }\n}\nresource \"aws_cloudwatch_log_group\" \"runner\" {\n  for_each = local.runners\n  name     = each.key\n}\n",
+        "r/modules/service/main.tf": "output \"version\" {\n  value = \"1.2.3\"\n}\n",
+        "r/modules/logs/main.tf": "variable \"name\" {}\nresource \"aws_cloudwatch_log_group\" \"this\" {\n  name = var.name\n}\noutput \"name\" {\n  value = aws_cloudwatch_log_group.this.name\n}\n",
+        "r/service.tf": "module \"service\" {\n  source = \"./modules/service\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  version = module.service.version\n  runners = {\n    lambda = { image = \"${aws_ecr_repository.r.repository_url}:${local.version}\" }\n    docker = { image = \"amazonlinux:3\" }\n  }\n}\nresource \"aws_ecr_repository\" \"r\" {\n  name = \"runner\"\n}\nresource \"aws_codebuild_project\" \"runner\" {\n  for_each     = local.runners\n  name         = each.key\n  service_role = \"arn:aws:iam::123456789012:role/codebuild\"\n  artifacts {\n    type = \"NO_ARTIFACTS\"\n  }\n  environment {\n    compute_type = \"BUILD_GENERAL1_SMALL\"\n    image        = each.value.image\n    type         = \"ARM_CONTAINER\"\n  }\n  source {\n    type = \"NO_SOURCE\"\n  }\n}\nmodule \"log_group_runner\" {\n  source   = \"./modules/logs\"\n  for_each = local.runners\n  name     = each.key\n}\nmoved {\n  from = aws_cloudwatch_log_group.runner[\"lambda\"]\n  to   = module.log_group_runner[\"lambda\"].aws_cloudwatch_log_group.this\n}\nmoved {\n  from = aws_cloudwatch_log_group.runner[\"docker\"]\n  to   = module.log_group_runner[\"docker\"].aws_cloudwatch_log_group.this\n}\n",
+        "r/modules/service/main.tf": "output \"version\" {\n  value = \"1.2.3\"\n}\n",
+        "r/modules/logs/main.tf": "variable \"name\" {}\nresource \"aws_cloudwatch_log_group\" \"this\" {\n  name = var.name\n}\noutput \"name\" {\n  value = aws_cloudwatch_log_group.this.name\n}\n",
+        "r/service.tf": "module \"service\" {\n  source = \"./modules/service\"\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "move module.log_group_runner[\"docker\"].aws_cloudwatch_log_group.this",
+          "move module.log_group_runner[\"lambda\"].aws_cloudwatch_log_group.this"
+        ],
+        "changes": [
+          {
+            "address": "module.log_group_runner[\"lambda\"].aws_cloudwatch_log_group.this",
+            "action": "move",
+            "previousAddress": "aws_cloudwatch_log_group.runner[\"lambda\"]"
+          }
+        ],
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "two unknown values that differ only in the data source behind them are an unknown update, not a possible replacement (source case: storage-service 5c47edf85, a backend role change)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"terraform_remote_state\" \"accounts\" {\n  backend = \"s3\"\n  config = {\n    bucket   = \"state\"\n    key      = \"accounts.tfstate\"\n    role_arn = \"arn:aws:iam::111111111111:role/old\"\n  }\n}\nresource \"aws_security_group\" \"egress\" {\n  name   = \"egress\"\n  vpc_id = data.terraform_remote_state.accounts.outputs.vpc_id\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"terraform_remote_state\" \"accounts\" {\n  backend = \"s3\"\n  config = {\n    bucket   = \"state\"\n    key      = \"accounts.tfstate\"\n    role_arn = \"arn:aws:iam::111111111111:role/new\"\n  }\n}\nresource \"aws_security_group\" \"egress\" {\n  name   = \"egress\"\n  vpc_id = data.terraform_remote_state.accounts.outputs.vpc_id\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "aws_security_group.egress",
+            "action": "update",
+            "confidence": "unknown",
+            "actionReasonContains": "vpc_id"
+          }
+        ],
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "two unknown values that differ only in the expression behind them are an unknown update (source case: cztack 50192f96a, a role name)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"prefix\" {}\nresource \"aws_iam_role\" \"r\" {\n  name               = replace(var.prefix, \"_\", \"-\")\n  assume_role_policy = \"{}\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"prefix\" {}\nvariable \"suffix\" {\n  default = \"\"\n}\nlocals {\n  base = \"${var.prefix}${var.suffix}\"\n}\nresource \"aws_iam_role\" \"r\" {\n  name               = replace(local.base, \"_\", \"-\")\n  assume_role_policy = \"{}\"\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "aws_iam_role.r",
+            "action": "update",
+            "confidence": "unknown"
+          }
+        ],
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "two unknown values with the same known text around them that differ only in origin are an unknown update (source case: forms-terraform 5e27579a2)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"env\" {}\nresource \"aws_sns_topic\" \"b\" {\n  name = \"gc-forms-api-${var.env}-pipeline\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"env\" {}\nresource \"aws_sns_topic\" \"b\" {\n  name = \"gc-forms-api-${trimspace(var.env)}-pipeline\"\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "aws_sns_topic.b",
+            "action": "update",
+            "confidence": "unknown"
+          }
+        ],
+        "gate": {
+          "result": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "an unknown value that now reads a different resource is still a possible replacement",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_vpc\" \"a\" {\n  cidr_block = \"10.0.0.0/16\"\n}\nresource \"aws_vpc\" \"b\" {\n  cidr_block = \"10.1.0.0/16\"\n}\nresource \"aws_security_group\" \"s\" {\n  name   = \"s\"\n  vpc_id = aws_vpc.a.id\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_vpc\" \"a\" {\n  cidr_block = \"10.0.0.0/16\"\n}\nresource \"aws_vpc\" \"b\" {\n  cidr_block = \"10.1.0.0/16\"\n}\nresource \"aws_security_group\" \"s\" {\n  name   = \"s\"\n  vpc_id = aws_vpc.b.id\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "aws_security_group.s",
+            "action": "replace",
+            "confidence": "likely"
+          }
+        ],
+        "gate": {
+          "result": "review"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "an unknown value whose expression changed and whose resource is replaced is still a possible replacement",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_vpc\" \"a\" {\n  cidr_block = \"10.0.0.0/16\"\n}\nresource \"aws_security_group\" \"s\" {\n  name   = \"s\"\n  vpc_id = aws_vpc.a.id\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_vpc\" \"a\" {\n  cidr_block = \"10.2.0.0/16\"\n}\nresource \"aws_security_group\" \"s\" {\n  name   = \"s\"\n  vpc_id = one([aws_vpc.a.id])\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "aws_security_group.s",
+            "action": "replace",
+            "confidence": "likely"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "two unknown values whose known text differs are still a possible replacement",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"env\" {}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"gc-forms-api-${var.env}-pipeline\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"env\" {}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"gc-forms-app-${var.env}-pipeline\"\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "aws_s3_bucket.b",
+            "action": "replace",
+            "confidence": "likely"
+          }
+        ],
+        "gate": {
+          "result": "review"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "an edit to a partly unknown jsonencode() result inside a string template shows as a change (source case: opg-use-an-lpa ECS container definitions, probe rs-template)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_ecr_repository\" \"x\" {\n  name = \"app\"\n}\nlocals {\n  app = jsonencode({\n    name  = \"app\"\n    image = \"app@${aws_ecr_repository.x.repository_url}\"\n    environment = [\n      { name = \"A\", value = \"1\" },\n      { name = \"B\", value = \"2\" },\n    ]\n  })\n}\nresource \"aws_ecs_task_definition\" \"t\" {\n  family                = \"t\"\n  container_definitions = \"[${local.app}]\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_ecr_repository\" \"x\" {\n  name = \"app\"\n}\nlocals {\n  app = jsonencode({\n    name  = \"app\"\n    image = \"app@${aws_ecr_repository.x.repository_url}\"\n    environment = [\n      { name = \"A\", value = \"1\" },\n    ]\n  })\n}\nresource \"aws_ecs_task_definition\" \"t\" {\n  family                = \"t\"\n  container_definitions = \"[${local.app}]\"\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_ecs_task_definition.t"
+        ],
+        "changes": [
+          {
+            "address": "aws_ecs_task_definition.t",
+            "action": "replace",
+            "confidence": "likely"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "a partly unknown jsonencode() result inside a string template that does not change is no change",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_ecr_repository\" \"x\" {\n  name = \"app\"\n}\nlocals {\n  app = jsonencode({\n    name  = \"app\"\n    image = \"app@${aws_ecr_repository.x.repository_url}\"\n    environment = [\n      { name = \"A\", value = \"1\" },\n    ]\n  })\n}\nresource \"aws_ecs_task_definition\" \"t\" {\n  family                = \"t\"\n  container_definitions = \"[${local.app}]\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_ecr_repository\" \"x\" {\n  name = \"app\"\n}\nlocals {\n  app = jsonencode({\n    name  = \"app\"\n    image = \"app@${aws_ecr_repository.x.repository_url}\"\n    environment = [\n      { name = \"A\", value = \"1\" },\n    ]\n  })\n}\nresource \"aws_ecs_task_definition\" \"t\" {\n  family                = \"t\"\n  container_definitions = \"[${local.app}]\"\n}\n"
+      },
+      "expect": {
+        "changedAddresses": []
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "a sensitive value inside a partly unknown jsonencode() result in a string template is never printed",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_ecr_repository\" \"x\" {\n  name = \"app\"\n}\nvariable \"token\" {\n  sensitive = true\n  default   = \"tok-SECRET-1\"\n}\nlocals {\n  app = jsonencode({\n    name  = \"app\"\n    image = \"app@${aws_ecr_repository.x.repository_url}\"\n    environment = [\n      { name = \"A\", value = var.token },\n    ]\n  })\n}\nresource \"aws_ecs_task_definition\" \"t\" {\n  family                = \"t\"\n  container_definitions = \"[${local.app}]\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_ecr_repository\" \"x\" {\n  name = \"app\"\n}\nvariable \"token\" {\n  sensitive = true\n  default   = \"tok-SECRET-2\"\n}\nlocals {\n  app = jsonencode({\n    name  = \"app\"\n    image = \"app@${aws_ecr_repository.x.repository_url}\"\n    environment = [\n      { name = \"A\", value = var.token },\n    ]\n  })\n}\nresource \"aws_ecs_task_definition\" \"t\" {\n  family                = \"t\"\n  container_definitions = \"[${local.app}]\"\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "replace aws_ecs_task_definition.t"
+        ],
+        "forbiddenSubstrings": [
+          "tok-SECRET-1",
+          "tok-SECRET-2"
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "deleting an API Gateway stage is reviewed: the API stops serving that stage, and the unchanged deployment does not recreate it (source case: storage-service 130cdbfd9)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_api_gateway_rest_api\" \"api\" {\n  name = \"api\"\n}\nresource \"aws_api_gateway_deployment\" \"d\" {\n  rest_api_id = aws_api_gateway_rest_api.api.id\n}\nresource \"aws_api_gateway_stage\" \"v1\" {\n  rest_api_id   = aws_api_gateway_rest_api.api.id\n  deployment_id = aws_api_gateway_deployment.d.id\n  stage_name    = \"v1\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_api_gateway_rest_api\" \"api\" {\n  name = \"api\"\n}\nresource \"aws_api_gateway_deployment\" \"d\" {\n  rest_api_id = aws_api_gateway_rest_api.api.id\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete aws_api_gateway_stage.v1"
+        ],
+        "blast": [
+          {
+            "resource": "aws_api_gateway_stage.v1",
+            "severity": "HIGH",
+            "dataLoss": false,
+            "reasonContains": "stops serving"
+          }
+        ],
+        "gate": {
+          "result": "review"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "deleting a load balancer listener is reviewed: the load balancer stops accepting connections on its port",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_lb\" \"lb\" {\n  name = \"lb\"\n}\nresource \"aws_lb_target_group\" \"tg\" {\n  name = \"tg\"\n}\nresource \"aws_lb_listener\" \"https\" {\n  load_balancer_arn = aws_lb.lb.arn\n  port              = 443\n  default_action {\n    type             = \"forward\"\n    target_group_arn = aws_lb_target_group.tg.arn\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_lb\" \"lb\" {\n  name = \"lb\"\n}\nresource \"aws_lb_target_group\" \"tg\" {\n  name = \"tg\"\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete aws_lb_listener.https"
+        ],
+        "blast": [
+          {
+            "resource": "aws_lb_listener.https",
+            "severity": "HIGH",
+            "dataLoss": false
+          }
+        ],
+        "gate": {
+          "result": "review"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "deleting a CloudFront distribution is reviewed",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_cloudfront_distribution\" \"cdn\" {\n  enabled = true\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\n"
+      },
+      "expect": {
+        "changedAddresses": [
+          "delete aws_cloudfront_distribution.cdn"
+        ],
+        "blast": [
+          {
+            "resource": "aws_cloudfront_distribution.cdn",
+            "severity": "HIGH"
+          }
+        ],
+        "gate": {
+          "result": "review"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "a rename hint pairs each deleted instance with the created instance of the same key (source case: beneficiary-fhir-data eccc5da4e)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"prefix\" {}\nmodule \"eft_bucket\" {\n  source   = \"./modules/q\"\n  for_each = toset([\"ab2d\", \"bcda\", \"dpc\"])\n  name     = \"${var.prefix}-${each.key}\"\n}\n",
+        "r/modules/q/main.tf": "variable \"name\" {}\nresource \"aws_sqs_queue\" \"this\" {\n  delay_seconds = 0\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"prefix\" {}\nmodule \"buckets\" {\n  source   = \"./modules/q\"\n  for_each = toset([\"ab2d\", \"bcda\", \"dpc\"])\n  name     = \"${var.prefix}-${each.key}\"\n}\n",
+        "r/modules/q/main.tf": "variable \"name\" {}\nresource \"aws_sqs_queue\" \"this\" {\n  delay_seconds = 0\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "module.eft_bucket[\"bcda\"].aws_sqs_queue.this",
+            "action": "delete",
+            "actionReasonContains": "rename to module.buckets[\"bcda\"].aws_sqs_queue.this"
+          },
+          {
+            "address": "module.eft_bucket[\"ab2d\"].aws_sqs_queue.this",
+            "action": "delete",
+            "actionReasonContains": "rename to module.buckets[\"ab2d\"].aws_sqs_queue.this"
+          },
+          {
+            "address": "module.eft_bucket[\"dpc\"].aws_sqs_queue.this",
+            "action": "delete",
+            "actionReasonContains": "rename to module.buckets[\"dpc\"].aws_sqs_queue.this"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "an unknown value read from a remote state that now reads another state key is still a possible replacement",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"terraform_remote_state\" \"accounts\" {\n  backend = \"s3\"\n  config = {\n    bucket   = \"state\"\n    key      = \"accounts.tfstate\"\n    role_arn = \"arn:aws:iam::111111111111:role/r\"\n  }\n}\nresource \"aws_security_group\" \"egress\" {\n  name   = \"egress\"\n  vpc_id = data.terraform_remote_state.accounts.outputs.vpc_id\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"terraform_remote_state\" \"accounts\" {\n  backend = \"s3\"\n  config = {\n    bucket   = \"state\"\n    key      = \"network.tfstate\"\n    role_arn = \"arn:aws:iam::111111111111:role/r\"\n  }\n}\nresource \"aws_security_group\" \"egress\" {\n  name   = \"egress\"\n  vpc_id = data.terraform_remote_state.accounts.outputs.vpc_id\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "aws_security_group.egress",
+            "action": "replace",
+            "confidence": "likely"
+          }
+        ],
+        "gate": {
+          "result": "review"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "an unknown value that now reads another instance of the same resource is still a possible replacement (review round 1)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_subnet\" \"s\" {\n  count      = 2\n  vpc_id     = \"vpc-1\"\n  cidr_block = \"10.0.${count.index}.0/24\"\n}\nresource \"aws_instance\" \"i\" {\n  ami           = \"ami-1\"\n  instance_type = \"t3.micro\"\n  subnet_id     = aws_subnet.s[0].id\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_subnet\" \"s\" {\n  count      = 2\n  vpc_id     = \"vpc-1\"\n  cidr_block = \"10.0.${count.index}.0/24\"\n}\nresource \"aws_instance\" \"i\" {\n  ami           = \"ami-1\"\n  instance_type = \"t3.micro\"\n  subnet_id     = aws_subnet.s[1].id\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "aws_instance.i",
+            "action": "replace",
+            "confidence": "likely"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "an unknown value that now reads another existing data source is still a possible replacement (review round 1)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_ami\" \"ubuntu\" {\n  owners = [\"099720109477\"]\n}\ndata \"aws_ami\" \"al2023\" {\n  owners = [\"amazon\"]\n}\nresource \"aws_instance\" \"i\" {\n  ami           = data.aws_ami.ubuntu.id\n  instance_type = \"t3.micro\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_ami\" \"ubuntu\" {\n  owners = [\"099720109477\"]\n}\ndata \"aws_ami\" \"al2023\" {\n  owners = [\"amazon\"]\n}\nresource \"aws_instance\" \"i\" {\n  ami           = data.aws_ami.al2023.id\n  instance_type = \"t3.micro\"\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "aws_instance.i",
+            "action": "replace",
+            "confidence": "likely"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "instances of a data source that swap their arguments still give possible replacements (review round 1)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_vpc\" \"v\" {\n  for_each = { a = \"x\", b = \"y\" }\n  tags = { Name = each.value }\n}\nresource \"aws_security_group\" \"g\" {\n  for_each = toset([\"a\", \"b\"])\n  name     = \"g-${each.key}\"\n  vpc_id   = data.aws_vpc.v[each.key].id\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_vpc\" \"v\" {\n  for_each = { a = \"y\", b = \"x\" }\n  tags = { Name = each.value }\n}\nresource \"aws_security_group\" \"g\" {\n  for_each = toset([\"a\", \"b\"])\n  name     = \"g-${each.key}\"\n  vpc_id   = data.aws_vpc.v[each.key].id\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "aws_security_group.g[\"a\"]",
+            "action": "replace",
+            "confidence": "likely"
+          }
+        ],
+        "gate": {
+          "result": "review"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "a remote state that now reads another S3 endpoint still gives a possible replacement (review round 1)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"terraform_remote_state\" \"net\" {\n  backend = \"s3\"\n  config = {\n    bucket    = \"state\"\n    key       = \"net.tfstate\"\n    endpoints = { s3 = \"https://s3.one.example\" }\n  }\n}\nresource \"aws_security_group\" \"g\" {\n  name   = \"g\"\n  vpc_id = data.terraform_remote_state.net.outputs.vpc_id\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"terraform_remote_state\" \"net\" {\n  backend = \"s3\"\n  config = {\n    bucket    = \"state\"\n    key       = \"net.tfstate\"\n    endpoints = { s3 = \"https://s3.two.example\" }\n  }\n}\nresource \"aws_security_group\" \"g\" {\n  name   = \"g\"\n  vpc_id = data.terraform_remote_state.net.outputs.vpc_id\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "aws_security_group.g",
+            "action": "replace",
+            "confidence": "likely"
+          }
+        ],
+        "gate": {
+          "result": "review"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "a log group with skip_destroy and prevent_destroy whose count drops to zero is a guarded deletion that does not pass (review round 1)",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_cloudwatch_log_group\" \"l\" {\n  count        = 1\n  name         = \"l\"\n  skip_destroy = true\n  lifecycle {\n    prevent_destroy = true\n  }\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_cloudwatch_log_group\" \"l\" {\n  count        = 0\n  name         = \"l\"\n  skip_destroy = true\n  lifecycle {\n    prevent_destroy = true\n  }\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "aws_cloudwatch_log_group.l[0]",
+            "action": "delete",
+            "preventDestroy": true
+          }
+        ],
+        "gate": {
+          "resultNot": "pass"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "a database whose availability_zone moves from names[0] to names[1] of an unknown list is a possible replacement, reviewed: unknown values of a stateful type keep the replacement whenever the expression changes",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_availability_zones\" \"z\" {}\nresource \"aws_db_instance\" \"d\" {\n  identifier        = \"d\"\n  availability_zone = data.aws_availability_zones.z.names[0]\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\ndata \"aws_availability_zones\" \"z\" {}\nresource \"aws_db_instance\" \"d\" {\n  identifier        = \"d\"\n  availability_zone = data.aws_availability_zones.z.names[1]\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "aws_db_instance.d",
+            "action": "replace",
+            "confidence": "likely"
+          }
+        ],
+        "gate": {
+          "result": "review"
+        }
+      }
+    },
+    {
+      "kind": "terraform",
+      "name": "a bucket name of two unknown values that differ only in the expression behind them is still a possible replacement, because a bucket is stateful",
+      "root": "r",
+      "base": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"env\" {}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"gc-forms-api-${var.env}-pipeline\"\n}\n"
+      },
+      "head": {
+        "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"env\" {}\nresource \"aws_s3_bucket\" \"b\" {\n  bucket = \"gc-forms-api-${trimspace(var.env)}-pipeline\"\n}\n"
+      },
+      "expect": {
+        "changes": [
+          {
+            "address": "aws_s3_bucket.b",
+            "action": "replace",
+            "confidence": "likely"
+          }
+        ],
+        "gate": {
+          "result": "review"
+        }
+      }
+    }
+  ]
+}
