@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- An inline user, role or group policy whose owner is named through a reference (`aws_iam_user.b.name`) belongs to that principal only when the principal had the old owner name before the change and has the new one after. Before, a principal with either name was enough. So when user `a` was deleted, user `b` was renamed in place to `a`, and the policy moved from `aws_iam_user.a.name` to `aws_iam_user.b.name`, a narrowed policy kept its least-privilege findings as pre-existing and the change passed. The same happened to an owner that kept the old name of a user renamed in place (`replace(aws_iam_user.app.name, "new", "old")`, or a tag that holds the old name) while a new user took that name. Such a policy now belongs to a new principal and is reviewed.
+
 ## 0.6.3-beta, 2026-11-02
 
 ### Added

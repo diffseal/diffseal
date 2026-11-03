@@ -737,6 +737,105 @@
      "resultNot": "pass"
     }
    }
+  },
+  {
+   "kind": "terraform",
+   "name": "principal identity guard: a policy that moves to another user renamed in place to the deleted owner's name is new to that user",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_user\" \"a\" {\n  name = \"a\"\n}\nresource \"aws_iam_user\" \"b\" {\n  name = \"b\"\n}\nresource \"aws_iam_user_policy\" \"p\" {\n  name   = \"p\"\n  user   = aws_iam_user.a.name\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"All\", Effect = \"Allow\", Action = \"s3:*\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_user\" \"b\" {\n  name = \"a\"\n}\nresource \"aws_iam_user_policy\" \"p\" {\n  name   = \"p\"\n  user   = aws_iam_user.b.name\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"Get\", Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_iam_user.a",
+      "action": "delete"
+     },
+     {
+      "address": "aws_iam_user.b",
+      "action": "update"
+     }
+    ],
+    "findings": [
+     {
+      "ruleId": "iam.least-privilege",
+      "resource": "aws_iam_user_policy.p",
+      "preExisting": null
+     }
+    ],
+    "gate": {
+     "resultNot": "pass"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "principal identity guard: an owner that keeps the old name of a user renamed in place names the new user created under that name",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_user\" \"app\" {\n  name = \"old\"\n}\nresource \"aws_iam_user_policy\" \"p\" {\n  name   = \"p\"\n  user   = aws_iam_user.app.name\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"All\", Effect = \"Allow\", Action = \"s3:*\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_user\" \"app\" {\n  name = \"new\"\n}\nresource \"aws_iam_user\" \"other\" {\n  name = \"old\"\n}\nresource \"aws_iam_user_policy\" \"p\" {\n  name   = \"p\"\n  user   = replace(aws_iam_user.app.name, \"new\", \"old\")\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"Get\", Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_iam_user.app",
+      "action": "update"
+     },
+     {
+      "address": "aws_iam_user.other",
+      "action": "create"
+     }
+    ],
+    "findings": [
+     {
+      "ruleId": "iam.least-privilege",
+      "resource": "aws_iam_user_policy.p",
+      "preExisting": null
+     }
+    ],
+    "gate": {
+     "resultNot": "pass"
+    }
+   }
+  },
+  {
+   "kind": "terraform",
+   "name": "principal identity guard: an owner read from a tag holding the old name of a user renamed in place names the new user created under that name",
+   "root": "r",
+   "base": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_user\" \"app\" {\n  name = \"old\"\n  tags = {\n    owner = \"old\"\n  }\n}\nresource \"aws_iam_user_policy\" \"p\" {\n  name   = \"p\"\n  user   = aws_iam_user.app.name\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"All\", Effect = \"Allow\", Action = \"s3:*\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "head": {
+    "r/main.tf": "terraform {\n  backend \"s3\" {}\n}\nresource \"aws_iam_user\" \"app\" {\n  name = \"new\"\n  tags = {\n    owner = \"old\"\n  }\n}\nresource \"aws_iam_user\" \"other\" {\n  name = \"old\"\n}\nresource \"aws_iam_user_policy\" \"p\" {\n  name   = \"p\"\n  user   = aws_iam_user.app.tags.owner\n  policy = jsonencode({\n    Version   = \"2012-10-17\"\n    Statement = [{ Sid = \"Get\", Effect = \"Allow\", Action = \"s3:GetObject\", Resource = \"*\" }]\n  })\n}\n"
+   },
+   "expect": {
+    "changes": [
+     {
+      "address": "aws_iam_user.app",
+      "action": "update"
+     },
+     {
+      "address": "aws_iam_user.other",
+      "action": "create"
+     }
+    ],
+    "findings": [
+     {
+      "ruleId": "iam.least-privilege",
+      "resource": "aws_iam_user_policy.p",
+      "preExisting": null
+     }
+    ],
+    "gate": {
+     "resultNot": "pass"
+    }
+   }
   }
  ]
 }

@@ -236,7 +236,8 @@ const OWNERS: Record<string, { attr: string; type: string }> = {
  *
  * A principal is identified by its case-folded name, as IAM does (`App` and `app` are one role), or by
  * the resource an owner reference names. An owner reference follows that resource through an in-place
- * rename, and is not matched by name against other principals. A principal created, replaced or deleted in
+ * rename, and is not matched by name against other principals. It names that resource only when the
+ * resource held the old owner name before and holds the new one after. A principal created, replaced or deleted in
  * this change is new. The provider's AWS account is not part of the identity: changes do not carry it.
  */
 function sameOwner(type: string, before: Attrs, after: Attrs, all: ResourceChange[], recreated: ResourceChange[], references: Record<string, string[]>): boolean {
@@ -259,8 +260,11 @@ function sameOwner(type: string, before: Attrs, after: Attrs, all: ResourceChang
     if (!renamed) return false;
   }
   if (nowName === undefined) return true;
-  // An owner that a reference names (aws_iam_user.app.name) is that principal, whatever else this change creates.
-  if (referenced.some((c) => [c.before?.name, c.after?.name].some((n) => principalName(n) === nowName))) return true;
+  // An owner that a reference names (aws_iam_user.app.name) is that principal, whatever else this change
+  // creates, when the principal held the old owner name before and holds the new one after. A principal
+  // that held only one of them is not the owner on both sides: another user renamed to a deleted owner's
+  // name, or an owner that keeps the old name of a principal renamed away from it.
+  if (referenced.some((c) => principalName(c.before?.name) === wasName && principalName(c.after?.name) === nowName)) return true;
   // An owner named literally (role = "app", or its ARN) is a new principal when a role, user or group of
   // that name is created, replaced or deleted in the same change, or one whose name is not known statically.
   return !recreated.some((c) => c.type === owner.type && [c.before?.name, c.after?.name].some((n) => {
