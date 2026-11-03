@@ -10,7 +10,7 @@ The CLI, the GitHub Action and the npm package `diffseal`: Terraform review with
 - Never commit secrets, `node_modules`, `dry-runs/`, or absolute local paths. Never copy from, or name, the founder's employer or its repositories.
 - Confirm with the founder before anything outward or hard to undo: making a repository public, changing settings, creating keys, sending messages.
 - Merges are squash only.
-- Review before merging: Codex, Grok and a fresh Claude reviewer on the same diff (the `local-pr-review` skill, or T3 Code child tasks). Fix P1s, and P2s on security or evidence. Small or mechanical changes may skip review; say so.
+- Review before merging: Codex, Gemini 4 Argon and a fresh Claude reviewer on the same diff, run as T3 Code child tasks (the `local-pr-review` skill). Fix P1s, and P2s on security or evidence. Small or mechanical changes may skip review; say so.
 
 ## Build and test
 
