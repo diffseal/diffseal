@@ -29,8 +29,11 @@ const MAX_VARIANTS = 8;
 type Op =
   | { k: 'trimprefix' | 'trimsuffix'; s?: string }
   | { k: 'replace'; a?: string; b?: string }
-  /** `substr(ws, length(prefix), ...)` has `prefix`; a literal offset has `off`. No `len` means the rest. */
-  | { k: 'substr'; prefix?: string; off?: number; len?: number }
+  /**
+   * `substr(ws, length(prefix), ...)` has `prefix`; a literal offset has `off`. No `len`, or a negative one,
+   * means the rest; `len` null is a length not known offline, from which no name can be built.
+   */
+  | { k: 'substr'; prefix?: string; off?: number; len?: number | null }
   | { k: 'split'; sep?: string }
   | { k: 'reverse' }
   | { k: 'index'; i?: number | string }
@@ -108,7 +111,7 @@ function derive(view: View, ws: string): unknown {
       case 'substr': {
         if (typeof v !== 'string') return undefined;
         const off = op.prefix !== undefined ? op.prefix.length : op.off;
-        if (off === undefined) return undefined;
+        if (off === undefined || op.len === null) return undefined;
         v = v.substr(off < 0 ? v.length + off : off, op.len === undefined || op.len < 0 ? undefined : op.len);
         break;
       }
@@ -160,7 +163,7 @@ function describe(view: View): string {
         out = `replace(${out}, ${q(op.a)}, ${q(op.b)})`;
         break;
       case 'substr':
-        out = `substr(${out}, ${op.prefix !== undefined ? `length(${q(op.prefix)})` : q(op.off)}, ${op.len ?? -1})`;
+        out = `substr(${out}, ${op.prefix !== undefined ? `length(${q(op.prefix)})` : q(op.off)}, ${op.len === null ? q(undefined) : (op.len ?? -1)})`;
         break;
       case 'split':
         out = `split(${q(op.sep)}, ${out})`;
@@ -210,7 +213,7 @@ function undo(view: View, part: string): string[] | undefined {
         break;
       }
       case 'substr':
-        if (op.len !== undefined && op.len >= 0) return undefined;
+        if (op.len === null || (op.len !== undefined && op.len >= 0)) return undefined;
         if (op.prefix !== undefined) targets = targets.map((t) => op.prefix + t);
         else if (op.off !== 0) return undefined;
         break;
@@ -437,13 +440,19 @@ export function surveyWorkspaces(source: FileSource, root: string, rootVarValues
           const v = viewsOf(e.args[0], p);
           if (!v) return undefined;
           const offset = e.args[1];
-          // The length of the rest: -1, or any length() (of the workspace, typically).
+          // The length of the rest is -1 or the length of the workspace itself. The length of a literal is
+          // that length; any other length() or value not known offline is null, and builds no name.
           const lenArg = e.args[2];
-          const lens = lenArg?.kind === 'call' && lenArg.name === 'length' ? [undefined] : argNumbers(lenArg, p);
+          const lens: Array<number | null> =
+            lenArg?.kind === 'call' && lenArg.name === 'length'
+              ? viewsOf(lenArg.args[0], p)?.some((x) => !x.length)
+                ? [-1]
+                : argStrings(lenArg.args[0], p).map((s) => (s === undefined ? null : s.length))
+              : argNumbers(lenArg, p).map((n) => n ?? null);
           const ops: Op[] =
             offset?.kind === 'call' && offset.name === 'length'
-              ? argStrings(offset.args[0], p).flatMap((prefix) => (prefix === undefined ? [{ k: 'substr' as const }] : lens.map((len) => ({ k: 'substr' as const, prefix, ...(len !== undefined ? { len } : {}) }))))
-              : argNumbers(offset, p).flatMap((off) => lens.map((len) => ({ k: 'substr' as const, ...(off !== undefined ? { off } : {}), ...(len !== undefined ? { len } : {}) })));
+              ? argStrings(offset.args[0], p).flatMap((prefix) => (prefix === undefined ? [{ k: 'substr' as const }] : lens.map((len) => ({ k: 'substr' as const, prefix, len }))))
+              : argNumbers(offset, p).flatMap((off) => lens.map((len) => ({ k: 'substr' as const, ...(off !== undefined ? { off } : {}), len })));
           return extend(v, ops);
         }
         if (e.name === 'split') {

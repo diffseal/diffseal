@@ -5,6 +5,7 @@
 ### Fixed
 
 - An inline user, role or group policy whose owner is named through a reference (`aws_iam_user.b.name`) belongs to that principal only when the principal had the old owner name before the change and has the new one after. Before, a principal with either name was enough. So when user `a` was deleted, user `b` was renamed in place to `a`, and the policy moved from `aws_iam_user.a.name` to `aws_iam_user.b.name`, a narrowed policy kept its least-privilege findings as pre-existing and the change passed. The same happened to an owner that kept the old name of a user renamed in place (`replace(aws_iam_user.app.name, "new", "old")`, or a tag that holds the old name) while a new user took that name. Such a policy now belongs to a new principal and is reviewed.
+- A `substr()` of `terraform.workspace` takes the rest of the name only when its length is `-1` or the length of the workspace itself. Before, any `length()` or a value not known offline counted as the rest, so `substr(terraform.workspace, 0, length(var.app)) == "billing"` built `billing` as a full workspace name: it was evaluated, nothing was reported as missing, and resources limited to the real workspace (`billing-prod`) were never seen. Such a length now builds no name. The root gets a note, and a `count` or `for_each` that depends on the value is reviewed, as for other names that cannot be built.
 
 ## 0.6.3-beta, 2026-11-02
 

@@ -636,6 +636,54 @@
      "result": "block"
     }
    }
+  },
+  {
+   "kind": "replay",
+   "name": "reviewer X-a: a substr whose length is the length of a value other than the workspace builds no name; the bare prefix is not evaluated, a note says so, and a count that depends on it is reviewed",
+   "base": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"app\" {\n  type = string\n}\nvariable \"n\" {\n  type = number\n}\nlocals {\n  name = substr(terraform.workspace, 0, length(var.app))\n}\nresource \"aws_cloudwatch_event_rule\" \"jobs\" {\n  count               = local.name == \"billing\" ? 1 : 0\n  schedule_expression = \"rate(1 hour)\"\n  description         = \"jobs\"\n}\n"
+   },
+   "head": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"app\" {\n  type = string\n}\nvariable \"n\" {\n  type = number\n}\nlocals {\n  name = substr(terraform.workspace, 0, length(var.app))\n}\nresource \"aws_cloudwatch_event_rule\" \"jobs\" {\n  count               = local.name == \"billing\" ? 1 : 0\n  schedule_expression = \"rate(1 hour)\"\n  description         = \"jobs, version 2\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "app"
+    ],
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "Root app creates resources depending on terraform.workspace, which it transforms (substr(terraform.workspace, 0, (not known)))"
+     ]
+    },
+    "notesContain": [
+     "Root app derives its environment from terraform.workspace (substr(terraform.workspace, 0, (not known))), but no full workspace name could be built"
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "reviewer X-a: a substr whose length is not known offline builds no name; the bare prefix is not evaluated, a note says so, and a count that depends on it is reviewed",
+   "base": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"app\" {\n  type = string\n}\nvariable \"n\" {\n  type = number\n}\nlocals {\n  name = substr(terraform.workspace, 0, var.n)\n}\nresource \"aws_cloudwatch_event_rule\" \"jobs\" {\n  count               = local.name == \"billing\" ? 1 : 0\n  schedule_expression = \"rate(1 hour)\"\n  description         = \"jobs\"\n}\n"
+   },
+   "head": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nvariable \"app\" {\n  type = string\n}\nvariable \"n\" {\n  type = number\n}\nlocals {\n  name = substr(terraform.workspace, 0, var.n)\n}\nresource \"aws_cloudwatch_event_rule\" \"jobs\" {\n  count               = local.name == \"billing\" ? 1 : 0\n  schedule_expression = \"rate(1 hour)\"\n  description         = \"jobs, version 2\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "app"
+    ],
+    "gate": {
+     "result": "review",
+     "reasonsContain": [
+      "Root app creates resources depending on terraform.workspace, which it transforms (substr(terraform.workspace, 0, (not known)))"
+     ]
+    },
+    "notesContain": [
+     "Root app derives its environment from terraform.workspace (substr(terraform.workspace, 0, (not known))), but no full workspace name could be built"
+    ]
+   }
   }
  ]
 }
