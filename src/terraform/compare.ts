@@ -516,15 +516,16 @@ function diffInstance(b: StaticInstance, a: StaticInstance): ResourceChange {
     };
     // A value read from a map by a key not known statically (`configs[var.env].name`) differs only where
     // that value changed for some key: name those keys, since only an environment with one of them changes.
-    if (!certain.length) {
-      const keys = [...new Set(forcing.flatMap((k) => keyedChanges(masked(b.attrs[k], paths(k)), masked(a.attrs[k], paths(k))) ?? []))].sort();
+    const keys = certain.length ? [] : [...new Set(forcing.flatMap((k) => keyedChanges(masked(b.attrs[k], paths(k)), masked(a.attrs[k], paths(k))) ?? []))].sort();
+    if (keys.length) {
       const shown = keys.map((k) => (k === '\u0000default' ? 'the default' : k));
-      if (keys.length) change.actionReason = `${forcing.join(', ')} reads a value by a key not known statically, and that value changes for ${shown.length === 1 ? 'key' : 'keys'} ${shown.join(', ')}`;
+      change.actionReason = `${forcing.join(', ')} reads a value by a key not known statically, and that value changes for ${shown.length === 1 ? 'key' : 'keys'} ${shown.join(', ')}`;
     }
     // Every forcing argument unknown at both commits, differing only in where the unknown comes from.
     // Not for a stateful type: a changed index or literal inside the expression is not seen here, and
-    // replacing a database or bucket loses data, so its possible replacement stays reviewed.
-    if (!certain.length && !STATEFUL[a.type] && !forcing.some((k) => possible.has(k) || NESTED_REPLACE[a.type]?.[k])) {
+    // replacing a database or bucket loses data, so its possible replacement stays reviewed. Not for a
+    // value that changes for a named key either: the expression is the same, the value itself changed.
+    if (!certain.length && !keys.length && !STATEFUL[a.type] && !forcing.some((k) => possible.has(k) || NESTED_REPLACE[a.type]?.[k])) {
       const origins = forcing.map((k) => unknownOriginOnly(masked(b.attrs[k], paths(k)), masked(a.attrs[k], paths(k))));
       if (origins.every((o) => o !== undefined)) UNKNOWN_ORIGIN.set(change, [...new Set(origins.flat() as string[])]);
     }
