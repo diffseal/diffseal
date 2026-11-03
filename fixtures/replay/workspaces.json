@@ -684,6 +684,44 @@
      "Root app derives its environment from terraform.workspace (substr(terraform.workspace, 0, (not known))), but no full workspace name could be built"
     ]
    }
+  },
+  {
+   "kind": "replay",
+   "name": "review (reviewer fixes): a substr length of -1 is the rest of the name, so the full name is built",
+   "base": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  env = substr(terraform.workspace, length(\"app-\"), -1)\n}\nresource \"aws_cloudwatch_event_rule\" \"jobs\" {\n  count               = local.env == \"prod\" ? 1 : 0\n  schedule_expression = \"rate(1 hour)\"\n  description         = \"jobs\"\n}\n"
+   },
+   "head": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  env = substr(terraform.workspace, length(\"app-\"), -1)\n}\nresource \"aws_cloudwatch_event_rule\" \"jobs\" {\n  count               = local.env == \"prod\" ? 1 : 0\n  schedule_expression = \"rate(1 hour)\"\n  description         = \"jobs, version 2\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "app",
+     "app (workspace app-prod)"
+    ],
+    "changedAddresses": [
+     "update workspace app-prod: aws_cloudwatch_event_rule.jobs[0]"
+    ]
+   }
+  },
+  {
+   "kind": "replay",
+   "name": "review (reviewer fixes): a substr length that is the length of the workspace through a local or parentheses is the rest of the name",
+   "base": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  n   = (length(terraform.workspace))\n  env = substr(terraform.workspace, length(\"app-\"), local.n)\n}\nresource \"aws_cloudwatch_event_rule\" \"jobs\" {\n  count               = local.env == \"prod\" ? 1 : 0\n  schedule_expression = \"rate(1 hour)\"\n  description         = \"jobs\"\n}\n"
+   },
+   "head": {
+    "app/main.tf": "terraform {\n  backend \"s3\" {}\n}\nlocals {\n  n   = (length(terraform.workspace))\n  env = substr(terraform.workspace, length(\"app-\"), local.n)\n}\nresource \"aws_cloudwatch_event_rule\" \"jobs\" {\n  count               = local.env == \"prod\" ? 1 : 0\n  schedule_expression = \"rate(1 hour)\"\n  description         = \"jobs, version 2\"\n}\n"
+   },
+   "expect": {
+    "replayedRoots": [
+     "app",
+     "app (workspace app-prod)"
+    ],
+    "changedAddresses": [
+     "update workspace app-prod: aws_cloudwatch_event_rule.jobs[0]"
+    ]
+   }
   }
  ]
 }

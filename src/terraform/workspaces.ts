@@ -304,6 +304,8 @@ export function surveyWorkspaces(source: FileSource, root: string, rootVarValues
         return [e.value];
       case 'paren':
         return resolve(e.expr, p, depth + 1);
+      case 'unary':
+        return e.op === '-' ? resolve(e.operand, p, depth + 1).flatMap((v) => (typeof v === 'number' ? [-v] : [])) : [];
       case 'template': {
         // Every interpolation with known values: one string per combination, a few at most.
         let out = [''];
@@ -442,7 +444,13 @@ export function surveyWorkspaces(source: FileSource, root: string, rootVarValues
           const offset = e.args[1];
           // The length of the rest is -1 or the length of the workspace itself. The length of a literal is
           // that length; any other length() or value not known offline is null, and builds no name.
-          const lenArg = e.args[2];
+          let lenArg: Expr | undefined = e.args[2];
+          // Through parentheses and locals of this module: `local.n` set to `(length(terraform.workspace))`.
+          for (let i = 0; i < 8 && lenArg; i++) {
+            if (lenArg.kind === 'paren') lenArg = lenArg.expr;
+            else if (lenArg.kind === 'getattr' && lenArg.obj.kind === 'scope' && lenArg.obj.name === 'local' && p.locals.has(lenArg.name)) lenArg = p.locals.get(lenArg.name);
+            else break;
+          }
           const lens: Array<number | null> =
             lenArg?.kind === 'call' && lenArg.name === 'length'
               ? viewsOf(lenArg.args[0], p)?.some((x) => !x.length)
