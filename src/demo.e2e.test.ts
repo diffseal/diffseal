@@ -15,7 +15,7 @@ const fixture = path.resolve(
   import.meta.dirname,
   "../fixtures/demo/snapshots.fixture",
 );
-for (const name of ["replace-database", "harmless-change"])
+for (const name of ["replace-database", "harmless-change", "widen-iam"])
   test(`bundled Action reviews the synthetic demo: ${name}`, () => {
     const snapshots = JSON.parse(fs.readFileSync(fixture, "utf8")) as {
       base: Record<string, string>;
@@ -98,6 +98,11 @@ for (const name of ["replace-database", "harmless-change"])
         expect(markdown).toContain("> [!CAUTION]");
         // A change whose action depends on apply-time values says so on its own row.
         expect(markdown).toContain("| `module.fulfillment.aws_iam_role_policy.lambda` | update (likely) |");
+      }
+      if (name === "widen-iam") {
+        // diffseal/demo#2: the new grant covers the old one, so nothing is revoked.
+        expect(markdown).not.toContain("Revokes");
+        expect(markdown).not.toContain("AccessDenied");
       }
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });

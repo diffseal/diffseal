@@ -1448,9 +1448,10 @@
           {
             "resource": "aws_iam_policy.p",
             "action": "update",
-            "severity": "LOW",
+            "severity": "INFO",
             "dataLoss": false,
-            "reasonContains": "Revokes s3:GetObject on arn:aws:s3:::b/*; callers that still need it get AccessDenied. Grants * on *"
+            "downtimeNot": "possible",
+            "reasonContains": "Grants * on *"
           }
         ],
         "cost": {

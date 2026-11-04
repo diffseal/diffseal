@@ -38,6 +38,11 @@ export interface GrantDiff {
   removed: Grant[];
 }
 
+/**
+ * The grants a policy update adds and removes. An Allow of the old version counts as removed only when
+ * the new version does not certainly still allow it: `dynamodb:*` on `*` keeps `dynamodb:GetItem` on a
+ * table.
+ */
 export function diffGrants(before: unknown, after: unknown): GrantDiff | undefined {
   const b = grantsOf(before);
   const a = grantsOf(after);
@@ -45,7 +50,72 @@ export function diffGrants(before: unknown, after: unknown): GrantDiff | undefin
   const key = (g: Grant) => `${g.effect}|${g.action}|${g.resource}`;
   const bk = new Set(b.map(key));
   const ak = new Set(a.map(key));
-  return { added: dedupe(a.filter((g) => !bk.has(key(g)))), removed: dedupe(b.filter((g) => !ak.has(key(g)))) };
+  const kept = stillAllowed(before, after);
+  return { added: dedupe(a.filter((g) => !bk.has(key(g)))), removed: dedupe(b.filter((g) => !ak.has(key(g)) && !kept(g))) };
+}
+
+/** An action or resource as a glob that matches at least every value it can take; `*` when nothing is known. */
+function widened(v: unknown): string {
+  if (typeof v === 'string') return v.replace(/\$\{[^}]*\}/g, '*');
+  if (isUnknown(v) && v.pattern?.startsWith('arn:')) return v.pattern.replaceAll('{?}', '*');
+  return '*';
+}
+
+/** False only when no text can match both globs: their literal heads or tails differ. */
+function mayOverlap(x: string, y: string, caseless: boolean): boolean {
+  const [p, q] = caseless ? [x.toLowerCase(), y.toLowerCase()] : [x, y];
+  const wild = /[*?]/;
+  if (!wild.test(p) && !wild.test(q)) return p === q;
+  if (!wild.test(q)) return globMatch(p, q);
+  if (!wild.test(p)) return globMatch(q, p);
+  const head = (s: string) => s.slice(0, s.search(wild));
+  const tail = (s: string) => s.slice(Math.max(s.lastIndexOf('*'), s.lastIndexOf('?')) + 1);
+  const [hp, hq, tp, tq] = [head(p), head(q), tail(p), tail(q)];
+  return (hp.startsWith(hq) || hq.startsWith(hp)) && (tp.endsWith(tq) || tq.endsWith(tp));
+}
+
+/**
+ * A test for an Allow of the old version: true when the new version certainly still allows it. That needs
+ * a new Allow with no condition whose action and resource cover it, and no new or changed Deny that may
+ * match it. Anything not certain answers false, so the grant is reported as revoked.
+ */
+function stillAllowed(before: unknown, after: unknown): (g: Grant) => boolean {
+  const b = parsePolicy(before);
+  const a = parsePolicy(after);
+  if (b.kind !== 'ok' || a.kind !== 'ok' || policyVersion(before) !== policyVersion(after)) return () => false;
+  const plain = (st: Statement) => st.NotAction === undefined && st.NotResource === undefined && st.NotPrincipal === undefined;
+  // The old grants that come from a plain Allow, with what each action and resource can match.
+  // A NotAction or NotResource grant shown with the same text is never counted as kept.
+  const old = new Map<string, { action: string; resource: string } | undefined>();
+  for (const st of b.statements) {
+    if (st.Effect !== undefined && st.Effect !== 'Allow') continue;
+    for (const action of list(st.Action ?? st.NotAction))
+      for (const resource of list(st.Resource ?? st.NotResource)) {
+        const k = `${typeof action === 'string' ? action : '(unknown)'}|${displayResource(resource)}`;
+        old.set(k, plain(st) && (!old.has(k) || old.get(k)) ? { action: widened(action), resource: widened(resource) } : undefined);
+      }
+  }
+  const allows = a.statements
+    .filter((st) => (st.Effect === undefined || st.Effect === 'Allow') && plain(st) && st.Condition === undefined)
+    .flatMap((st) => list(st.Action).flatMap((action) => list(st.Resource).map((resource) => ({ action, resource }))))
+    .filter((x): x is { action: string; resource: string } => typeof x.action === 'string' && typeof x.resource === 'string');
+  const statementKey = (st: Statement) => stableKey(st);
+  const oldStatements = new Set(b.statements.map(statementKey));
+  // A Deny the old version already had took away the same access then; any other may take it away now.
+  // An Effect not known statically may be a Deny.
+  const denies = a.statements.filter((st) => st.Effect !== undefined && st.Effect !== 'Allow' && !oldStatements.has(statementKey(st)));
+  const denied = (g: { action: string; resource: string }) =>
+    denies.some((st) => {
+      const actions = st.NotAction !== undefined ? ['*'] : list(st.Action).map(widened);
+      const resources = st.NotResource !== undefined ? ['*'] : list(st.Resource).map(widened);
+      return actions.some((x) => mayOverlap(x, g.action, true)) && resources.some((x) => mayOverlap(x, g.resource, false));
+    });
+  return (g) => {
+    if (g.effect !== 'Allow') return false;
+    const o = old.get(`${g.action}|${g.resource}`);
+    if (!o) return false;
+    return allows.some((n) => covers(n.action, o.action, true) && covers(n.resource, o.resource, false)) && !denied(o);
+  };
 }
 
 function dedupe(gs: Grant[]): Grant[] {
