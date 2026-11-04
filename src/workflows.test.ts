@@ -108,7 +108,7 @@ test('trusted upload workflow has no analysis inputs and uses base Git settings 
   const text = readFileSync(new URL('../.github/workflows/upload.yml', import.meta.url), 'utf8');
   expect(text).toContain('BASE_REV: ${{ github.event.pull_request.base.sha }}');
   expect(text).toContain('PUSHED_REV: ${{ github.sha }}');
-  expect(text).not.toContain('${{ github.event.before');
+  expect(text).toContain('BEFORE_REV: ${{ github.event.before }}');
   expect(text).toContain("['show', `${rev}:${file}`]");
   expect(text).toContain("['.diffseal.json', '.terratrust.json']");
   expect(text.replaceAll('inputs.retention-days', '')).not.toContain('inputs.');
@@ -174,7 +174,7 @@ test('trusted settings ignore the working tree and reject output injection', asy
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('trusted settings for a push come from the first parent of the pushed commit', async () => {
+test('trusted settings for a push come from the branch head before the push, else the first parent', async () => {
   const fs = await import('node:fs'), os = await import('node:os'), path = await import('node:path');
   const { spawnSync } = await import('node:child_process');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tt-push-settings-'));
@@ -187,9 +187,9 @@ test('trusted settings for a push come from the first parent of the pushed commi
     const run = workflow('upload').jobs.upload.steps[1].run!;
     const script = run.slice(run.indexOf("<<'NODE'\n") + "<<'NODE'\n".length, run.lastIndexOf('NODE'));
     const output = path.join(os.tmpdir(), `tt-push-settings-out-${process.pid}`);
-    const execute = (pushed: string) => {
+    const execute = (pushed: string, before = '') => {
       fs.rmSync(output, { force: true });
-      const r = spawnSync('node', ['--input-type=module', '-e', script], { cwd: dir, encoding: 'utf8', env: { ...process.env, BASE_REV: '', PUSHED_REV: pushed, GITHUB_OUTPUT: output } });
+      const r = spawnSync('node', ['--input-type=module', '-e', script], { cwd: dir, encoding: 'utf8', env: { ...process.env, BASE_REV: '', PUSHED_REV: pushed, BEFORE_REV: before, GITHUB_OUTPUT: output } });
       if (r.status) throw new Error(r.stderr);
       return fs.readFileSync(output, 'utf8').split('\n')[0];
     };
@@ -206,5 +206,20 @@ test('trusted settings for a push come from the first parent of the pushed commi
     git('checkout', '-qb', 'side', 'HEAD~1'); settings('side'); git('add', '.'); git('commit', '-qm', 'side');
     git('checkout', '-q', '-'); git('merge', '-q', '--no-ff', '-X', 'theirs', '-m', 'merge', 'side');
     expect(execute(git('rev-parse', 'HEAD'))).toBe('roots-under=infra/empty');
+    // A push of several commits is read at the branch head before the push, even when an earlier commit
+    // in the same push narrows the roots. That head is the merge above, which took the side branch's settings.
+    const before = git('rev-parse', 'HEAD');
+    expect(fs.readFileSync(path.join(dir, '.diffseal.json'), 'utf8')).toContain('"side"');
+    settings('infra/narrow'); git('add', '.'); git('commit', '-qm', 'narrow in the same push');
+    fs.writeFileSync(path.join(dir, 'main.tf'), ''); git('add', '.'); git('commit', '-qm', 'change in the same push');
+    const pushed = git('rev-parse', 'HEAD');
+    expect(execute(pushed, before)).toBe('roots-under=side');
+    // A new branch has no earlier head (all zeros), so the first parent is used.
+    expect(execute(pushed, '0'.repeat(40))).toBe('roots-under=infra/narrow');
+    // A force push whose earlier head is not an ancestor, or is missing, also uses the first parent.
+    git('checkout', '-qb', 'other', before); settings('other'); git('add', '.'); git('commit', '-qm', 'other');
+    const unrelated = git('rev-parse', 'HEAD'); git('checkout', '-q', '-');
+    expect(execute(pushed, unrelated)).toBe('roots-under=infra/narrow');
+    expect(execute(pushed, 'f'.repeat(40))).toBe('roots-under=infra/narrow');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

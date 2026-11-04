@@ -173,7 +173,7 @@ Diffseal prevents a change from relaxing the rules that judge it:
 
 ## Trusted upload replay settings
 
-The reusable upload workflow reads `replay` from `.diffseal.json` through `git show`. For pull requests it uses the base branch commit from the event. For pushes it uses the first parent of the pushed commit, which is the commit the Action compares the push with. A force push or a new branch does not change that, because the workflow does not use the event's `before` commit. Only a root commit, which has no parent, is read itself. It never reads these settings from the working tree or workflow inputs.
+The reusable upload workflow reads `replay` from `.diffseal.json` through `git show`. For pull requests it uses the base branch commit from the event. For pushes it uses the branch head before the push, the event's `before` commit, when that commit is an ancestor of the pushed one. After a force push, or on a new branch, it uses the first parent of the pushed commit. Only a root commit, which has no parent, is read itself. It never reads these settings from the working tree or workflow inputs.
 
 ```json
 {
@@ -187,4 +187,4 @@ The reusable upload workflow reads `replay` from `.diffseal.json` through `git s
 
 All three fields are optional paths inside the repository. `rootsUnder` limits the Terraform roots. Without it, Diffseal discovers roots across the repository. `policyFile` selects a policy JSON file. Without it, Diffseal uses the policy in `.diffseal.json` and the built-in defaults. `moduleCache` selects an existing verified offline module cache. It does not fetch modules. Without it, Diffseal uses the default cache. Unknown or unavailable module contents remain visible in the report.
 
-The workflow has no analysis inputs. A pull request or a pushed commit cannot narrow its own analysis by editing these settings; changes take effect from the next change. A push of several commits is read with the settings of the commit before its last one, which that push can itself have changed. Push such changes on their own, or through a pull request. Direct CLI and Action calls still use their explicit flags and inputs.
+The workflow has no analysis inputs. A pull request or a pushed commit cannot narrow its own analysis by editing these settings; changes take effect from the next change. A push of several commits is read with the settings the branch had before the push, so an earlier commit in the same push cannot narrow it either. A force push is the exception: it is read at the first parent of the pushed commit. Direct CLI and Action calls still use their explicit flags and inputs.

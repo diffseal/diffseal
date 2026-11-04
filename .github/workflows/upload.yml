@@ -27,22 +27,30 @@ jobs:
         env:
           BASE_REV: ${{ github.event.pull_request.base.sha }}
           PUSHED_REV: ${{ github.sha }}
+          BEFORE_REV: ${{ github.event.before }}
         shell: bash
         run: |
           node --input-type=module <<'NODE'
-          import { execFileSync } from 'node:child_process';
+          import { execFileSync, spawnSync } from 'node:child_process';
           import { appendFileSync } from 'node:fs';
           const sha = /^[a-f0-9]{40,64}$/;
           let rev = process.env.BASE_REV;
           if (!rev) {
-            // A push has no pull request base. Settings come from the first parent of the pushed commit,
-            // the commit the Action compares it with, so a direct push cannot narrow its own record.
-            // github.event.before is not used: a force push or a new branch makes it the wrong commit.
-            // Only a root commit, which has no parent, is read itself.
+            // A push has no pull request base. Settings come from the branch head before the push, so no
+            // commit in the push, including an earlier one in a push of several, can narrow the record.
+            // When that head is not an ancestor of the pushed commit (a force push), or there is none (a new
+            // branch, all zeros), they come from the first parent of the pushed commit. Only a root commit,
+            // which has no parent, is read itself.
             const pushed = process.env.PUSHED_REV;
             if (!sha.test(pushed ?? '')) throw new Error('Missing pushed commit');
-            const [, parent] = execFileSync('git', ['rev-list', '--parents', '-n', '1', pushed], { encoding: 'utf8' }).trim().split(' ');
-            rev = parent ?? pushed;
+            const before = process.env.BEFORE_REV ?? '';
+            const ancestor = sha.test(before) && !/^0+$/.test(before) &&
+              spawnSync('git', ['merge-base', '--is-ancestor', before, pushed]).status === 0;
+            if (ancestor) rev = before;
+            else {
+              const [, parent] = execFileSync('git', ['rev-list', '--parents', '-n', '1', pushed], { encoding: 'utf8' }).trim().split(' ');
+              rev = parent ?? pushed;
+            }
           }
           if (!sha.test(rev ?? '')) throw new Error('Missing settings commit');
           // .terratrust.json is the file's name before the rename to Diffseal.
