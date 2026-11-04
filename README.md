@@ -113,6 +113,7 @@ jobs:
         with:
           mode: pr            # or: plan
           roots-under: infra/envs/prod
+          advisory: 'true'    # remove once calibrated
 ```
 
 The Action runs bundled JavaScript (`dist/action.js`) on the runner and downloads nothing at run time. It writes the step summary before setting the exit code and updates a single PR comment. `strict: true` also fails the job on `REVIEW`; `advisory: true` does not fail the job because of findings, even on `BLOCK`. A configuration or run error can still fail it.
