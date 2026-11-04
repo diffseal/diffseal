@@ -106,7 +106,9 @@ test('trusted upload workflow has no analysis inputs and uses base Git settings 
   expect(steps[2].uses).toBe(`diffseal/diffseal@v${version}`);
   expect(steps[2].with).toMatchObject({ mode: 'pr', upload: 'true', advisory: 'true', 'report-artifact': 'true' });
   const text = readFileSync(new URL('../.github/workflows/upload.yml', import.meta.url), 'utf8');
-  expect(text).toContain('github.event.pull_request.base.sha || github.sha');
+  expect(text).toContain('BASE_REV: ${{ github.event.pull_request.base.sha }}');
+  expect(text).toContain('PUSHED_REV: ${{ github.sha }}');
+  expect(text).not.toContain('${{ github.event.before');
   expect(text).toContain("['show', `${rev}:${file}`]");
   expect(text).toContain("['.diffseal.json', '.terratrust.json']");
   expect(text.replaceAll('inputs.retention-days', '')).not.toContain('inputs.');
@@ -163,11 +165,46 @@ test('trusted settings ignore the working tree and reject output injection', asy
     const run = workflow('upload').jobs.upload.steps[1].run!;
     const script = run.slice(run.indexOf("<<'NODE'\n") + "<<'NODE'\n".length, run.lastIndexOf('NODE'));
     const output = path.join(dir, 'outputs');
-    const execute = (revision: string) => spawnSync('node', ['--input-type=module', '-e', script], { cwd: dir, encoding: 'utf8', env: { ...process.env, SETTINGS_REV: revision, GITHUB_OUTPUT: output } });
+    const execute = (revision: string, pushed = '') => spawnSync('node', ['--input-type=module', '-e', script], { cwd: dir, encoding: 'utf8', env: { ...process.env, BASE_REV: revision, PUSHED_REV: pushed, GITHUB_OUTPUT: output } });
     expect(execute(rev).status).toBe(0);
     expect(fs.readFileSync(output, 'utf8')).toBe('roots-under=infra\npolicy=policy.json\nmodule-cache=cache\n');
     fs.writeFileSync(path.join(dir, '.diffseal.json'), JSON.stringify({ replay: { rootsUnder: 'infra\npolicy=weakened' } }));
     git('add', '.diffseal.json'); git('commit', '-qm', 'invalid settings');
     const invalid = execute(git('rev-parse', 'HEAD')); expect(invalid.status).toBe(1); expect(invalid.stderr).toContain('Invalid replay.rootsUnder');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('trusted settings for a push come from the first parent of the pushed commit', async () => {
+  const fs = await import('node:fs'), os = await import('node:os'), path = await import('node:path');
+  const { spawnSync } = await import('node:child_process');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tt-push-settings-'));
+  const git = (...args: string[]) => {
+    const r = spawnSync('git', ['-C', dir, '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', ...args], { encoding: 'utf8' });
+    if (r.status) throw new Error(r.stderr); return r.stdout.trim();
+  };
+  const settings = (rootsUnder: string) => fs.writeFileSync(path.join(dir, '.diffseal.json'), JSON.stringify({ replay: { rootsUnder } }));
+  try {
+    const run = workflow('upload').jobs.upload.steps[1].run!;
+    const script = run.slice(run.indexOf("<<'NODE'\n") + "<<'NODE'\n".length, run.lastIndexOf('NODE'));
+    const output = path.join(os.tmpdir(), `tt-push-settings-out-${process.pid}`);
+    const execute = (pushed: string) => {
+      fs.rmSync(output, { force: true });
+      const r = spawnSync('node', ['--input-type=module', '-e', script], { cwd: dir, encoding: 'utf8', env: { ...process.env, BASE_REV: '', PUSHED_REV: pushed, GITHUB_OUTPUT: output } });
+      if (r.status) throw new Error(r.stderr);
+      return fs.readFileSync(output, 'utf8').split('\n')[0];
+    };
+    git('init', '-q');
+    settings('infra');
+    git('add', '.'); git('commit', '-qm', 'root commit');
+    // A root commit has no parent and is read itself.
+    expect(execute(git('rev-parse', 'HEAD'))).toBe('roots-under=infra');
+    // A direct push that narrows the roots is still read with the settings it was pushed onto.
+    settings('infra/empty');
+    git('add', '.'); git('commit', '-qm', 'narrow roots');
+    expect(execute(git('rev-parse', 'HEAD'))).toBe('roots-under=infra');
+    // A merge commit is read at its first parent, the branch it was pushed to.
+    git('checkout', '-qb', 'side', 'HEAD~1'); settings('side'); git('add', '.'); git('commit', '-qm', 'side');
+    git('checkout', '-q', '-'); git('merge', '-q', '--no-ff', '-X', 'theirs', '-m', 'merge', 'side');
+    expect(execute(git('rev-parse', 'HEAD'))).toBe('roots-under=infra/empty');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

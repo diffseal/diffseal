@@ -5,6 +5,7 @@
 ### Fixed
 
 - An IAM policy update no longer says it revokes a grant that the new version still allows. Widening `dynamodb:PutItem, dynamodb:GetItem` on a table to `dynamodb:*` on `*` (diffseal/demo#2) said "Revokes dynamodb:PutItem, dynamodb:GetItem on module.fulfillment.aws_dynamodb_table.shipments; callers that still need it get AccessDenied", which was false. An old Allow now counts as revoked only when no new Allow without a condition covers its action and resource (`*`, `dynamodb:*`, `s3:Get*`, `arn:aws:s3:::b/*`) and no new or changed Deny may match it. Anything not certain is still reported as revoked. Such a row is now INFO with no downtime instead of LOW; with the default `blockOn` no gate changes.
+- The trusted upload workflow reads its `replay` settings for a push from the first parent of the pushed commit, the commit the push is compared with. Before, it read them from the pushed commit itself, so a direct push that edited `replay.rootsUnder` narrowed its own record. A root commit, which has no parent, is still read itself. A pull request keeps reading them from its base.
 
 ## 0.6.4-beta, 2026-11-04
 

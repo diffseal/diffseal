@@ -173,7 +173,7 @@ Diffseal prevents a change from relaxing the rules that judge it:
 
 ## Trusted upload replay settings
 
-The reusable upload workflow reads `replay` from `.diffseal.json` through `git show`. For pull requests it uses the base branch commit from the event. For pushes it uses the pushed commit on the default branch. It never reads these settings from the working tree or workflow inputs.
+The reusable upload workflow reads `replay` from `.diffseal.json` through `git show`. For pull requests it uses the base branch commit from the event. For pushes it uses the first parent of the pushed commit, which is the commit the Action compares the push with. A force push or a new branch does not change that, because the workflow does not use the event's `before` commit. Only a root commit, which has no parent, is read itself. It never reads these settings from the working tree or workflow inputs.
 
 ```json
 {
@@ -187,4 +187,4 @@ The reusable upload workflow reads `replay` from `.diffseal.json` through `git s
 
 All three fields are optional paths inside the repository. `rootsUnder` limits the Terraform roots. Without it, Diffseal discovers roots across the repository. `policyFile` selects a policy JSON file. Without it, Diffseal uses the policy in `.diffseal.json` and the built-in defaults. `moduleCache` selects an existing verified offline module cache. It does not fetch modules. Without it, Diffseal uses the default cache. Unknown or unavailable module contents remain visible in the report.
 
-The workflow has no analysis inputs. A pull request cannot narrow its own analysis by editing these settings. Changes take effect after merge. Direct CLI and Action calls still use their explicit flags and inputs.
+The workflow has no analysis inputs. A pull request or a direct push cannot narrow its own analysis by editing these settings. Changes take effect from the next change. Direct CLI and Action calls still use their explicit flags and inputs.

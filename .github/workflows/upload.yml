@@ -25,14 +25,26 @@ jobs:
       - name: Read trusted analysis settings
         id: settings
         env:
-          SETTINGS_REV: ${{ github.event.pull_request.base.sha || github.sha }}
+          BASE_REV: ${{ github.event.pull_request.base.sha }}
+          PUSHED_REV: ${{ github.sha }}
         shell: bash
         run: |
           node --input-type=module <<'NODE'
           import { execFileSync } from 'node:child_process';
           import { appendFileSync } from 'node:fs';
-          const rev = process.env.SETTINGS_REV;
-          if (!/^[a-f0-9]{40,64}$/.test(rev ?? '')) throw new Error('Missing settings commit');
+          const sha = /^[a-f0-9]{40,64}$/;
+          let rev = process.env.BASE_REV;
+          if (!rev) {
+            // A push has no pull request base. Settings come from the first parent of the pushed commit,
+            // the commit the Action compares it with, so a direct push cannot narrow its own record.
+            // github.event.before is not used: a force push or a new branch makes it the wrong commit.
+            // Only a root commit, which has no parent, is read itself.
+            const pushed = process.env.PUSHED_REV;
+            if (!sha.test(pushed ?? '')) throw new Error('Missing pushed commit');
+            const [, parent] = execFileSync('git', ['rev-list', '--parents', '-n', '1', pushed], { encoding: 'utf8' }).trim().split(' ');
+            rev = parent ?? pushed;
+          }
+          if (!sha.test(rev ?? '')) throw new Error('Missing settings commit');
           // .terratrust.json is the file's name before the rename to Diffseal.
           const file = ['.diffseal.json', '.terratrust.json'].find((f) => execFileSync('git', ['ls-tree', '--name-only', rev, '--', f], { encoding: 'utf8' }).trim());
           const config = file ? JSON.parse(execFileSync('git', ['show', `${rev}:${file}`], { encoding: 'utf8' })) : {};
