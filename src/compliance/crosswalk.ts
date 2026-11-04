@@ -1,8 +1,8 @@
 import crosswalk from './crosswalk.json' with { type: 'json' };
 
 /**
- * Rule category -> references in other frameworks, verified against primary sources
- * (docs/research/compliance-crosswalk.md). Empty where a source could not be checked.
+ * Rule category -> references in other frameworks, verified against primary sources.
+ * Empty where a source could not be checked.
  */
 export type FrameworkRefs = Record<string, Array<{ ref: string; fit: string }>>;
 

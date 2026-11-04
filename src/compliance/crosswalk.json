@@ -2,7 +2,7 @@
   "_meta": {
     "verified": "2026-10-29",
     "notes": [
-      "Research and per-claim sources: docs/research/compliance-crosswalk.md. ISO, EU and Swedish sources checked 2026-10-25; SOC 2 updated 2026-10-29 from the supplied trust-center-controls.md note, section 4 and product addition 4.",
+      "ISO, EU and Swedish sources checked 2026-10-25; SOC 2 updated 2026-10-29 from the supplied trust-center-controls.md note, section 4 and product addition 4.",
       "fit=direct: the cited text names the thing the rule checks. fit=supporting: the rule produces evidence toward the provision but does not satisfy it alone.",
       "EU texts were read from the Official Journal versions served by the Publications Office (publications.europa.eu/resource/celex/<CELEX>); EUR-Lex itself returned an AWS WAF challenge to scripted requests. Source URLs point at the EUR-Lex ELI pages for the same acts.",
       "ISO titles come from ISO's free sample of ISO/IEC 27002:2022 on iso.org (table of contents, clauses 5-8). The ISO/IEC 27001:2022 sample on iso.org says its text is aligned with ISO/IEC 27002:2022, but the Annex A table itself is not in the free sample. Treat the A.x = 27002 clause x mapping as standard practice that was not re-checked against Annex A.",

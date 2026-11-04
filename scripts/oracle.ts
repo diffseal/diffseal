@@ -382,7 +382,7 @@ The command requires an existing Terraform 1.15.x binary and never installs one.
 \`\`\`sh
 bun run scripts/oracle.ts --out dry-runs/oracle/results.json --report dry-runs/oracle/current.md
 # Preserve a before/after report when a prior JSON result file is available:
-bun run scripts/oracle.ts --out dry-runs/oracle/results.json --baseline dry-runs/oracle/baseline-complete.json --report docs/research/terraform-oracle.md
+bun run scripts/oracle.ts --out dry-runs/oracle/results.json --baseline dry-runs/oracle/baseline-complete.json --report dry-runs/oracle/report.md
 bun run typecheck
 bun run build
 bun test
@@ -469,7 +469,7 @@ if (import.meta.main) {
     fs.writeFileSync(out, pretty({ version, candidates: all.length, results }) + '\n');
     const baselinePath = option('--baseline');
     const baseline = baselinePath ? JSON.parse(fs.readFileSync(baselinePath, 'utf8')).results : undefined;
-    const report = option('--report', 'docs/research/terraform-oracle.md')!;
+    const report = option('--report', 'dry-runs/oracle/report.md')!;
     fs.mkdirSync(path.dirname(report), { recursive: true });
     fs.writeFileSync(report, document(version, results, baseline));
     console.log(JSON.stringify({ version, candidates: all.length, unique: results.length, equal: results.filter(r => r.status === 'equal').length, different: results.filter(r => r.status === 'different').length, skipped: results.filter(r => r.status === 'skipped').length, out, report }));

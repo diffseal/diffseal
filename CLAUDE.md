@@ -15,7 +15,7 @@ The CLI, the GitHub Action and the npm package `diffseal`: Terraform review with
 ## Build and test
 
 - `bun test`, `bun run typecheck`, `bun run build`. `dist/` is committed: rebuild it after any change in `src/` and commit it with the change.
-- A change to how gates are decided needs a re-measurement on the three commit sets (2,175 real commits) with no new false BLOCK. `docs/STATUS.md` has the method and the latest numbers.
+- A change to how gates are decided needs a re-measurement on the three commit sets (2,175 real commits) with no new false BLOCK. The method and every measurement are in `diffseal/cloud` at `docs/engine/STATUS.md`, which is private; the public `docs/STATUS.md` keeps only the summary.
 
 ## Releases
 
@@ -26,5 +26,6 @@ The CLI, the GitHub Action and the npm package `diffseal`: Terraform review with
 
 ## Where things are
 
-- `docs/STATUS.md`: what is built, measured and open. `docs/research/known-gaps.md`: known limits. `CHANGELOG.md`.
+- `docs/STATUS.md`: the public summary of what is built and measured. `docs/research/known-gaps.md`: known limits, public. `CHANGELOG.md`.
+- Internal notes (measurements, research, review rounds, handoffs) live in the private `diffseal/cloud` repository under `docs/engine/`. This repository is public: never add notes about runs on private code, the founder's employer or its repositories.
 - `docs/guide/`: the Action, configuration, FAQ and verify guides that the site links to.
