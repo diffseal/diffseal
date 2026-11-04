@@ -86,3 +86,24 @@ test('removing a statement that a wider grant still covers is INFO, not a policy
   expect(row.reason).not.toContain('not known statically');
   expect(row.reason).not.toContain('Revokes');
 });
+
+test('a dropped statement is INFO only when nothing else in the policy changed (review round 2)', () => {
+  const change = (before: unknown, after: unknown): ResourceChange => ({
+    address: 'aws_iam_policy.p', type: 'aws_iam_policy', name: 'p', mode: 'managed', action: 'update',
+    before: { name: 'p', policy: JSON.stringify(before) }, after: { name: 'p', policy: JSON.stringify(after) }, references: {}, confidence: 'proven',
+  } as ResourceChange);
+  const wide = { Effect: 'Allow', Action: 'dynamodb:Get*', Resource: 'arn:aws:dynamodb:eu-north-1:1:table/t' };
+  const narrow = { Effect: 'Allow', Action: 'dynamodb:GetItem', Resource: 'arn:aws:dynamodb:eu-north-1:1:table/t' };
+  const s3 = { Effect: 'Allow', Action: 's3:GetObject', Resource: 'arn:aws:s3:::b/*' };
+  // A condition added to a grant whose text is the same may take access away.
+  const [row] = analyzeBlastRadius([change(doc(wide, narrow, s3), doc(wide, { ...s3, Condition: { StringEquals: { 'aws:SourceVpce': 'vpce-1' } } }))]);
+  expect(row.severity).toBe('LOW');
+  expect(row.downtime).toBe('possible');
+});
+
+test('an unknown Sid does not make an unchanged Deny one that may match (review round 2)', () => {
+  const sid = new Unknown('sid');
+  const guard = { Sid: sid, Effect: 'Deny', Action: 's3:*', Resource: '*', Condition: { Bool: { 'aws:SecureTransport': 'false' } } };
+  const before = doc({ Effect: 'Allow', Action: 's3:GetObject', Resource: 'arn:aws:s3:::b/*' }, guard);
+  expect(diffGrants(before, doc({ Effect: 'Allow', Action: 's3:Get*', Resource: '*' }, guard))?.removed).toEqual([]);
+});

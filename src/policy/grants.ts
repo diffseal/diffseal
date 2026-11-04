@@ -54,7 +54,20 @@ export function diffGrants(before: unknown, after: unknown): GrantDiff | undefin
   const ak = new Set(a.map(key));
   const allowed = stillAllowed(before, after);
   const gone = b.filter((g) => !ak.has(key(g)));
-  return { added: dedupe(a.filter((g) => !bk.has(key(g)))), removed: dedupe(gone.filter((g) => !allowed(g))), kept: dedupe(gone.filter(allowed)) };
+  const added = dedupe(a.filter((g) => !bk.has(key(g))));
+  const removed = dedupe(gone.filter((g) => !allowed(g)));
+  // A grant can keep its text and still lose access to a new condition. When nothing was added or
+  // revoked, the kept grants are named only if every statement of the new version was already there.
+  const kept = added.length || removed.length || onlyDropsStatements(before, after) ? dedupe(gone.filter(allowed)) : [];
+  return { added, removed, kept };
+}
+
+function onlyDropsStatements(before: unknown, after: unknown): boolean {
+  const b = parsePolicy(before);
+  const a = parsePolicy(after);
+  if (b.kind !== 'ok' || a.kind !== 'ok') return false;
+  const old = new Set(b.statements.map((st) => stableKey(st)));
+  return a.statements.every((st) => old.has(stableKey(st)));
 }
 
 /** An action or resource as a glob that matches at least every value it can take; `*` when nothing is known. */
@@ -107,7 +120,7 @@ function stillAllowed(before: unknown, after: unknown): (g: Grant) => boolean {
   // A Deny the old version already had took away the same access then; any other may take it away now.
   // One that holds a value not known statically (an endpoint id) may name something else at apply, and
   // an Effect not known statically may be a Deny.
-  const denies = a.statements.filter((st) => st.Effect !== undefined && st.Effect !== 'Allow' && (containsUnknown(st) || !oldStatements.has(statementKey(st))));
+  const denies = a.statements.filter((st) => st.Effect !== undefined && st.Effect !== 'Allow' && (containsUnknown({ ...st, Sid: undefined }) || !oldStatements.has(statementKey(st))));
   const denied = (g: { action: string; resource: string }) =>
     denies.some((st) => {
       const actions = st.NotAction !== undefined ? ['*'] : list(st.Action).map(widened);
