@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.6.4-beta, 2026-11-04
+
+### Changed
+
+- The Action is named "Diffseal Terraform review" in `action.yml`, the name it will have on the GitHub Marketplace, where "DiffSeal" is taken by another account. Its description no longer mentions the application code check removed in 0.6.0-beta. The repository and every `uses: diffseal/diffseal...` reference stay the same.
 
 ### Fixed
 

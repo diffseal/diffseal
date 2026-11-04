@@ -1,6 +1,6 @@
 {
   "name": "diffseal",
-  "version": "0.6.3-beta",
+  "version": "0.6.4-beta",
   "description": "Change review for Terraform on AWS: blast radius, policy checks and change evidence",
   "type": "module",
   "bin": {

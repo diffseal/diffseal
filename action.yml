@@ -1,5 +1,5 @@
-name: 'Diffseal'
-description: 'Review Terraform changes on AWS without cloud credentials.'
+name: 'Diffseal Terraform review'
+description: 'Review Terraform changes on AWS without running terraform or holding cloud credentials. Flags data that would be lost.'
 author: 'Diffseal'
 branding:
   icon: 'shield'

@@ -89,7 +89,7 @@ The job summary is cut short on a large change, and an uploaded change record ov
 The Action uploads nothing itself. Add the standard `actions/upload-artifact` step after it to keep the directory as an artifact of the run:
 
 ```yaml
-      - uses: diffseal/diffseal@v0.6.3-beta
+      - uses: diffseal/diffseal@v0.6.4-beta
         id: diffseal
         with:
           mode: pr
@@ -149,7 +149,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: diffseal/diffseal@v0.6.3-beta
+      - uses: diffseal/diffseal@v0.6.4-beta
         with:
           mode: pr
           roots-under: infra/envs/prod
@@ -183,7 +183,7 @@ jobs:
           terraform plan -input=false -out=tfplan
           terraform show -json tfplan > tfplan.json
 
-      - uses: diffseal/diffseal@v0.6.3-beta
+      - uses: diffseal/diffseal@v0.6.4-beta
         with:
           mode: plan
           plan-json: tfplan.json
@@ -204,7 +204,7 @@ permissions:
   id-token: write
 jobs:
   diffseal:
-    uses: diffseal/diffseal/.github/workflows/upload.yml@v0.6.3-beta
+    uses: diffseal/diffseal/.github/workflows/upload.yml@v0.6.4-beta
 ```
 
 The workflow checks out GitHub's test merge commit for a pull request. It reads analysis settings from `.diffseal.json` on the base branch through `git show`. It accepts no analysis inputs. Use the optional [`replay` settings](configuration.md#trusted-upload-replay-settings) to select roots, a policy file or a verified offline module cache. The workflow runs the Action from the same release tag, with `mode: pr`, `upload: 'true'`, `advisory: 'true'` and `report-artifact: 'true'`, and then keeps the [full report](#keep-the-full-report) of the run as an artifact. A failed artifact upload shows a warning and does not fail the job.
@@ -214,7 +214,7 @@ The workflow's one input, `retention-days`, says how many days the artifact is k
 ```yaml
 jobs:
   diffseal:
-    uses: diffseal/diffseal/.github/workflows/upload.yml@v0.6.3-beta
+    uses: diffseal/diffseal/.github/workflows/upload.yml@v0.6.4-beta
     with:
       retention-days: 400
 ```
