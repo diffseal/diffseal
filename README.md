@@ -1,6 +1,6 @@
 # Diffseal
 
-> **Beta status, v0.6.4-beta.** Diffseal reviews Terraform changes on AWS and writes audit change records. It is a beta validated on one production monorepo. Run the GitHub Action in advisory mode first, with `advisory: 'true'`, and report issues in the [GitHub issue tracker](https://github.com/diffseal/diffseal/issues).
+> **Beta status, v0.6.5-beta.** Diffseal reviews Terraform changes on AWS and writes audit change records. It is a beta validated on one production monorepo. Run the GitHub Action in advisory mode first, with `advisory: 'true'`, and report issues in the [GitHub issue tracker](https://github.com/diffseal/diffseal/issues).
 
 Diffseal reviews Terraform changes on AWS and records the evidence of each change. It works from Terraform configuration and git history. It never asks for cloud credentials and never runs `terraform`.
 
@@ -109,7 +109,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: diffseal/diffseal@v0.6.4-beta
+      - uses: diffseal/diffseal@v0.6.5-beta
         with:
           mode: pr            # or: plan
           roots-under: infra/envs/prod
