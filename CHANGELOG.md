@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- A change record says what changed in each updated or replaced resource. `changed` lists the names of the top-level settings that changed, sorted, up to 32, and `changedMore` counts the rest. `values` gives old and new values only for a fixed list of operational settings (`RECORD_VALUES`: Lambda memory, timeout and reserved concurrency, RDS instance class, engine version and storage, EventBridge schedules and states), and only when the value has the shape that setting allows. A value marked sensitive is `(sensitive)`, one known only after apply is `(known after apply)`. Before, a routine update said only "update", and an auditor had to open GitHub to learn what changed. No gate changes. The upload now carries these names and values; the upload section of the action guide says so.
+
+### Changed
+
+- The action guide's upload section says what the record carries per resource and that findings can quote the value they are about. It said the Action never uploads "Terraform configuration", which was too broad: findings already quoted values such as an open CIDR range.
+
 ## 0.6.5-beta, 2026-11-04
 
 ### Added

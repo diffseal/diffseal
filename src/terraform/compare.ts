@@ -75,6 +75,7 @@ export function compareEvaluations(base: RootEvaluation | undefined, head: RootE
         const [b, a] = side === 'head' ? [peer, sym] : [sym, peer];
         out.push({
           ...toChange(a, 'update', b.attrs, a.attrs),
+          changedKeys: diffInstance(b, a).changedKeys,
           address: peer.address,
           confidence: 'unknown',
           actionReason: `count or for_each of ${sym.configAddress} is not known statically at ${side}, so instances may be kept, added or removed`,
@@ -173,6 +174,7 @@ export function compareEvaluations(base: RootEvaluation | undefined, head: RootE
     progressed = propagateReplacements(out, after);
     progressed = applyReplaceTriggers(out, before, after) || progressed;
   }
+  nameReplacedReads(out, after);
   return out;
 }
 
@@ -216,6 +218,24 @@ function propagateReplacements(out: ResourceChange[], after: Map<string, StaticI
     }
   }
   return progressed;
+}
+
+/**
+ * For the change record only: an argument that reads a computed attribute of a replaced resource changes
+ * with it, so name it in `changedKeys`. Arguments under ignore_changes are not named. No decision reads this.
+ */
+function nameReplacedReads(out: ResourceChange[], after: Map<string, StaticInstance>): void {
+  const replaced = new Set(out.filter((c) => c.action === 'replace').map((c) => c.address));
+  if (!replaced.size) return;
+  for (const c of out) {
+    const inst = after.get(c.address);
+    if ((c.action !== 'update' && c.action !== 'replace') || !c.changedKeys || !inst || inst.ignoreChanges === 'all') continue;
+    const ignored = inst.ignoreChanges;
+    for (const [k, v] of Object.entries(inst.attrs)) {
+      if (ignored.some((p) => p.length === 1 && p[0] === k) || c.changedKeys.includes(k)) continue;
+      if (unknownRefs(masked(v, ignored.filter((p) => p[0] === k))).some((r) => replaced.has(r))) c.changedKeys = [...c.changedKeys, k];
+    }
+  }
 }
 
 /** Addresses of the resources whose computed attributes a value reads (the refs of its unknown parts). */
@@ -461,6 +481,7 @@ function diffInstance(b: StaticInstance, a: StaticInstance): ResourceChange {
   base.configuredBefore = b.configuredAttrs;
   base.preventDestroy = a.preventDestroy || undefined;
   if (b.preventDestroy && !a.preventDestroy) base.protectedAtBase = true;
+  base.changedKeys = changed;
   if (!changed.length || a.mode === 'data') return base;
 
   if (a.externalModule) {

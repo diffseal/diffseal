@@ -2,8 +2,11 @@ import { describe, expect, test } from 'bun:test';
 import { analyze } from '../analysis/analyze.js';
 import { readPlan } from '../plan/readPlan.js';
 import { plan, rc } from '../testing/planFixtures.js';
-import { addGateItem, type AnalysisResult, type Gate, type ResourceChange } from '../core/model.js';
+import { addGateItem, Redacted, Unknown, type AnalysisResult, type Gate, type ResourceChange } from '../core/model.js';
 import { changeRecord, manifest, MAX_RECORD_BYTES } from './changeRecord.js';
+import { compareEvaluations } from '../terraform/compare.js';
+import { evaluateRoot } from '../terraform/expand.js';
+import { MemorySource } from '../terraform/source.js';
 
 describe('changeRecord', () => {
   const result = analyze(
@@ -83,6 +86,186 @@ describe('changeRecord', () => {
   test('notes Terraform that did not parse, by file and line (round 3)', () => {
     const r = changeRecord({ commit, base: 'b'.repeat(40), roots: [], result, diagnostics: ['main.tf:7: expected "}"'], engine: { version: 't', replaceCatalog: 'x' } });
     expect(r.notes.join(' ')).toContain('main.tf:7');
+  });
+
+  describe('what changed in each resource', () => {
+    const at = (type: string, action: ResourceChange['action'], before: Record<string, unknown> | null, after: Record<string, unknown> | null): ResourceChange =>
+      ({ address: `${type}.x`, type, name: 'x', mode: 'managed', action, before, after, references: {}, confidence: 'proven' });
+    const record = (...changes: ResourceChange[]) => {
+      const res: AnalysisResult = { changes, findings: [], blast: [], cost: { items: [], fixedMonthlyDeltaUsd: 0, basis: '' }, gate: { result: 'pass', reasons: [], items: [] } };
+      return changeRecord({ commit, base: 'b'.repeat(40), roots: [], result: res, engine: { version: 't', replaceCatalog: 'x' } });
+    };
+
+    test('an update names its changed settings, and shows old and new values for listed operational settings', () => {
+      const r = record(at('aws_lambda_function', 'update', { memory_size: 128, timeout: 15, description: 'a', tags_all: { a: '1' } }, { memory_size: 512, timeout: 30, description: 'b', tags_all: { a: '2' } }));
+      expect(r.resources[0].changed).toEqual(['description', 'memory_size', 'timeout']);
+      expect(r.resources[0].changedMore).toBeUndefined();
+      expect(r.resources[0].values).toEqual([
+        { attribute: 'memory_size', before: '128', after: '512' },
+        { attribute: 'timeout', before: '15', after: '30' },
+      ]);
+    });
+
+    test('a replace names its changed settings next to the paths that forced it', () => {
+      const r = record({ ...at('aws_db_instance', 'replace', { instance_class: 'db.t3.micro', storage_encrypted: false }, { instance_class: 'db.r6g.large', storage_encrypted: true }), replacePaths: [['storage_encrypted']] });
+      expect(r.resources[0].replacePaths).toEqual([['storage_encrypted']]);
+      expect(r.resources[0].changed).toEqual(['instance_class', 'storage_encrypted']);
+      expect(r.resources[0].values).toEqual([{ attribute: 'instance_class', before: 'db.t3.micro', after: 'db.r6g.large' }]);
+    });
+
+    test('a create or a delete carries no attribute list, and an update with no prior values carries none either', () => {
+      const r = record(at('aws_sns_topic', 'create', null, { name: 't' }), at('aws_sqs_queue', 'delete', { name: 'q' }, null), at('aws_lambda_function', 'update', null, { timeout: 30 }));
+      for (const row of r.resources) {
+        expect(row.changed).toBeUndefined();
+        expect(row.values).toBeUndefined();
+      }
+    });
+
+    test('a value marked sensitive is shown as (sensitive), and one known only after apply says so', () => {
+      const r = record(at('aws_lambda_function', 'update', { memory_size: new Redacted(undefined, 4096), timeout: 15 }, { memory_size: 8192, timeout: new Unknown('a reference') }));
+      expect(r.resources[0].values).toEqual([
+        { attribute: 'memory_size', before: '(sensitive)', after: '8192' },
+        { attribute: 'timeout', before: '15', after: '(known after apply)' },
+      ]);
+      expect(JSON.stringify(r)).not.toContain('4096');
+    });
+
+    test('a setting added or removed shows (not set) on the missing side', () => {
+      const r = record(at('aws_lambda_function', 'update', { timeout: 15 }, { timeout: 15, reserved_concurrent_executions: 5 }));
+      expect(r.resources[0].values).toEqual([{ attribute: 'reserved_concurrent_executions', before: '(not set)', after: '5' }]);
+    });
+
+    test('no other value leaves CI: unlisted settings, and listed ones whose value does not have the expected shape', () => {
+      const r = record(
+        at('aws_db_instance', 'update', { password: 'hunter2-plain', engine_version: '15.4', instance_class: 'db.t3.micro' }, { password: 'correct-horse-battery', engine_version: 'Sup3rSecretToken', instance_class: 'db.t3.micro"; drop' }),
+        at('aws_cloudwatch_event_rule', 'update', { schedule_expression: 'rate(5 minutes)', state: 'ENABLED' }, { schedule_expression: 'token=abcd1234', state: 'DISABLED' }),
+      );
+      expect(r.resources[0].changed).toEqual(['engine_version', 'instance_class', 'password']);
+      expect(r.resources[0].values).toBeUndefined();
+      expect(r.resources[1].values).toEqual([{ attribute: 'state', before: 'ENABLED', after: 'DISABLED' }]);
+      const json = JSON.stringify(r);
+      for (const secret of ['hunter2-plain', 'correct-horse-battery', 'Sup3rSecretToken', 'drop', 'abcd1234', '15.4']) expect(json).not.toContain(secret);
+    });
+
+    test('schedules, engine versions and states keep their value when it has the expected shape', () => {
+      const r = record(
+        at('aws_scheduler_schedule', 'update', { schedule_expression: 'cron(0 8 ? * MON-FRI *)' }, { schedule_expression: 'rate(1 hour)' }),
+        at('aws_db_instance', 'update', { engine_version: '15.4', allocated_storage: 20 }, { engine_version: '16.1', allocated_storage: '100' }),
+        at('aws_cloudwatch_event_rule', 'update', { is_enabled: true }, { is_enabled: false }),
+      );
+      expect(r.resources.map((x) => x.values)).toEqual([
+        [{ attribute: 'schedule_expression', before: 'cron(0 8 ? * MON-FRI *)', after: 'rate(1 hour)' }],
+        [{ attribute: 'allocated_storage', before: '20', after: '100' }, { attribute: 'engine_version', before: '15.4', after: '16.1' }],
+        [{ attribute: 'is_enabled', before: 'true', after: 'false' }],
+      ]);
+    });
+
+    test('a long list of changed settings keeps the first 32 names and counts the rest', () => {
+      const before = Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`a${String(i).padStart(2, '0')}`, 1]));
+      const after = Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`a${String(i).padStart(2, '0')}`, 2]));
+      const r = record(at('aws_ecs_service', 'update', { ...before, 'not a name': 1 }, { ...after, 'not a name': 2 }));
+      expect(r.resources[0].changed).toHaveLength(32);
+      expect(r.resources[0].changed?.[0]).toBe('a00');
+      expect(r.resources[0].changedMore).toBe(9);
+      expect(JSON.stringify(r)).not.toContain('not a name');
+    });
+
+    const replayed = (base: string, head: string) => {
+      const changes = compareEvaluations(evaluateRoot(new MemorySource({ 'r/main.tf': base }), 'r'), evaluateRoot(new MemorySource({ 'r/main.tf': head }), 'r'));
+      return changeRecord({ commit, base: 'b'.repeat(40), roots: ['r'], result: analyze(changes), engine: { version: 't', replaceCatalog: 'x' } });
+    };
+
+    test('a set of blocks in another order is not a changed setting (Codex C2)', () => {
+      const block = (a: string, b: string) => `resource "aws_ecs_task_definition" "t" {
+  family = "t"
+  container_definitions = "[]"
+  cpu = ${a}
+  placement_constraints {
+    type = "memberOf"
+    expression = "attribute:${b}"
+  }
+  placement_constraints {
+    type = "memberOf"
+    expression = "attribute:${b === 'x' ? 'y' : 'x'}"
+  }
+}`;
+      const r = replayed(block('256', 'x'), block('512', 'y'));
+      expect(r.resources.map((x) => [x.address, x.changed])).toEqual([['aws_ecs_task_definition.t', ['cpu']]]);
+    });
+
+    test('an update that only reads a replaced resource names the setting that reads it (Codex C1)', () => {
+      const tf = (queue: string) => `resource "aws_sqs_queue" "q" { name = "${queue}" }
+resource "aws_lambda_function" "f" {
+  function_name = "f"
+  role = "arn:aws:iam::123456789012:role/r"
+  environment {
+    variables = { QUEUE = aws_sqs_queue.q.arn }
+  }
+}`;
+      const r = replayed(tf('a'), tf('b'));
+      expect(r.resources.find((x) => x.address === 'aws_lambda_function.f')?.changed).toEqual(['environment']);
+    });
+
+    test('a replacement by replace_triggered_by does not name a set only reordered (Codex C2, Claude A3)', () => {
+      const tf = (input: string, first: string, second: string) => `resource "terraform_data" "x" { input = "${input}" }
+resource "aws_ecs_task_definition" "t" {
+  family = "t"
+  container_definitions = "[]"
+  placement_constraints {
+    type = "memberOf"
+    expression = "attribute:${first}"
+  }
+  placement_constraints {
+    type = "memberOf"
+    expression = "attribute:${second}"
+  }
+  lifecycle { replace_triggered_by = [terraform_data.x] }
+}`;
+      const r = replayed(tf('a', 'x', 'y'), tf('b', 'y', 'x'));
+      const row = r.resources.find((x) => x.address === 'aws_ecs_task_definition.t');
+      expect(row?.action).toBe('replace');
+      expect(row?.changed).toBeUndefined();
+    });
+
+    test('every setting that reads a replaced resource is named, after the first that forces a replacement too (Codex C3)', () => {
+      const tf = (queue: string) => `resource "aws_sqs_queue" "q" { name = "${queue}" }
+resource "terraform_data" "d" {
+  triggers_replace = aws_sqs_queue.q.arn
+  input = aws_sqs_queue.q.arn
+}`;
+      expect(replayed(tf('a'), tf('b')).resources.find((x) => x.address === 'terraform_data.d')?.changed).toEqual(['input', 'triggers_replace']);
+    });
+
+    test('a setting under ignore_changes is not named, even when it reads a replaced resource (Codex C4)', () => {
+      const tf = (queue: string) => `resource "aws_sqs_queue" "q" { name = "${queue}" }
+resource "aws_lambda_function" "f" {
+  function_name = "f"
+  role = "arn:aws:iam::123456789012:role/r"
+  environment {
+    variables = { QUEUE = aws_sqs_queue.q.arn }
+  }
+  lifecycle { ignore_changes = [environment] }
+}`;
+      expect(replayed(tf('a'), tf('b')).resources.find((x) => x.address === 'aws_lambda_function.f')?.changed).toBeUndefined();
+      const nested = (queue: string) => `resource "aws_sqs_queue" "q" { name = "${queue}" }
+resource "terraform_data" "d" {
+  input = { queue = aws_sqs_queue.q.arn, name = "n" }
+  lifecycle { ignore_changes = [input.queue] }
+}`;
+      expect(replayed(nested('a'), nested('b')).resources.find((x) => x.address === 'terraform_data.d')?.changed).toBeUndefined();
+    });
+
+    test('a listed setting whose old and new values read the same is not shown as changed (Claude A1)', () => {
+      const r = record(at('aws_db_instance', 'update', { allocated_storage: 20, engine_version: '15.4' }, { allocated_storage: '20', engine_version: '16.1', instance_class: null }));
+      expect(r.resources[0].changed).toEqual(['engine_version']);
+      expect(r.resources[0].values).toEqual([{ attribute: 'engine_version', before: '15.4', after: '16.1' }]);
+    });
+
+    test('the gate and the risks do not depend on the new fields', () => {
+      const r = changeRecord({ commit, base: 'b'.repeat(40), roots: [], result, engine: { version: 't', replaceCatalog: 'x' } });
+      expect(r.gate).toEqual(result.gate);
+      expect(r.resources[0].changed).toEqual(['storage_encrypted']);
+    });
   });
 
   describe('a record over the upload limit', () => {

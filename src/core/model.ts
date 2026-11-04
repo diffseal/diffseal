@@ -173,6 +173,12 @@ export interface ResourceChange {
   after: Attrs | null;
   /** Attribute paths that forced replacement, when known. */
   replacePaths?: string[][];
+  /**
+   * Static replay only: the top-level arguments its comparison found changed, with set order, null
+   * semantics and ignore_changes applied, and the arguments that read a replaced resource. Only the
+   * change record reads it; no rule or gate does.
+   */
+  changedKeys?: string[];
   /** `delete-first` (default Terraform behaviour) or `create-first` (create_before_destroy). */
   replaceOrder?: 'delete-first' | 'create-first';
   actionReason?: string;

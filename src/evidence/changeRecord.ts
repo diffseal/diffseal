@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import type { AnalysisResult } from '../core/model.js';
+import { hasRedacted, isUnknown, type AnalysisResult } from '../core/model.js';
+import { changedAttrs } from '../analysis/blastRadius.js';
 import { frameworksFor, type FrameworkRefs } from '../compliance/crosswalk.js';
 import type { CommitInfo } from '../terraform/source.js';
 
@@ -29,7 +30,27 @@ export interface ChangeRecord {
   engine: { version: string; replaceCatalog: string; mode: 'static-replay' };
   roots: string[];
   gate: AnalysisResult['gate'];
-  resources: Array<{ address: string; type: string; action: string; confidence: string; replacePaths?: string[][] }>;
+  resources: Array<{
+    address: string;
+    type: string;
+    action: string;
+    confidence: string;
+    replacePaths?: string[][];
+    /**
+     * For an update or a replace: the names of the top-level settings that changed, sorted, at most
+     * CHANGED_NAMES_MAX. Absent when no setting can be named, as when the prior values are not known. An
+     * absent list does not mean nothing changed.
+     */
+    changed?: string[];
+    /** How many more settings changed than `changed` lists. */
+    changedMore?: number;
+    /**
+     * Old and new values, only for the settings in RECORD_VALUES and only when the value has the shape
+     * that setting allows. A value marked sensitive is `(sensitive)`; one known only after apply is
+     * `(known after apply)`; a setting that is absent on one side is `(not set)`.
+     */
+    values?: Array<{ attribute: string; before: string; after: string }>;
+  }>;
   risks: Array<{ resource: string; severity: string; reason: string; accepted?: Accepted }>;
   controls: Array<{
     control: string;
@@ -91,6 +112,7 @@ export function changeRecord(input: {
       action: c.action,
       confidence: c.confidence,
       ...(c.replacePaths ? { replacePaths: c.replacePaths } : {}),
+      ...whatChanged(c),
     })),
     risks: result.blast.filter((b) => b.severity !== 'INFO').map((b) => ({ resource: b.resource, severity: b.severity, reason: b.reason, ...(b.accepted ? { accepted: b.accepted } : {}) })),
     // Keep existing rows per ISO control, with a SOC 2 fallback for findings that have no ISO tag.
@@ -110,6 +132,59 @@ export function changeRecord(input: {
     access: [],
     notes,
   }, input.maxBytes ?? MAX_RECORD_BYTES, `${input.fullListIn ? `${input.fullListIn}, and in ` : ''}the replay report for this commit (the JSON that diffseal replay writes)`);
+}
+
+export const CHANGED_NAMES_MAX = 32;
+
+const INTEGER = /^-?\d{1,9}$/;
+const BOOLEAN = /^(true|false)$/;
+const SCHEDULE = /^(rate\(\d{1,6} (minute|minutes|hour|hours|day|days)\)|cron\([0-9A-Z*?,/#\- ]{1,100}\)|at\(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\))$/;
+
+/**
+ * The only settings whose values a record carries, each with the shape its value must have. They are
+ * operational settings an auditor reads a routine change by: size, version, timeout and schedule. A value
+ * of any other shape is left out, so a secret typed into one of these settings does not leave CI. Adding a
+ * setting here widens what the Action uploads: the upload section of docs/guide/action.md must say so.
+ */
+export const RECORD_VALUES: Record<string, Record<string, RegExp>> = {
+  aws_cloudwatch_event_rule: { schedule_expression: SCHEDULE, state: /^(ENABLED|DISABLED|ENABLED_WITH_ALL_CLOUDTRAIL_MANAGEMENT_EVENTS)$/, is_enabled: BOOLEAN },
+  aws_scheduler_schedule: { schedule_expression: SCHEDULE, state: /^(ENABLED|DISABLED)$/ },
+  aws_lambda_function: { memory_size: INTEGER, timeout: INTEGER, reserved_concurrent_executions: INTEGER },
+  aws_db_instance: { instance_class: /^db\.[a-z0-9-]{1,20}\.[a-z0-9-]{1,20}$/, engine_version: /^\d{1,4}(\.[0-9A-Za-z_-]{1,20}){0,8}$/, allocated_storage: INTEGER },
+};
+
+/** A top-level setting name; anything else is counted in `changedMore`, never printed. */
+const SETTING_NAME = /^[a-z_][a-z0-9_]{0,63}$/;
+
+/** What changed in one resource, for the record: the names of changed settings and the listed values. */
+function whatChanged(c: AnalysisResult['changes'][number]): Pick<ChangeRecord['resources'][number], 'changed' | 'changedMore' | 'values'> {
+  if ((c.action !== 'update' && c.action !== 'replace') || !c.before || !c.after) return {};
+  // Static replay names what its comparison found changed (set order, null semantics, ignore_changes and
+  // settings that read a replaced resource); a plan is compared here.
+  const listed = Object.entries(RECORD_VALUES[c.type] ?? {}).map(([attribute, shape]) => ({ attribute, before: shown(c.before![attribute], shape), after: shown(c.after![attribute], shape) }));
+  // A listed setting whose two sides read the same (`20` and `"20"`, or null and absent) did not change.
+  const same = new Set(listed.filter((v) => v.before !== undefined && v.before === v.after && v.before !== '(sensitive)' && v.before !== '(known after apply)').map((v) => v.attribute));
+  const all = [...new Set(c.changedKeys ?? changedAttrs(c.before, c.after))].filter((a) => a !== 'tags_all' && !same.has(a)).sort();
+  const names = all.filter((a) => SETTING_NAME.test(a));
+  const changed = names.slice(0, CHANGED_NAMES_MAX);
+  const values = listed
+    .filter((v) => changed.includes(v.attribute) && v.before !== undefined && v.after !== undefined)
+    .sort((a, b) => (a.attribute < b.attribute ? -1 : 1)) as Array<{ attribute: string; before: string; after: string }>;
+  return {
+    ...(changed.length ? { changed } : {}),
+    ...(all.length > changed.length ? { changedMore: all.length - changed.length } : {}),
+    ...(values.length ? { values } : {}),
+  };
+}
+
+/** A listed setting's value as the record shows it, or undefined when it does not have the allowed shape. */
+function shown(v: unknown, shape: RegExp): string | undefined {
+  if (v === undefined || v === null) return '(not set)';
+  if (hasRedacted(v)) return '(sensitive)';
+  if (isUnknown(v)) return '(known after apply)';
+  if (typeof v !== 'string' && typeof v !== 'number' && typeof v !== 'boolean') return undefined;
+  const text = String(v);
+  return shape.test(text) ? text : undefined;
 }
 
 /**
