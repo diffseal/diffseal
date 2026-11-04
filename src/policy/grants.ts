@@ -36,6 +36,8 @@ export function grantsOf(policy: unknown): Grant[] | undefined {
 export interface GrantDiff {
   added: Grant[];
   removed: Grant[];
+  /** Grants whose statement changed or went away while the new version certainly still allows them. */
+  kept: Grant[];
 }
 
 /**
@@ -50,8 +52,9 @@ export function diffGrants(before: unknown, after: unknown): GrantDiff | undefin
   const key = (g: Grant) => `${g.effect}|${g.action}|${g.resource}`;
   const bk = new Set(b.map(key));
   const ak = new Set(a.map(key));
-  const kept = stillAllowed(before, after);
-  return { added: dedupe(a.filter((g) => !bk.has(key(g)))), removed: dedupe(b.filter((g) => !ak.has(key(g)) && !kept(g))) };
+  const allowed = stillAllowed(before, after);
+  const gone = b.filter((g) => !ak.has(key(g)));
+  return { added: dedupe(a.filter((g) => !bk.has(key(g)))), removed: dedupe(gone.filter((g) => !allowed(g))), kept: dedupe(gone.filter(allowed)) };
 }
 
 /** An action or resource as a glob that matches at least every value it can take; `*` when nothing is known. */
@@ -102,8 +105,9 @@ function stillAllowed(before: unknown, after: unknown): (g: Grant) => boolean {
   const statementKey = (st: Statement) => stableKey(st);
   const oldStatements = new Set(b.statements.map(statementKey));
   // A Deny the old version already had took away the same access then; any other may take it away now.
-  // An Effect not known statically may be a Deny.
-  const denies = a.statements.filter((st) => st.Effect !== undefined && st.Effect !== 'Allow' && !oldStatements.has(statementKey(st)));
+  // One that holds a value not known statically (an endpoint id) may name something else at apply, and
+  // an Effect not known statically may be a Deny.
+  const denies = a.statements.filter((st) => st.Effect !== undefined && st.Effect !== 'Allow' && (containsUnknown(st) || !oldStatements.has(statementKey(st))));
   const denied = (g: { action: string; resource: string }) =>
     denies.some((st) => {
       const actions = st.NotAction !== undefined ? ['*'] : list(st.Action).map(widened);

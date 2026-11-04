@@ -60,7 +60,7 @@ Unzip the pack and run each step in the pack folder, the folder that holds `MANI
 
    ```sh
    KEY='NFnZeLx1VeV95G3sSR+g9oooLnMlkaLA39LPvPWLlF4='    # publicKey of d6ceaf99517d3d38
-   printf '%s' "$KEY" | base64 -d | shasum -a 256 | cut -c1-16
+   printf '%s' "$KEY" | base64 -d | shasum -a 256 | cut -c1-16    # or: sha256sum
    grep -o '"keyId" *: *"[^"]*"' signature.json pack.json
    ```
 

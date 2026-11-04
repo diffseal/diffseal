@@ -12,10 +12,11 @@ const POLICY_TYPES = new Set(['aws_iam_policy', 'aws_iam_role_policy', 'aws_iam_
 function policyUpdate(c: ResourceChange, changed: string[], note: string): BlastFinding | undefined {
   if (!POLICY_TYPES.has(c.type) || !changed.includes('policy')) return undefined;
   const d = diffGrants(c.before?.policy, c.after?.policy);
-  if (!d || (!d.added.length && !d.removed.length)) return undefined;
+  if (!d || (!d.added.length && !d.removed.length && !d.kept.length)) return undefined;
   const parts: string[] = [];
   if (d.removed.length) parts.push(`Revokes ${describeGrants(d.removed)}; callers that still need it get AccessDenied`);
   if (d.added.length) parts.push(`Grants ${describeGrants(d.added)}`);
+  if (!parts.length) parts.push(`Drops the separate grant of ${describeGrants(d.kept)}; another grant in the policy still allows it`);
   return {
     severity: d.removed.length ? 'LOW' : 'INFO',
     resource: c.address,

@@ -1,5 +1,7 @@
 import { expect, test } from 'bun:test';
 import { Unknown } from '../core/model.js';
+import { analyzeBlastRadius } from '../analysis/blastRadius.js';
+import type { ResourceChange } from '../core/model.js';
 import { diffGrants, grantsWithin } from './grants.js';
 
 const allow = (Action: unknown, Resource: unknown, extra: Record<string, unknown> = {}) => ({ Statement: [{ Effect: 'Allow', Action, Resource, ...extra }] });
@@ -61,4 +63,26 @@ test('a grant is revoked when nothing in the new version certainly covers it', (
   expect(removed(old, doc({ Effect: 'Allow', Action: 'dynamodb:*', Resource: '*' }, { Effect: 'Deny', Action: 'dynamodb:DeleteTable', Resource: '*' }))).toEqual([]);
   // An action not known statically covers nothing.
   expect(removed(old, doc({ Effect: 'Allow', Action: new Unknown('action'), Resource: '*' }))).toEqual(['dynamodb:PutItem', 'dynamodb:GetItem']);
+});
+
+test('a Deny that holds a value not known statically may match other requests at apply time (review round 1)', () => {
+  const old = doc({ Effect: 'Allow', Action: 's3:GetObject', Resource: 'arn:aws:s3:::b/*' });
+  const endpoint = new Unknown('endpoint id', '{?}', ['aws_vpc_endpoint.guard']);
+  const guard = { Effect: 'Deny', Action: 's3:*', Resource: '*', Condition: { StringNotEquals: { 'aws:SourceVpce': endpoint } } };
+  expect(diffGrants({ ...old, Statement: [...old.Statement, guard] }, doc({ Effect: 'Allow', Action: 's3:Get*', Resource: '*' }, guard))?.removed.map((g) => g.action)).toEqual(['s3:GetObject']);
+  const fixed = { ...guard, Condition: { StringNotEquals: { 'aws:SourceVpce': 'vpce-1' } } };
+  expect(diffGrants({ ...old, Statement: [...old.Statement, fixed] }, doc({ Effect: 'Allow', Action: 's3:Get*', Resource: '*' }, fixed))?.removed).toEqual([]);
+});
+
+test('removing a statement that a wider grant still covers is INFO, not a policy that cannot be read (review round 1)', () => {
+  const change = (before: unknown, after: unknown): ResourceChange => ({
+    address: 'aws_iam_policy.p', type: 'aws_iam_policy', name: 'p', mode: 'managed', action: 'update',
+    before: { name: 'p', policy: JSON.stringify(before) }, after: { name: 'p', policy: JSON.stringify(after) }, references: {}, confidence: 'proven',
+  } as ResourceChange);
+  const wide = { Effect: 'Allow', Action: 'dynamodb:*', Resource: '*' };
+  const [row] = analyzeBlastRadius([change(doc(wide, { Effect: 'Allow', Action: 'dynamodb:GetItem', Resource: 'arn:aws:dynamodb:eu-north-1:1:table/t' }), doc(wide))]);
+  expect(row).toMatchObject({ severity: 'INFO', downtime: 'no' });
+  expect(row.reason).toContain('dynamodb:GetItem on arn:aws:dynamodb:eu-north-1:1:table/t');
+  expect(row.reason).not.toContain('not known statically');
+  expect(row.reason).not.toContain('Revokes');
 });
