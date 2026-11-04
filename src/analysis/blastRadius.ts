@@ -157,6 +157,8 @@ const RISKY_UPDATES: Record<string, UpdateRisk[]> = {
   aws_security_group_rule: [{ attrs: ['cidr_blocks', 'from_port', 'to_port', 'source_security_group_id'], severity: 'MEDIUM', downtime: 'possible', why: 'removed sources cut traffic immediately' }],
   aws_iam_policy: [{ attrs: ['policy'], severity: 'LOW', downtime: 'possible', why: 'policy document changed and its grants are not known statically' }],
   aws_iam_role_policy: [{ attrs: ['policy'], severity: 'LOW', downtime: 'possible', why: 'policy document changed and its grants are not known statically' }],
+  aws_iam_user_policy: [{ attrs: ['policy'], severity: 'LOW', downtime: 'possible', why: 'policy document changed and its grants are not known statically' }],
+  aws_iam_group_policy: [{ attrs: ['policy'], severity: 'LOW', downtime: 'possible', why: 'policy document changed and its grants are not known statically' }],
   aws_iam_role: [{ attrs: ['assume_role_policy'], severity: 'MEDIUM', downtime: 'possible', why: 'principals no longer trusted cannot assume the role' }],
   aws_lambda_function: [{ attrs: ['reserved_concurrent_executions'], severity: 'LOW', downtime: 'possible', why: 'lower reserved concurrency throttles invocations' }],
   aws_sqs_queue: [{ attrs: ['visibility_timeout_seconds', 'message_retention_seconds', 'redrive_policy'], severity: 'LOW', downtime: 'no', why: 'changes message delivery behaviour' }],

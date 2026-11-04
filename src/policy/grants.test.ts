@@ -95,10 +95,11 @@ test('a dropped statement is INFO only when nothing else in the policy changed (
   const wide = { Effect: 'Allow', Action: 'dynamodb:Get*', Resource: 'arn:aws:dynamodb:eu-north-1:1:table/t' };
   const narrow = { Effect: 'Allow', Action: 'dynamodb:GetItem', Resource: 'arn:aws:dynamodb:eu-north-1:1:table/t' };
   const s3 = { Effect: 'Allow', Action: 's3:GetObject', Resource: 'arn:aws:s3:::b/*' };
-  // A condition added to a grant whose text is the same may take access away.
-  const [row] = analyzeBlastRadius([change(doc(wide, narrow, s3), doc(wide, { ...s3, Condition: { StringEquals: { 'aws:SourceVpce': 'vpce-1' } } }))]);
-  expect(row.severity).toBe('LOW');
-  expect(row.downtime).toBe('possible');
+  // A condition added to a grant whose text is the same may take access away, on every policy type.
+  for (const type of ['aws_iam_policy', 'aws_iam_role_policy', 'aws_iam_user_policy', 'aws_iam_group_policy']) {
+    const [row] = analyzeBlastRadius([{ ...change(doc(wide, narrow, s3), doc(wide, { ...s3, Condition: { StringEquals: { 'aws:SourceVpce': 'vpce-1' } } })), type, address: `${type}.p` }]);
+    expect([type, row.severity, row.downtime]).toEqual([type, 'LOW', 'possible']);
+  }
 });
 
 test('an unknown Sid does not make an unchanged Deny one that may match (review round 2)', () => {
